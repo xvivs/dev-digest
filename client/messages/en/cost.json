@@ -1,0 +1,10 @@
+{
+  "exact": "Exact cost: {value}",
+  "estimated": "Estimated cost: {value} — computed from published list prices, not a charge reported by the provider.",
+  "missing": {
+    "pending": "Run is still in progress — cost isn’t available yet.",
+    "failed": "Run failed before completion — no cost to report.",
+    "no_price": "No price data for this model — cost couldn’t be estimated.",
+    "default": "Cost unavailable."
+  }
+}

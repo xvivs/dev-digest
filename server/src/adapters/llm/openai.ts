@@ -11,6 +11,7 @@ import { withRetry, withTimeout } from '../../platform/resilience.js';
 import { toJsonSchema, parseWithRepair } from '../../platform/structured.js';
 import { estimateCost } from './pricing.js';
 import { ExternalServiceError } from '../../platform/errors.js';
+import { pickCost } from '@devdigest/reviewer-core';
 
 const DEFAULT_TIMEOUT = 60_000;
 const EMBED_MODEL = 'text-embedding-3-small';
@@ -76,12 +77,16 @@ export class OpenAIProvider implements LLMProvider {
     const text = res.choices?.[0]?.message?.content ?? '';
     const tokensIn = res.usage?.prompt_tokens ?? 0;
     const tokensOut = res.usage?.completion_tokens ?? 0;
+    // OpenAI never returns its own charge — always the local estimate, or null
+    // for an unpriced model.
+    const { costUsd, costSource } = pickCost(null, estimateCost(req.model, tokensIn, tokensOut));
     return {
       text,
       model: req.model,
       tokensIn,
       tokensOut,
-      costUsd: estimateCost(req.model, tokensIn, tokensOut),
+      costUsd,
+      costSource,
     };
   }
 
@@ -114,12 +119,14 @@ export class OpenAIProvider implements LLMProvider {
 
       const parsed = parseWithRepair(req.schema, lastRaw);
       if (parsed.ok) {
+        const { costUsd, costSource } = pickCost(null, estimateCost(req.model, tokensIn, tokensOut));
         return {
           data: parsed.data,
           model: req.model,
           tokensIn,
           tokensOut,
-          costUsd: estimateCost(req.model, tokensIn, tokensOut),
+          costUsd,
+          costSource,
           raw: lastRaw,
           attempts: attempt,
         };

@@ -9,6 +9,7 @@ import { render, screen, cleanup } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
 import type { RunSummary } from "@devdigest/shared";
 import messages from "../../../../../../../../messages/en/prReview.json";
+import costMessages from "../../../../../../../../messages/en/cost.json";
 import { RunHistory } from "./RunHistory";
 
 afterEach(cleanup);
@@ -30,13 +31,16 @@ function run(o: Partial<RunSummary>): RunSummary {
     ran_at: "2026-06-11T18:44:34.000Z",
     score: null,
     blockers: null,
+    cost_usd: null,
+    cost_source: null,
+    cost_missing_reason: null,
     ...o,
   };
 }
 
 function renderRuns(runs: RunSummary[]) {
   return render(
-    <NextIntlClientProvider locale="en" messages={{ prReview: messages }}>
+    <NextIntlClientProvider locale="en" messages={{ prReview: messages, cost: costMessages }}>
       <RunHistory runs={runs} onOpenTrace={() => {}} />
     </NextIntlClientProvider>,
   );
@@ -71,5 +75,37 @@ describe("RunHistory — outcome badge", () => {
   it("a running run reads 'running'", () => {
     renderRuns([run({ status: "running", score: null, blockers: null })]);
     expect(screen.getByText("running")).toBeInTheDocument();
+  });
+});
+
+describe("RunHistory — cost + tokens", () => {
+  it("a done run shows its token total and provider cost in the timeline row", () => {
+    renderRuns([
+      run({
+        status: "done",
+        tokens_in: 9000,
+        tokens_out: 119,
+        cost_usd: 0.0013,
+        cost_source: "provider",
+      }),
+    ]);
+    expect(screen.getByText(/9,119 tok/)).toBeInTheDocument();
+    expect(screen.getByText("$0.0013")).toBeInTheDocument();
+  });
+
+  it("a running run shows a cost dash and no token segment (no tokens accumulated yet)", () => {
+    renderRuns([
+      run({
+        status: "running",
+        tokens_in: null,
+        tokens_out: null,
+        cost_usd: null,
+        cost_missing_reason: "pending",
+        score: null,
+        blockers: null,
+      }),
+    ]);
+    expect(screen.queryByText(/tok/)).not.toBeInTheDocument();
+    expect(screen.getByText("—")).toBeInTheDocument();
   });
 });

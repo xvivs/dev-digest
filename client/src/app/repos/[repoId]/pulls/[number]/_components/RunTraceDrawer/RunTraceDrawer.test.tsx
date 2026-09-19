@@ -3,11 +3,21 @@ import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
 import type { RunTrace } from "@devdigest/shared";
 import messages from "../../../../../../../../messages/en/runs.json"; // apps/web/messages/en/runs.json
+import costMessages from "../../../../../../../../messages/en/cost.json";
 
 // Mock the trace hooks so the drawer renders without a query client / SSE.
 const TRACE: RunTrace = {
   config: { agent: "Security", version: "1", provider: "openai", model: "gpt-4.1", pr: 482, source: "local" },
-  stats: { duration_ms: 8200, tokens_in: 12000, tokens_out: 1500, findings: 2, grounding: "2/2 passed" },
+  stats: {
+    duration_ms: 8200,
+    tokens_in: 12000,
+    tokens_out: 1500,
+    findings: 2,
+    grounding: "2/2 passed",
+    cost_usd: 0.0013,
+    cost_source: "provider",
+    cost_missing_reason: null,
+  },
   prompt_assembly: { system: "You are a reviewer.", skills: "### skill", memory: null, specs: null, user: "Review PR #482" },
   tool_calls: [{ tool: "review_file", args: "src/config.ts", meta: "single-pass", ms: 1200 }],
   raw_output: '{"verdict":"request_changes"}',
@@ -32,7 +42,7 @@ afterEach(cleanup);
 
 function renderWithIntl(ui: React.ReactElement) {
   return render(
-    <NextIntlClientProvider locale="en" messages={{ runs: messages }}>
+    <NextIntlClientProvider locale="en" messages={{ runs: messages, cost: costMessages }}>
       <div data-theme="dark">{ui}</div>
     </NextIntlClientProvider>,
   );
@@ -45,6 +55,12 @@ describe("A5 Run Trace drawer (smoke)", () => {
     expect(screen.getByText("Stats")).toBeInTheDocument();
     expect(screen.getByText("2/2 passed")).toBeInTheDocument();
     expect(screen.getByText("Tool calls")).toBeInTheDocument();
+  });
+
+  it("shows a COST stat alongside duration, tokens and findings", () => {
+    renderWithIntl(<RunTraceDrawer runId="r1" agentName="Security" prNumber={482} onClose={() => {}} />);
+    expect(screen.getByText("COST")).toBeInTheDocument();
+    expect(screen.getByText("$0.0013")).toBeInTheDocument();
   });
 
   it("switches to the live log tab", () => {

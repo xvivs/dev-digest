@@ -1,4 +1,4 @@
-import type { PrStatus } from '@devdigest/shared';
+import type { CostMissingReason, PrStatus } from '@devdigest/shared';
 
 /**
  * PR-list rollup helpers (pure — no DB / `this`, so they unit-test cleanly).
@@ -52,4 +52,20 @@ export function deriveReviewStatus(args: {
   const staleMs = (args.staleDays ?? STALE_DAYS) * 86_400_000;
   if (updatedAt && now - updatedAt.getTime() > staleMs) return 'stale';
   return 'reviewed';
+}
+
+/**
+ * Why the PR's latest run has no cost — derived from that run's status at
+ * read time, never persisted (mirrors `reviews/repository/run.repo.ts`'s
+ * `costMissingReason`; duplicated rather than imported because modules never
+ * import each other's internals — see `server/CLAUDE.md`).
+ */
+export function deriveCostMissingReason(
+  status: string | null,
+  costUsd: number | null,
+): CostMissingReason | null {
+  if (costUsd != null) return null;
+  if (status === 'running' || status === 'queued') return 'pending';
+  if (status === 'failed' || status === 'cancelled') return 'failed';
+  return 'no_price';
 }

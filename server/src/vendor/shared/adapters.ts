@@ -5,6 +5,7 @@ import type {
   IssueMeta,
   PrReviewComment,
 } from './contracts/platform.js';
+import type { CostSource } from './contracts/cost.js';
 
 /**
  * Adapter interfaces. ALL external calls go behind these interfaces.
@@ -46,6 +47,8 @@ export interface CompletionResult {
   tokensIn: number;
   tokensOut: number;
   costUsd: number | null;
+  /** Provenance of `costUsd`. Null iff `costUsd` is null. */
+  costSource: CostSource | null;
 }
 
 /**
@@ -75,6 +78,8 @@ export interface StructuredResult<T> {
   tokensIn: number;
   tokensOut: number;
   costUsd: number | null;
+  /** Provenance of `costUsd`. Null iff `costUsd` is null. */
+  costSource: CostSource | null;
   raw: string;
   attempts: number;
 }

@@ -8,6 +8,7 @@ import type {
   StructuredResult,
 } from '@devdigest/shared';
 import { toJsonSchema, parseWithRepair } from './structured.js';
+import { pickCost } from './cost.js';
 
 /**
  * The single OpenAI-compatible structured provider, owned by the engine because
@@ -99,12 +100,15 @@ export class OpenRouterProvider implements LLMProvider {
 
       const parsed = parseWithRepair(req.schema, lastRaw);
       if (parsed.ok) {
+        const estimated = this.estimateCost?.(req.model, tokensIn, tokensOut) ?? null;
+        const { costUsd, costSource } = pickCost(costFromApi, estimated);
         return {
           data: parsed.data,
           model: req.model,
           tokensIn,
           tokensOut,
-          costUsd: costFromApi ?? this.estimateCost?.(req.model, tokensIn, tokensOut) ?? null,
+          costUsd,
+          costSource,
           raw: lastRaw,
           attempts: attempt,
         };

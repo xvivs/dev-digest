@@ -20,9 +20,12 @@ lives in the engineering-insights skill).
 
 ## Codebase Patterns
 
+- **A cost figure is stored as a pair — value plus `cost_source` ('provider' | 'estimated') — never as a bare number.** Only OpenRouter reports an actual charge (`reviewer-core/src/llm/openrouter.ts`); OpenAI and Anthropic never do, so their figures are always local estimates off `pricing.ts`. One column for both would make `SUM(cost_usd)` silently add invoices to arithmetic. Decision and its constraints: `docs/adr/0002-cost-provenance.md`. _(2026-09-19)_
 - **INSIGHTS.md files use a fixed 7-section taxonomy (What Works / What Doesn't Work / Codebase Patterns / Tool & Library Notes / Recurring Errors & Fixes / Session Notes / Open Questions), not the older flat Symptom/Cause/Fix/Recurrence format.** — Migrated by the `engineering-insights` skill (`~/.claude/skills/engineering-insights/SKILL.md`) to match the course lesson's spec; each module's old per-file nuance survives as a `Priority:` line in the intro, above the section headings. _(2026-09-19)_
 
 ## Tool & Library Notes
+
+- **`pnpm <script>` fails in this environment before the script even starts.** pnpm 11.5.3 via corepack runs a preflight `pnpm install` that exits 1 on `[ERR_PNPM_IGNORED_BUILDS]` (esbuild, sharp) — so `pnpm typecheck` / `pnpm test` look broken while the code is fine. `node_modules` is complete; call the binary directly (`./node_modules/.bin/tsc`, `./node_modules/.bin/vitest`) or run `pnpm approve-builds` once. Affects every package. _(2026-09-19)_
 
 ## Recurring Errors & Fixes
 
@@ -33,5 +36,7 @@ lives in the engineering-insights skill).
 Built the `engineering-insights` skill (`~/.claude/skills/engineering-insights/SKILL.md`) to capture durable learnings into each module's `INSIGHTS.md`. Chose the course slide's fixed 7-section taxonomy over the repo's pre-existing flat Symptom/Cause/Fix format after comparing both via two parallel design agents; migrated all six `INSIGHTS.md` files and updated all six `CLAUDE.md` files to read/update them unconditionally, closing a gap where `repo-intel/CLAUDE.md` previously had no `INSIGHTS.md` pointer at all.
 
 ## Open Questions
+
+- **The shared `devdigest-postgres` container has drifted from this branch's migration files.** It carries 17 applied migrations against 11 local `.sql` files, and `agent_runs.cost_usd` already exists there (added by another branch) while `cost_source` does not — so `pnpm db:migrate` fails with "column already exists". Integration tests are unaffected: `*.it.test.ts` spins up a clean Postgres via testcontainers and applies only this branch's migrations. Open: whether each worktree should get its own database instead of sharing one. _(2026-09-19)_
 
 - **The old Promotion Rule (a finding hit twice escalates a one-liner to `CLAUDE.md`) has no equivalent in the new 7-section shape.** — `engineering-insights` only asks the agent to mention a suspected repeat in its report, never to auto-edit `CLAUDE.md`; worth deciding whether a future monthly cleanup pass should manually re-adopt a promotion step (see `references/cleanup-and-sharding.md` in the skill). _(2026-09-19)_

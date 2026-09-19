@@ -57,3 +57,8 @@ export {
 // The single OpenAI-compatible structured provider (OpenRouter), shared by the
 // CI runner and the server's openrouter path. Owns session grouping + guards.
 export { OpenRouterProvider, type OpenRouterProviderOptions } from './llm/openrouter.js';
+
+// Cost provenance — picks provider-reported cost over a local estimate and
+// tags the result, so a number is never persisted without saying where it
+// came from. Shared by every LLMProvider (server adapters + OpenRouterProvider).
+export { pickCost } from './llm/cost.js';

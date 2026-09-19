@@ -210,7 +210,7 @@ export class ReviewRunExecutor {
           if (this.container.runBus.isCancelled(runId)) throw new RunCancelledError();
         },
       });
-      const { tokensIn, tokensOut, grounding } = outcome;
+      const { tokensIn, tokensOut, grounding, costUsd, costSource } = outcome;
 
       const keptFindings = outcome.review.findings;
 
@@ -250,6 +250,8 @@ export class ReviewRunExecutor {
         score: outcome.review.score,
         blockers,
         error: null,
+        costUsd,
+        costSource,
       });
 
       const trace: RunTrace = {
@@ -267,6 +269,11 @@ export class ReviewRunExecutor {
           tokens_out: tokensOut,
           findings: findingRows.length,
           grounding,
+          cost_usd: costUsd,
+          cost_source: costSource,
+          // Done, but no price entry for this model — the only "missing" case
+          // possible on a successful run.
+          cost_missing_reason: costUsd == null ? 'no_price' : undefined,
         },
         prompt_assembly: outcome.assembly,
         tool_calls: outcome.chunks.map((c) => ({
@@ -421,7 +428,18 @@ export class ReviewRunExecutor {
         pr: pull.number,
         source: 'local',
       },
-      stats: { duration_ms: durationMs, tokens_in: 0, tokens_out: 0, findings: 0, grounding },
+      stats: {
+        duration_ms: durationMs,
+        tokens_in: 0,
+        tokens_out: 0,
+        findings: 0,
+        grounding,
+        cost_usd: null,
+        cost_source: null,
+        // traceFromBuffer only ever runs on a pre-work failure / run failure /
+        // cancellation — never on a run that completed with a cost.
+        cost_missing_reason: 'failed',
+      },
       prompt_assembly: { system: agent.systemPrompt, skills: null, memory: null, specs: null, user: '' },
       tool_calls: [],
       raw_output: '',

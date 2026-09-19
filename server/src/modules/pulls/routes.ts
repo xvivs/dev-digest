@@ -7,7 +7,7 @@ import * as t from '../../db/schema.js';
 import { getContext } from '../_shared/context.js';
 import { IdParams } from '../_shared/schemas.js';
 import { AppError, NotFoundError } from '../../platform/errors.js';
-import { deriveReviewStatus } from './status.js';
+import { deriveReviewStatus, deriveCostMissingReason } from './status.js';
 
 /**
  * F1 — pulls module. PR import via Octokit (list + per-PR detail).
@@ -129,9 +129,37 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
       }
     }
 
+    // Cost of each PR's LATEST run (any status, not a sum) for the list's
+    // COST column. Same inArray + orderBy(desc) + first-seen-wins pattern as
+    // latestReviewByPr above — one round trip, no N+1. `agent_runs.pr_id` is
+    // nullable (CI runs may be unlinked) but every row here came from a real
+    // pull_requests.id, so it's never null for the rows we look up.
+    const latestRunByPr = new Map<
+      string,
+      { costUsd: number | null; costSource: 'provider' | 'estimated' | null; status: string | null }
+    >();
+    if (prIds.length > 0) {
+      const runRows = await container.db
+        .select({
+          prId: t.agentRuns.prId,
+          costUsd: t.agentRuns.costUsd,
+          costSource: t.agentRuns.costSource,
+          status: t.agentRuns.status,
+        })
+        .from(t.agentRuns)
+        .where(inArray(t.agentRuns.prId, prIds))
+        .orderBy(desc(t.agentRuns.ranAt));
+      for (const run of runRows) {
+        if (run.prId && !latestRunByPr.has(run.prId)) {
+          latestRunByPr.set(run.prId, { costUsd: run.costUsd, costSource: run.costSource, status: run.status });
+        }
+      }
+    }
+
     const now = Date.now();
     return rows.map((r) => {
       const review = latestReviewByPr.get(r.id);
+      const lastRun = latestRunByPr.get(r.id);
       return {
         id: r.id,
         number: r.number,
@@ -153,6 +181,13 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
         opened_at: r.openedAt?.toISOString() ?? null,
         updated_at: r.updatedAt?.toISOString() ?? null,
         score: review ? review.score : null,
+        // No run at all → null/null/null, same as "no cost" on a run — the
+        // list doesn't need a fourth state to say "never ran".
+        last_run_cost_usd: lastRun ? lastRun.costUsd : null,
+        last_run_cost_source: lastRun ? lastRun.costSource : null,
+        last_run_cost_missing_reason: lastRun
+          ? deriveCostMissingReason(lastRun.status, lastRun.costUsd)
+          : null,
       };
     });
   });

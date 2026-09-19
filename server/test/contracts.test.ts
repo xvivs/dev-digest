@@ -167,6 +167,46 @@ describe('AI contracts parse fixtures', () => {
     });
     expect(trace.tool_calls).toHaveLength(1);
   });
+
+  it('RunTrace regression: an OLD trace with no cost fields at all still parses (.nullish(), not .nullable())', () => {
+    // Pre-Cost-Badge jsonb documents in run_traces.trace don't have the key at
+    // all — not `null`, absent. .nullable() would reject this; .nullish() must not.
+    const trace = RunTrace.parse({
+      config: { agent: 'Security Reviewer', model: 'gpt-4.1', source: 'local' },
+      stats: { duration_ms: 8200, tokens_in: 14820, tokens_out: 1240, findings: 3, grounding: '3/3 passed' },
+      prompt_assembly: { system: 's', user: 'u' },
+      tool_calls: [],
+      raw_output: '{}',
+      memory_pulled: [],
+      specs_read: [],
+      log: [],
+    });
+    expect(trace.stats.cost_usd).toBeUndefined();
+    expect(trace.stats.cost_source).toBeUndefined();
+  });
+
+  it('RunTrace with cost fields (provider-sourced)', () => {
+    const trace = RunTrace.parse({
+      config: { agent: 'Security Reviewer', model: 'gpt-4.1', source: 'local' },
+      stats: {
+        duration_ms: 8200,
+        tokens_in: 14820,
+        tokens_out: 1240,
+        findings: 1,
+        grounding: '1/1 passed',
+        cost_usd: 0.0412,
+        cost_source: 'provider',
+      },
+      prompt_assembly: { system: 's', user: 'u' },
+      tool_calls: [],
+      raw_output: '{}',
+      memory_pulled: [],
+      specs_read: [],
+      log: [],
+    });
+    expect(trace.stats.cost_usd).toBeCloseTo(0.0412, 5);
+    expect(trace.stats.cost_source).toBe('provider');
+  });
 });
 
 describe('platform DTOs', () => {

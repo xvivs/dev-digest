@@ -202,12 +202,26 @@ d('A2 reviews + agents (Testcontainers pg)', () => {
     expect(trace.config.model).toBe('gpt-4.1');
     expect(trace.stats.grounding).toBe('1/2 passed');
     expect(trace.log.length).toBeGreaterThan(0);
+    // Cost Badge: MockLLMProvider.completeStructured always answers
+    // { costUsd: 0.001, costSource: 'estimated' } — persisted into the trace.
+    expect(trace.stats.cost_usd).toBeCloseTo(0.001, 5);
+    expect(trace.stats.cost_source).toBe('estimated');
 
     // agent_runs row populated for A5 to aggregate
     const [run] = await pg.handle.db.select().from(t.agentRuns).where(eq(t.agentRuns.id, runId));
     expect(run!.status).toBe('done');
     expect(run!.findingsCount).toBe(1);
     expect(run!.grounding).toBe('1/2 passed');
+    expect(run!.costUsd).toBeCloseTo(0.001, 5);
+    expect(run!.costSource).toBe('estimated');
+
+    // The PR-list COST column surfaces this same run — it's the PR's only one.
+    const pulls = (
+      await app.inject({ method: 'GET', url: `/repos/${pr.repoId}/pulls` })
+    ).json();
+    const listed = pulls.find((p: { id: string }) => p.id === pr.id);
+    expect(listed.last_run_cost_usd).toBeCloseTo(0.001, 5);
+    expect(listed.last_run_cost_source).toBe('estimated');
 
     await app.close();
   });

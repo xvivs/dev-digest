@@ -10,6 +10,7 @@ import {
 import { assemblePrompt } from '../src/platform/prompt.js';
 import { groundFindings } from '../src/platform/grounding.js';
 import { estimateCost } from '../src/adapters/llm/pricing.js';
+import { pickCost } from '@devdigest/reviewer-core';
 
 describe('mock adapters (no network)', () => {
   it('MockGitClient.diff parses into hunks with new line numbers', async () => {
@@ -103,5 +104,50 @@ describe('pricing / cost discipline', () => {
   it('estimates cost for known models and returns null for unknown', () => {
     expect(estimateCost('gpt-4o-mini', 1_000_000, 0)).toBeCloseTo(0.15, 5);
     expect(estimateCost('some-future-model', 1000, 1000)).toBeNull();
+  });
+
+  it('prices the current Anthropic generation added for the Cost Badge', () => {
+    // 1M in + 1M out at $X/$Y per 1M ⇒ cost = X + Y.
+    expect(estimateCost('claude-opus-5', 1_000_000, 1_000_000)).toBeCloseTo(5.0 + 25.0, 5);
+    expect(estimateCost('claude-sonnet-5', 1_000_000, 1_000_000)).toBeCloseTo(3.0 + 15.0, 5);
+    expect(estimateCost('claude-haiku-4-5', 1_000_000, 1_000_000)).toBeCloseTo(1.0 + 5.0, 5);
+    expect(estimateCost('claude-fable-5', 1_000_000, 1_000_000)).toBeCloseTo(10.0 + 50.0, 5);
+    expect(estimateCost('claude-sonnet-4-6', 1_000_000, 1_000_000)).toBeCloseTo(3.0 + 15.0, 5);
+  });
+});
+
+describe('pickCost (cost provenance tagging)', () => {
+  it('a provider-reported charge always wins, even alongside an estimate', () => {
+    expect(pickCost(0.05, 0.02)).toEqual({ costUsd: 0.05, costSource: 'provider' });
+  });
+
+  it('falls back to the local estimate when the provider gives no charge', () => {
+    expect(pickCost(null, 0.02)).toEqual({ costUsd: 0.02, costSource: 'estimated' });
+  });
+
+  it('is null/null when neither a charge nor an estimate is available', () => {
+    expect(pickCost(null, null)).toEqual({ costUsd: null, costSource: null });
+  });
+
+  it('a real zero cost still carries a source — 0 is a known cost, not a missing one', () => {
+    expect(pickCost(0, null)).toEqual({ costUsd: 0, costSource: 'provider' });
+    expect(pickCost(null, 0)).toEqual({ costUsd: 0, costSource: 'estimated' });
+  });
+
+  it('mirrors the OpenAI/Anthropic adapters: never a provider charge → always estimated or null', () => {
+    // Both adapters call pickCost(null, estimateCost(...)) — a known model
+    // always comes back 'estimated'; an unknown one comes back null/null.
+    expect(pickCost(null, estimateCost('gpt-4o-mini', 1_000_000, 0))).toEqual({
+      costUsd: 0.15,
+      costSource: 'estimated',
+    });
+    expect(pickCost(null, estimateCost('claude-sonnet-5', 1_000_000, 0))).toEqual({
+      costUsd: 3.0,
+      costSource: 'estimated',
+    });
+    expect(pickCost(null, estimateCost('some-future-model', 1000, 1000))).toEqual({
+      costUsd: null,
+      costSource: null,
+    });
   });
 });
