@@ -45,6 +45,11 @@ for dir in server client; do
   fi
 done
 
+# A linked worktree never inherits the untracked .env, so its API keys start
+# blank and the GitHub sync fails silently. Fill the empty ones from the main
+# worktree; local values (DATABASE_URL, ports) are left alone. No-op in main.
+./scripts/sync-env.sh
+
 # --- Postgres ----------------------------------------------------------------
 # The container name is fixed (container_name: devdigest-postgres), so if one is
 # already running (possibly under another compose project) we reuse it instead
