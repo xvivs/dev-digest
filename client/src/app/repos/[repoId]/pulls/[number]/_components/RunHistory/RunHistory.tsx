@@ -57,16 +57,30 @@ const rowStyle: React.CSSProperties = {
   textAlign: "left",
 };
 
+// Bare glyphs, no button chrome. A bordered, filled box here competes with the
+// status badge at the other end of the row for the same attention; the trailing
+// actions are meant to recede until the cursor is already on the row.
 const iconBtnStyle: React.CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
-  padding: 4,
+  padding: 2,
   borderRadius: 5,
-  border: "1px solid var(--border)",
-  background: "var(--bg-surface)",
+  border: "none",
+  background: "none",
   color: "var(--text-muted)",
   cursor: "pointer",
+  flexShrink: 0,
+};
+
+/** The two trailing actions travel together, spaced wider than the row's gap —
+ *  roughly one glyph-width apart, so "open trace" and "delete" never read as a
+ *  single control the way a tight pair of borderless icons would. */
+const actionsStyle: React.CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 16,
+  marginLeft: 6,
   flexShrink: 0,
 };
 
@@ -163,7 +177,9 @@ export function RunHistory({
           return (
             <div key={`commit:${c.sha}`} style={commitRowStyle}>
               <Icon.GitCommit size={15} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
-              <span className="mono" style={{ fontSize: 12, color: "var(--text-secondary)", flexShrink: 0 }}>
+              {/* Accent-tinted like every other code reference in the app — the
+                  sha is the one token in this row that identifies a commit. */}
+              <span className="mono" style={{ fontSize: 12, color: "var(--accent-text)", flexShrink: 0 }}>
                 {c.sha.slice(0, 7)}
               </span>
               <span
@@ -214,9 +230,9 @@ export function RunHistory({
                     fontWeight: 600,
                     color: "var(--text-primary)",
                     cursor: onGoToReview ? "pointer" : "default",
-                    textDecoration: onGoToReview ? "underline" : "none",
-                    textDecorationStyle: "dotted",
-                    textUnderlineOffset: 3,
+                    // No underline: the design keeps the agent name as plain
+                    // text. `title` + the pointer carry the affordance instead.
+                    textDecoration: "none",
                   }}
                 >
                   {r.agent_name ?? "Agent"}
@@ -262,26 +278,28 @@ export function RunHistory({
                 <RunCostValue usd={r.cost_usd} source={r.cost_source} missingReason={r.cost_missing_reason} />
               </span>
             </div>
-            <button
-              type="button"
-              title={t("timeline.openTrace")}
-              aria-label={t("timeline.openTrace")}
-              onClick={() => onOpenTrace(r.run_id)}
-              style={iconBtnStyle}
-            >
-              <Icon.FileText size={13} />
-            </button>
-            {onDelete && r.status !== "running" && (
-              <span
-                role="button"
-                aria-label={t("timeline.deleteRun")}
-                title={t("timeline.deleteRun")}
-                onClick={() => onDelete(r.run_id)}
-                style={{ display: "inline-flex", padding: 3, borderRadius: 5, color: "var(--text-muted)", flexShrink: 0, cursor: "pointer" }}
+            <div style={actionsStyle}>
+              <button
+                type="button"
+                title={t("timeline.openTrace")}
+                aria-label={t("timeline.openTrace")}
+                onClick={() => onOpenTrace(r.run_id)}
+                style={iconBtnStyle}
               >
-                <Icon.Trash size={13} />
-              </span>
-            )}
+                <Icon.Copy size={15} />
+              </button>
+              {onDelete && r.status !== "running" && (
+                <button
+                  type="button"
+                  aria-label={t("timeline.deleteRun")}
+                  title={t("timeline.deleteRun")}
+                  onClick={() => onDelete(r.run_id)}
+                  style={iconBtnStyle}
+                >
+                  <Icon.Trash size={15} />
+                </button>
+              )}
+            </div>
           </div>
         );
       })}

@@ -66,8 +66,8 @@ export const s = {
   list: { marginTop: 4 } satisfies CSSProperties,
 
   item: (first: boolean): CSSProperties => ({
-    paddingTop: 10,
-    paddingBottom: 2,
+    paddingTop: 12,
+    paddingBottom: 4,
     borderTop: first ? "none" : "1px solid var(--border)",
   }),
 
@@ -80,7 +80,7 @@ export const s = {
   } satisfies CSSProperties,
 
   findingTitle: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: 600,
     color: "var(--text-primary)",
   } satisfies CSSProperties,
@@ -99,7 +99,7 @@ export const s = {
    */
   location: {
     fontSize: 13,
-    color: "var(--text-secondary)",
+    color: "var(--accent-text)",
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
@@ -108,7 +108,7 @@ export const s = {
   /** Plain text, clamped to two lines — hence no <Markdown>, which emits blocks. */
   rationale: {
     marginTop: 6,
-    fontSize: 12,
+    fontSize: 13,
     lineHeight: 1.5,
     color: "var(--text-secondary)",
     display: "-webkit-box",

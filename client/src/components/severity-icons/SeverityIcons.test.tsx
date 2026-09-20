@@ -56,6 +56,12 @@ describe("SeverityIcons", () => {
 
   it("underlines the count — the only affordance that the cell is interactive", () => {
     renderIcons();
-    expect(screen.getByText("2")).toHaveStyle({ textDecoration: "underline" });
+    // Dotted and tinted to the severity: a solid rule reads as a link, and an
+    // untinted one detaches the number from the icon it belongs to.
+    expect(screen.getByText("2")).toHaveStyle({
+      textDecorationLine: "underline",
+      textDecorationStyle: "dotted",
+      textDecorationColor: "var(--crit)",
+    });
   });
 });

@@ -53,7 +53,7 @@ function SeverityIconsBase({
         const body = (
           <>
             <SevIcon size={size} style={s.icon(token.c)} aria-hidden />
-            <span className="tnum" style={s.count(size)}>
+            <span className="tnum" style={s.count(size, token.c)}>
               {count}
             </span>
           </>

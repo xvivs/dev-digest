@@ -38,12 +38,16 @@ export const s = {
   /**
    * The underline is the affordance: it is the only thing that tells the user
    * this number is hoverable/clickable, since the cell carries no button chrome.
+   * Dotted and tinted to the severity — solid would read as a link, and an
+   * untinted rule detaches the number from the icon it belongs to.
    */
-  count: (size: number): CSSProperties => ({
+  count: (size: number, color: string): CSSProperties => ({
     fontSize: size,
     fontWeight: 600,
-    color: "var(--text-secondary)",
-    textDecoration: "underline",
-    textUnderlineOffset: 2,
+    color: "var(--text-primary)",
+    textDecorationLine: "underline",
+    textDecorationStyle: "dotted",
+    textDecorationColor: color,
+    textUnderlineOffset: 3,
   }),
 } as const;
