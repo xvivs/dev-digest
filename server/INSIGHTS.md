@@ -41,6 +41,8 @@ lives in the engineering-insights skill).
 
 - **A seeded DB can be stale rather than wrong: `reviews.run_id` was null on PR #482 even though `seed.ts` already closes that link.** The symptom (timeline runs with no severity chips) looks like a client styling bug, and grepping the client for the join is a dead end — the fix loop has lived at `src/db/seed.ts:698` since `0d3ef61`, is deliberately idempotent, and rewrites `runId`/`agentId` unconditionally on every run. The database simply predated that commit and nobody re-ran `pnpm db:seed`. **Check whether the seed already handles it, and just re-seed, before adding code**: an inline `update` next to the runs insert looks right but is strictly worse — it sits inside the `if (!existingRun)` guard, so it is skipped on exactly the already-seeded databases that need repairing. Read `seed.ts` end to end first; it is ~750 lines and its cross-cutting passes live at the bottom, far from the inserts they repair. _(2026-09-20)_
 
+- **`server/.env` in this worktree points `DATABASE_URL` at `devdigest_l01`, not the default `devdigest`, so a bare `psql -d devdigest` reads a different database than the API serves** — the default DB holds only PR #482's three runs, while `devdigest_l01` holds every seeded repo; auditing a data gap against the wrong one shows a tidy, complete picture and sends you after a bug that does not exist. Hit while checking `run_traces` coverage: `devdigest` looked fine, `devdigest_l01` had 3 of 7 runs with no trace. Read `DATABASE_URL` out of `server/.env` and pass it with `-d` before any `docker exec devdigest-postgres psql`. _(2026-09-20)_
+
 ## Session Notes
 
 ### 2026-09-19 — Cost Badge (server) session
@@ -48,6 +50,9 @@ Implemented cost provenance persistence end to end: `agent_runs.cost_usd`/`cost_
 
 ### 2026-09-20 — FINDINGS feature (server) session
 `GET /repos/:id/pulls` now ships `last_review_findings`, aggregated with `GROUP BY review_id, severity` rather than by pulling finding rows — the route is polled every 60s and is unpaginated, so row-per-finding had no ceiling. Anchored on the same newest `kind:'review'` row as `score`, with `eq(reviews.workspaceId, …)` added for a direct tenancy scope and a separate guard for "PRs exist but none reviewed". Added `findings(review_id, severity)` and `reviews(pr_id, created_at DESC)` (migration `0011`), both previously missing entirely. The seed grew to four PRs covering every state the column can render — full tally, suggestion-only, and no review at all — plus a review→run→agent backfill pass. 24 files / 151 tests green including the testcontainers lane.
+
+### 2026-09-20 — run_traces seed coverage (server) session
+`run_traces` was seeded only for PR #482's two `done` runs, so every other seeded run opened an empty Agent-run drawer. Added a shared `traceFor(run, opts)` helper in `src/db/seed.ts`, gave the failed #482 run a trace whose log ends on a real `kind: 'error'` line, extended #479 / #477 / the xvivs fixture, and — the part that actually reaches an already-seeded database — a final unconditional backfill pass that LEFT JOINs `run_traces` and fills every `agent_runs` row still missing one. PR #482's two hand-written traces are untouched, so the cost/timeline e2e spec still sees `8.2s`, `15k→1.2k` and `$0.041`. Verified on the live dev DB: 3 of 7 runs lacked a trace before, 0 after. 24 files / 151 tests green.
 
 ## Open Questions
 

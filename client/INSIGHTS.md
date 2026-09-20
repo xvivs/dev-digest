@@ -42,6 +42,8 @@ lives in the engineering-insights skill).
 
 ## What Doesn't Work
 
+- **`IconBtn` is the wrong primitive for a row's trailing actions, and its `danger` prop has zero call sites** — `src/vendor/ui/primitives/IconBtn.tsx:36` already encodes exactly the hover colours a delete glyph wants (`danger && h ? var(--crit) : h ? var(--text-primary) : var(--text-secondary)`), which makes it look like the obvious reuse. It is not: it also forces a `size × size` box (default 30, vs ~19 for a bare 15px glyph) and its own `var(--bg-hover)` fill, both of which fight the "bare glyphs, no button chrome" rule the timeline row is built on. Meanwhile `grep -r '<IconBtn' src` shows the `danger` prop used nowhere, while four hand-rolled trash buttons sit at a static `var(--text-muted)` with no hover at all (`app/agents/_components/AgentCard/AgentCard.tsx:41`, `pulls/[number]/_components/ReviewRunAccordion/ReviewRunAccordion.tsx:117`, `vendor/ui/kit/Dropdown.tsx:35`). Read that prop as an unused sketch, not a convention — the timeline row uses a local `RunHistory/_components/RowAction/` that keeps the glyph bare and only swaps `color`. _(2026-09-20)_
+
 ## Codebase Patterns
 
 - Dynamic i18n key lookup — `t(\`namespace.${variable}\`)` — is an established,
@@ -97,6 +99,8 @@ lives in the engineering-insights skill).
 
 - **jsdom implements neither `Element.getAnimations()` nor `animationend`, so an exit animation that unmounts on `onAnimationEnd` leaves the node in the DOM forever under vitest** — `Collapse` waits on `ref.current?.getAnimations?.() ?? []` and treats the empty list as "already finished" (`client/src/vendor/ui/primitives/Collapse.tsx:54-66`), which makes the unmount synchronous in jsdom and keeps the DOM contract identical to a plain `{open && …}`. An `animationend` listener would simply never fire there, and every existing test asserting that a collapsed body is gone would have started passing for the wrong reason or hanging. Verified in Chrome: unmount lands at ~210ms for an OUT_MS of 180. _(2026-09-20)_
 
+- **`lucide-react` 0.469 draws `Activity` as a smoothed `<path>`, not the sharp polyline the ported design uses** — the glyph was redrawn upstream (`node_modules/lucide-react/dist/esm/icons/activity.js` ships `d="M22 12h-2.48a2 2 0 0 0-1.93 1.46…"`), so the TIMELINE `SectionLabel` rendered a different shape than the design it was ported from, and nothing in the app hinted why. `src/vendor/ui/icons.tsx` now pins the registry entry: `createLucideIcon("Activity", [["polyline", { points: "22 12 18 12 15 21 9 3 6 12 2 12" }]])` wrapped in a `React.forwardRef` that defaults `strokeWidth` to 1.75. The wrapper is load-bearing — `createLucideIcon` exposes no way to override lucide's `defaultAttributes`, and neither `kit/Tabs.tsx:41` nor `primitives/SectionLabel.tsx:15` forwards a `strokeWidth` of its own. Any registry name can be pinned the same way, and a lucide bump can no longer change it silently. _(2026-09-20)_
+
 ## Recurring Errors & Fixes
 
 - Every RTL test that renders a component tree containing a cross-route leaf
@@ -130,6 +134,8 @@ lives in the engineering-insights skill).
 
 - **"+N more" in the findings popover counted against a number from a different source than the list it summarised** — `total` reaches the panel from the severity tally (`PrMeta.last_review_findings` on the list, `r.findings_count` in the timeline), while the previewed rows come from `GET /pulls/:id/reviews`; the two are computed independently and the comment at `client/src/app/repos/[repoId]/pulls/_components/PrFindingsCell/PrFindingsCell.tsx:42-46` already warned they can disagree. Fixed by counting from the loaded findings once the panel is scoped (`client/src/components/findings-popover/FindingsPopover.tsx:287-291`), which is safe there because the `error`/`loading`/`undefined` guards above it have already proven they arrived. When a component holds two numbers for the same thing, prefer the one derived from what is actually on screen. _(2026-09-20)_
 
+- **"No trace available yet." in the Agent-run drawer means a missing `run_traces` row, never a broken trigger** — `useRunTrace` sets `retry: false` (`src/lib/hooks/trace.ts:17`), so a 404 from `GET /runs/:id/trace` settles as `data === undefined, isLoading === false`, and `RunTraceDrawer.tsx` falls through to that single line with no error surface to tell it apart from a genuinely empty trace. The drawer has no early `return null` either, so "it opened but it is blank" is always a data gap, not a wiring one — do not go looking at whatever opened it. Check the row directly (`select run_id from run_traces`) against the `run_id` in the `?trace=` query param before touching any client code. _(2026-09-20)_
+
 ## Session Notes
 
 - Cost Badge (L01, client half): added `RunCostValue` + `formatCost`/`exactCost`
@@ -162,5 +168,8 @@ Shipped the severity surface: a shared `severity-icons` + `findings-popover` pai
 
 ### 2026-09-20 — animated disclosure + severity-scoped popover session
 Added `Collapse` to `@devdigest/ui` (`primitives/Collapse.tsx`) and routed all four collapsible regions through it — `ReviewRunAccordion`, `FindingCard`, `TraceSection`, `ToolCallRow` — which also closed an accessibility gap: every trigger now carries `aria-expanded`/`aria-controls`, and three that were bare `div`s gained `role="button"` plus Enter/Space. `FindingsPopover` now scopes its preview to the severity chip under the cursor via `data-severity` delegation, with new ICU keys `popover.titleRunSeverity`/`titleReviewSeverity`. Landing this in `vendor/ui` is a deliberate break from the old blanket "do not touch vendor" rule, recorded in `docs/adr/0003-collapse-in-vendored-ui.md` and reflected in both `CLAUDE.md` files. Verified: `tsc --noEmit` clean, vitest 96/96 (up from 85; `ReviewRunAccordion` had no test at all before), browser-checked in Chrome, and e2e 10/10. Left undone: `ToolCallRow` is unreachable from the browser because every seeded trace carries `tool_calls: []`, so it rests on unit tests only.
+
+### 2026-09-20 — Agent-runs timeline polish (client) session
+Brought the TIMELINE row in the Agent-runs tab back in line with the design: the whole panel now opens the trace drawer (agent name, severity chips and both `RowAction` glyphs stop propagation, and the row stays a `<div>` because it nests buttons — the `Open run trace & logs` button is what keeps a keyboard path in), the row lifts to `var(--bg-hover)` on hover, tokens/cost moved up to `var(--text-secondary)` while the timestamp stayed `var(--text-muted)`, and the two trailing glyphs gained hover colours through a new `RunHistory/_components/RowAction/`. The Agent-runs tab icon moved off `AlertOctagon` onto a pinned pre-redraw `Activity`. Six new tests in `RunHistory.test.tsx` cover click routing and both hover states; suite is 19 files / 102 tests green.
 
 ## Open Questions
