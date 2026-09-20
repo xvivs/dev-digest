@@ -414,6 +414,7 @@ export async function seed(db: Db): Promise<{ workspaceId: string; userId: strin
   // last_reviewed_sha vs head_sha decides needs_review/reviewed, and updated_at
   // age decides stale. The rows below are shaped to land on one state each.
   const DAY = 86_400_000;
+  const HOUR_MS = 3_600_000;
   const nowMs = Date.now();
 
   // #479 — needs_review: reviewed at an older commit, head has moved since.
@@ -673,6 +674,271 @@ export async function seed(db: Db): Promise<{ workspaceId: string; userId: strin
       message: 'Bump the CI node matrix to 20',
       author: 'deepak.r',
     });
+  }
+
+  // ---- second repo (xvivs/dev-digest) — the tool's own history ----
+  // A real import, trimmed to a fixture: real shas, branches and diff stats, a
+  // representative slice of the file list rather than all 82/125 rows, and the
+  // two runs that actually reviewed PR #1.
+  //
+  // `clonePath` stays null on purpose. The live row points at one developer's
+  // worktree, an absolute path no other machine or CI job has; the repo browses
+  // fine from the seed but cannot run a review until it is re-imported.
+  let [selfRepo] = await db
+    .select()
+    .from(t.repos)
+    .where(and(eq(t.repos.workspaceId, workspaceId), eq(t.repos.fullName, 'xvivs/dev-digest')));
+  if (!selfRepo) {
+    [selfRepo] = await db
+      .insert(t.repos)
+      .values({
+        workspaceId,
+        owner: 'xvivs',
+        name: 'dev-digest',
+        fullName: 'xvivs/dev-digest',
+        defaultBranch: 'main',
+        clonePath: null,
+        createdBy: userId,
+      })
+      .returning();
+  }
+  const selfRepoId = selfRepo!.id;
+
+  // #1 — merged. The only merged PR in the seed: `status` holds GitHub's merge
+  // state, and merged/closed PRs keep it rather than deriving a review status,
+  // so this row is what exercises that branch of `modules/pulls/status.ts`.
+  let [prSelf1] = await db
+    .select()
+    .from(t.pullRequests)
+    .where(and(eq(t.pullRequests.repoId, selfRepoId), eq(t.pullRequests.number, 1)));
+  if (!prSelf1) {
+    [prSelf1] = await db
+      .insert(t.pullRequests)
+      .values({
+        workspaceId,
+        repoId: selfRepoId,
+        number: 1,
+        title: 'feat(cost): run cost badge with provenance (L01)',
+        author: 'xvivs',
+        branch: 'L01',
+        base: 'main',
+        headSha: 'b563bce681391b9bc93cd68f7e2b124474d0e793',
+        lastReviewedSha: 'b563bce681391b9bc93cd68f7e2b124474d0e793',
+        additions: 6580,
+        deletions: 45,
+        filesCount: 82,
+        status: 'merged',
+        openedAt: new Date(nowMs - 2 * DAY),
+        updatedAt: new Date(nowMs - DAY),
+        body: "Shows what an agent run costs, on the three surfaces where you'd look for it: the PR list COST column, the trace drawer's Stats block, and the timeline row.",
+      })
+      .returning();
+
+    await db.insert(t.prFiles).values([
+      { prId: prSelf1!.id, path: 'specs/01-cost-badge.md', additions: 192, deletions: 0 },
+      { prId: prSelf1!.id, path: 'server/test/pulls-cost.it.test.ts', additions: 142, deletions: 0 },
+      { prId: prSelf1!.id, path: 'server/src/db/seed.ts', additions: 139, deletions: 0 },
+      { prId: prSelf1!.id, path: 'reviewer-core/docs/prompt-contract.md', additions: 125, deletions: 0 },
+      { prId: prSelf1!.id, path: 'docs/adr/0002-cost-provenance.md', additions: 124, deletions: 0 },
+      { prId: prSelf1!.id, path: 'reviewer-core/test/run.test.ts', additions: 98, deletions: 1 },
+    ]);
+
+    await db.insert(t.prCommits).values([
+      {
+        prId: prSelf1!.id,
+        sha: 'b563bce681391b9bc93cd68f7e2b124474d0e793',
+        message: 'feat(cost): show run cost with its provenance on three surfaces',
+        author: 'Vladyslav Semonov',
+        committedAt: new Date(nowMs - 25 * HOUR_MS),
+      },
+      {
+        prId: prSelf1!.id,
+        sha: 'd16ed91d72a3253673332951f26f6c29931b5712',
+        message: 'docs: add the docs/ and specs/ scaffolding CLAUDE.md already points at',
+        author: 'Vladyslav Semonov',
+        committedAt: new Date(nowMs - 26 * HOUR_MS),
+      },
+      {
+        prId: prSelf1!.id,
+        sha: 'dd90df88997b719a6cd4c0dcec6e9b6df0629e56',
+        message: 'feat(insights): add engineering-insights skill, migrate INSIGHTS.md',
+        author: 'Vladyslav Semonov',
+        committedAt: new Date(nowMs - 30 * HOUR_MS),
+      },
+    ]);
+  }
+
+  // Two agents reviewed #1 and both approved it. Runs first, then one review
+  // per run carrying its `runId` inline — the repair pass below keys on
+  // (prId, kind) and would collapse both reviews onto a single run.
+  const [existingSelfRun] = await db
+    .select()
+    .from(t.agentRuns)
+    .where(and(eq(t.agentRuns.workspaceId, workspaceId), eq(t.agentRuns.prId, prSelf1!.id)));
+  if (!existingSelfRun) {
+    const [securityAgent] = await db
+      .select()
+      .from(t.agents)
+      .where(and(eq(t.agents.workspaceId, workspaceId), eq(t.agents.name, 'Security Reviewer')));
+    const [generalAgent] = await db
+      .select()
+      .from(t.agents)
+      .where(and(eq(t.agents.workspaceId, workspaceId), eq(t.agents.name, 'General Reviewer')));
+
+    // Real numbers from the import: a huge prompt (55k in) against a tiny
+    // structured verdict (270 out) for the security pass, and a chattier
+    // general pass. Both carry a 'provider' cost — OpenRouter reports usage.
+    const selfRuns = await db
+      .insert(t.agentRuns)
+      .values([
+        {
+          workspaceId,
+          agentId: securityAgent?.id ?? null,
+          prId: prSelf1!.id,
+          ranAt: new Date(nowMs - 25 * HOUR_MS),
+          provider: 'openrouter',
+          model: 'deepseek/deepseek-v4-flash',
+          status: 'done',
+          durationMs: 13059,
+          tokensIn: 55718,
+          tokensOut: 270,
+          findingsCount: 0,
+          grounding: '0/0 passed',
+          score: 100,
+          blockers: 0,
+          costUsd: 0.00506322,
+          costSource: 'provider',
+        },
+        {
+          workspaceId,
+          agentId: generalAgent?.id ?? null,
+          prId: prSelf1!.id,
+          ranAt: new Date(nowMs - 26 * HOUR_MS),
+          provider: 'openrouter',
+          model: 'deepseek/deepseek-v4-flash',
+          status: 'done',
+          durationMs: 70812,
+          tokensIn: 55510,
+          tokensOut: 7055,
+          findingsCount: 0,
+          grounding: '0/0 passed',
+          score: 100,
+          blockers: 0,
+          costUsd: 0.01079575,
+          costSource: 'provider',
+        },
+      ])
+      .returning({ id: t.agentRuns.id, agentId: t.agentRuns.agentId });
+
+    // A clean approve with zero findings: the state the findings surfaces have
+    // to render as "nothing to show" rather than as an empty-but-broken panel.
+    await db.insert(t.reviews).values(
+      selfRuns.map((run, i) => ({
+        workspaceId,
+        prId: prSelf1!.id,
+        agentId: run.agentId,
+        runId: run.id,
+        kind: 'review' as const,
+        verdict: 'approve',
+        summary:
+          i === 0
+            ? 'Reviewed the entire diff for the cost badge feature (L01). The code is well-structured and shows consistent security awareness; no blocking issues found.'
+            : 'Reviewed the entire diff for the cost badge feature. The implementation spans contracts, reviewer-core (cost-provenance fold, pickCost) and the server surfaces coherently.',
+        score: 100,
+        model: 'deepseek/deepseek-v4-flash',
+      })),
+    );
+  }
+
+  // #2 — open, never reviewed → derives `needs_review`.
+  let [prSelf2] = await db
+    .select()
+    .from(t.pullRequests)
+    .where(and(eq(t.pullRequests.repoId, selfRepoId), eq(t.pullRequests.number, 2)));
+  if (!prSelf2) {
+    [prSelf2] = await db
+      .insert(t.pullRequests)
+      .values({
+        workspaceId,
+        repoId: selfRepoId,
+        number: 2,
+        title: 'feat: cost provenance, findings severity surface, and an insights workflow',
+        author: 'xvivs',
+        branch: 'l01-homework',
+        base: 'main',
+        headSha: '8d20c8c09e12867d4c9cdb4d068dd0bf7d0692e1',
+        additions: 13624,
+        deletions: 174,
+        filesCount: 125,
+        status: 'open',
+        openedAt: new Date(nowMs - 4 * HOUR_MS),
+        updatedAt: new Date(nowMs - 4 * HOUR_MS),
+        body: 'Builds on #1: severity counts and filters on the PR list, a findings popover, and the engineering-insights workflow that keeps INSIGHTS.md machine-written.',
+      })
+      .returning();
+
+    await db.insert(t.prFiles).values([
+      {
+        prId: prSelf2!.id,
+        path: 'client/src/components/findings-popover/FindingsPopover.test.tsx',
+        additions: 287,
+        deletions: 0,
+      },
+      {
+        prId: prSelf2!.id,
+        path: 'client/src/components/findings-popover/FindingsPopover.tsx',
+        additions: 259,
+        deletions: 0,
+      },
+      {
+        prId: prSelf2!.id,
+        path: 'client/src/app/repos/[repoId]/pulls/_components/PrFindingsCell/PrFindingsCell.test.tsx',
+        additions: 252,
+        deletions: 0,
+      },
+      {
+        prId: prSelf2!.id,
+        path: 'client/src/app/repos/[repoId]/pulls/_components/PRRow/PRRow.test.tsx',
+        additions: 191,
+        deletions: 0,
+      },
+      {
+        prId: prSelf2!.id,
+        path: '.claude/skills/engineering-insights/SKILL.md',
+        additions: 179,
+        deletions: 0,
+      },
+      {
+        prId: prSelf2!.id,
+        path: '.claude/skills/engineering-insights/scripts/insert-entry.mjs',
+        additions: 163,
+        deletions: 0,
+      },
+    ]);
+
+    await db.insert(t.prCommits).values([
+      {
+        prId: prSelf2!.id,
+        sha: '8d20c8c09e12867d4c9cdb4d068dd0bf7d0692e1',
+        message: 'docs(insights): route INSIGHTS.md writes through the skill, sharpen its triggers',
+        author: 'Vladyslav Semonov',
+        committedAt: new Date(nowMs - 4 * HOUR_MS),
+      },
+      {
+        prId: prSelf2!.id,
+        sha: 'a8ff6caec90030d5bd572d44de57e4f217bef4bd',
+        message: "chore(insights): file this session's learnings and date the undated ones",
+        author: 'Vladyslav Semonov',
+        committedAt: new Date(nowMs - 4 * HOUR_MS),
+      },
+      {
+        prId: prSelf2!.id,
+        sha: '0d3ef61face09dbaa180a13c76a98c35fc6a5a81',
+        message: 'feat(findings): surface severity counts, filters and a findings popover',
+        author: 'Vladyslav Semonov',
+        committedAt: new Date(nowMs - 5 * HOUR_MS),
+      },
+    ]);
   }
 
   // ---- link each PR's seeded review to its newest completed run ----
