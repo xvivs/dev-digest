@@ -1,16 +1,125 @@
 import 'dotenv/config';
 import { createDb, type Db } from './client.js';
 import * as t from './schema.js';
-import { eq, and, desc } from 'drizzle-orm';
+import { eq, and, desc, isNull } from 'drizzle-orm';
 import {
   GENERAL_REVIEWER_PROMPT,
   SECURITY_REVIEWER_PROMPT,
   PERFORMANCE_REVIEWER_PROMPT,
 } from './seed-prompts.js';
+import type { RunTrace, CostSource } from '@devdigest/shared';
 
 /** Default provider/model for the built-in reviewer agents. */
 const DEFAULT_PROVIDER = 'openrouter' as const;
 const DEFAULT_MODEL = 'deepseek/deepseek-v4-flash';
+
+// ---- run_traces helper ------------------------------------------------
+// Every seeded agent_runs row should get a matching run_traces document —
+// without one, `GET /runs/:id/trace` 404s and the drawer has nothing to
+// show. `traceFor` derives config/stats from the run row's own columns
+// (never a hardcoded number), so it stays correct if those values change.
+//
+// NOT used for PR #482's two 'done' runs below: their trace values are
+// asserted verbatim by e2e/specs/10-run-cost-and-timeline.flow.json
+// (`8.2s`, `15k→1.2k`, `$0.041`), so that block stays hand-written.
+
+type SeededRunRow = {
+  id: string;
+  provider: string | null;
+  model: string | null;
+  status: string | null;
+  durationMs: number | null;
+  tokensIn: number | null;
+  tokensOut: number | null;
+  findingsCount: number | null;
+  grounding: string | null;
+  costUsd: number | null;
+  costSource: CostSource | null;
+  error?: string | null;
+};
+
+/** Column set every `agentRuns` insert `.returning()`s so `traceFor` has what
+ *  it needs — shared instead of retyped at each call site. */
+const RUN_TRACE_RETURNING = {
+  id: t.agentRuns.id,
+  provider: t.agentRuns.provider,
+  model: t.agentRuns.model,
+  status: t.agentRuns.status,
+  durationMs: t.agentRuns.durationMs,
+  tokensIn: t.agentRuns.tokensIn,
+  tokensOut: t.agentRuns.tokensOut,
+  findingsCount: t.agentRuns.findingsCount,
+  grounding: t.agentRuns.grounding,
+  costUsd: t.agentRuns.costUsd,
+  costSource: t.agentRuns.costSource,
+  error: t.agentRuns.error,
+} as const;
+
+/** "08.20" for 8200ms — same format as the hand-written PR #482 log lines. */
+function elapsedLabel(ms: number): string {
+  const totalSeconds = ms / 1000;
+  const whole = Math.floor(totalSeconds);
+  const frac = Math.round((totalSeconds - whole) * 100);
+  return `${String(whole).padStart(2, '0')}.${String(frac).padStart(2, '0')}`;
+}
+
+/** Build one `run_traces` document from an already-inserted `agent_runs`
+ *  row. Failed runs get a minimal `raw_output` and a `log` ending in a
+ *  `kind: 'error'` line carrying the run's own `error` column, so a failed
+ *  run in the timeline has something to show on click instead of a 404. */
+function traceFor(
+  run: SeededRunRow,
+  opts: {
+    agent: string;
+    pr: number;
+    prTitle: string;
+    toolCalls?: RunTrace['tool_calls'];
+    memoryPulled?: RunTrace['memory_pulled'];
+    specsRead?: string[];
+  },
+): { runId: string; trace: RunTrace } {
+  const durationMs = run.durationMs ?? 0;
+  const failed = run.status !== 'done';
+  const finalLine: RunTrace['log'][number] = failed
+    ? { t: elapsedLabel(durationMs), kind: 'error', msg: run.error ?? 'Run failed' }
+    : { t: elapsedLabel(durationMs), kind: 'result', msg: 'Review complete' };
+
+  return {
+    runId: run.id,
+    trace: {
+      config: {
+        agent: opts.agent,
+        provider: run.provider,
+        model: run.model ?? DEFAULT_MODEL,
+        pr: opts.pr,
+        source: 'local',
+      },
+      stats: {
+        duration_ms: durationMs,
+        tokens_in: run.tokensIn ?? 0,
+        tokens_out: run.tokensOut ?? 0,
+        findings: run.findingsCount ?? 0,
+        grounding: run.grounding ?? '0/0 passed',
+        cost_usd: run.costUsd,
+        cost_source: run.costSource,
+        cost_missing_reason: null,
+      },
+      prompt_assembly: {
+        system: 'You are a code reviewer. Report only issues grounded in the diff.',
+        user: `Review PR #${opts.pr}: ${opts.prTitle}`,
+      },
+      tool_calls: opts.toolCalls ?? [],
+      raw_output: failed ? '' : '{"verdict":"request_changes","findings":[]}',
+      memory_pulled: opts.memoryPulled ?? [],
+      specs_read: opts.specsRead ?? [],
+      log: [
+        { t: '00.00', kind: 'info' as const, msg: 'Run started' },
+        { t: '00.12', kind: 'info' as const, msg: `Model ${run.model ?? DEFAULT_MODEL}` },
+        finalLine,
+      ],
+    },
+  };
+}
 
 /**
  * Seed the starter's demo data. Idempotent: re-running upserts the default
@@ -350,19 +459,7 @@ export async function seed(db: Db): Promise<{ workspaceId: string; userId: strin
         costUsd: null,
         costSource: null,
       },
-    ]).returning({
-      id: t.agentRuns.id,
-      model: t.agentRuns.model,
-      provider: t.agentRuns.provider,
-      status: t.agentRuns.status,
-      durationMs: t.agentRuns.durationMs,
-      tokensIn: t.agentRuns.tokensIn,
-      tokensOut: t.agentRuns.tokensOut,
-      findingsCount: t.agentRuns.findingsCount,
-      grounding: t.agentRuns.grounding,
-      costUsd: t.agentRuns.costUsd,
-      costSource: t.agentRuns.costSource,
-    });
+    ]).returning(RUN_TRACE_RETURNING);
 
     // One trace document per completed run. Without these the trace drawer
     // renders "No trace available yet" and its Stats block — the surface the
@@ -406,6 +503,20 @@ export async function seed(db: Db): Promise<{ workspaceId: string; userId: strin
       }));
     if (traceRows.length > 0) {
       await db.insert(t.runTraces).values(traceRows).onConflictDoNothing();
+    }
+
+    // The failed run gets a trace too, via the shared helper — a real error
+    // message beats "No trace available yet" when it's clicked in the
+    // timeline. Kept out of `traceRows` above so the two 'done' runs' values
+    // (asserted verbatim by the cost/timeline e2e spec) stay hand-written.
+    const failedRun482 = runs.find((r) => r.status !== 'done');
+    if (failedRun482) {
+      const { runId, trace } = traceFor(failedRun482, {
+        agent: 'Security Reviewer',
+        pr: pr!.number,
+        prTitle: pr!.title,
+      });
+      await db.insert(t.runTraces).values({ runId, trace }).onConflictDoNothing();
     }
   }
 
@@ -525,24 +636,36 @@ export async function seed(db: Db): Promise<{ workspaceId: string; userId: strin
       },
     ]);
 
-    await db.insert(t.agentRuns).values({
-      workspaceId,
-      agentId: agentIdByName.get('Security Reviewer') ?? null,
-      prId: pr479!.id,
-      ranAt: new Date(nowMs - 30 * 3_600_000),
-      provider: DEFAULT_PROVIDER,
-      model: DEFAULT_MODEL,
-      status: 'done',
-      durationMs: 11400,
-      tokensIn: 21600,
-      tokensOut: 1980,
-      findingsCount: 4,
-      grounding: '4/4 passed',
-      score: 44,
-      blockers: 1,
-      costUsd: 0.0631,
-      costSource: 'provider',
-    });
+    const [run479] = await db
+      .insert(t.agentRuns)
+      .values({
+        workspaceId,
+        agentId: agentIdByName.get('Security Reviewer') ?? null,
+        prId: pr479!.id,
+        ranAt: new Date(nowMs - 30 * 3_600_000),
+        provider: DEFAULT_PROVIDER,
+        model: DEFAULT_MODEL,
+        status: 'done',
+        durationMs: 11400,
+        tokensIn: 21600,
+        tokensOut: 1980,
+        findingsCount: 4,
+        grounding: '4/4 passed',
+        score: 44,
+        blockers: 1,
+        costUsd: 0.0631,
+        costSource: 'provider',
+      })
+      .returning(RUN_TRACE_RETURNING);
+
+    if (run479) {
+      const { runId, trace } = traceFor(run479, {
+        agent: 'Security Reviewer',
+        pr: pr479!.number,
+        prTitle: pr479!.title,
+      });
+      await db.insert(t.runTraces).values({ runId, trace }).onConflictDoNothing();
+    }
   }
 
   // #477 — reviewed: head_sha === last_reviewed_sha and touched recently.
@@ -612,24 +735,36 @@ export async function seed(db: Db): Promise<{ workspaceId: string; userId: strin
       confidence: 0.74,
     });
 
-    await db.insert(t.agentRuns).values({
-      workspaceId,
-      agentId: agentIdByName.get('General Reviewer') ?? null,
-      prId: pr477!.id,
-      ranAt: new Date(nowMs - 5 * 3_600_000),
-      provider: DEFAULT_PROVIDER,
-      model: DEFAULT_MODEL,
-      status: 'done',
-      durationMs: 4300,
-      tokensIn: 5200,
-      tokensOut: 610,
-      findingsCount: 1,
-      grounding: '1/1 passed',
-      score: 92,
-      blockers: 0,
-      costUsd: 0.0074,
-      costSource: 'estimated',
-    });
+    const [run477] = await db
+      .insert(t.agentRuns)
+      .values({
+        workspaceId,
+        agentId: agentIdByName.get('General Reviewer') ?? null,
+        prId: pr477!.id,
+        ranAt: new Date(nowMs - 5 * 3_600_000),
+        provider: DEFAULT_PROVIDER,
+        model: DEFAULT_MODEL,
+        status: 'done',
+        durationMs: 4300,
+        tokensIn: 5200,
+        tokensOut: 610,
+        findingsCount: 1,
+        grounding: '1/1 passed',
+        score: 92,
+        blockers: 0,
+        costUsd: 0.0074,
+        costSource: 'estimated',
+      })
+      .returning(RUN_TRACE_RETURNING);
+
+    if (run477) {
+      const { runId, trace } = traceFor(run477, {
+        agent: 'General Reviewer',
+        pr: pr477!.number,
+        prTitle: pr477!.title,
+      });
+      await db.insert(t.runTraces).values({ runId, trace }).onConflictDoNothing();
+    }
   }
 
   // #460 — stale: head_sha === last_reviewed_sha but untouched past STALE_DAYS.
@@ -828,7 +963,34 @@ export async function seed(db: Db): Promise<{ workspaceId: string; userId: strin
           costSource: 'provider',
         },
       ])
-      .returning({ id: t.agentRuns.id, agentId: t.agentRuns.agentId });
+      .returning({ ...RUN_TRACE_RETURNING, agentId: t.agentRuns.agentId });
+
+    // Trace per run — 1-2 plausible tool calls each, grounded in files this
+    // PR actually touched (see prFiles above): the security pass grepping
+    // for secrets, the general pass reading the reviewer-core diff.
+    const selfTraceMeta: Array<{ agent: string; toolCalls: RunTrace['tool_calls'] }> = [
+      {
+        agent: 'Security Reviewer',
+        toolCalls: [
+          { tool: 'grep', args: 'sk_live_|sk_test_|api[_-]?key', meta: '0 matches', ms: 180 },
+          { tool: 'read_file', args: 'server/src/db/seed.ts', ms: 340 },
+        ],
+      },
+      {
+        agent: 'General Reviewer',
+        toolCalls: [{ tool: 'read_file', args: 'reviewer-core/src/review/run.ts', ms: 410 }],
+      },
+    ];
+    const selfTraceRows = selfRuns.map((run, i) =>
+      traceFor(run, {
+        agent: selfTraceMeta[i]!.agent,
+        pr: prSelf1!.number,
+        prTitle: prSelf1!.title,
+        toolCalls: selfTraceMeta[i]!.toolCalls,
+        specsRead: ['specs/01-cost-badge.md'],
+      }),
+    );
+    await db.insert(t.runTraces).values(selfTraceRows).onConflictDoNothing();
 
     // A clean approve with zero findings: the state the findings surfaces have
     // to render as "nothing to show" rather than as an empty-but-broken panel.
@@ -966,6 +1128,60 @@ export async function seed(db: Db): Promise<{ workspaceId: string; userId: strin
         // Guarding on runId alone would strand agentId on an older seeded DB.
         .where(and(eq(t.reviews.prId, prRow.id), eq(t.reviews.kind, 'review')));
     }
+  }
+
+  // ---- backfill: run_traces for any agent_runs row that still lacks one ----
+  // Not inline with the run-insert blocks above on purpose: those blocks sit
+  // inside `if (!existingRun)` / `if (!pr479)` / `if (!pr477)` /
+  // `if (!existingSelfRun)` guards that only fire on a CLEAN seed — on a
+  // database that's already been seeded, every one of those guards is false
+  // on re-run, so the `traceFor` calls next to them never execute again.
+  // This pass runs unconditionally and is what actually reaches an
+  // already-seeded database. LEFT JOIN + `isNull` finds every agent_runs row
+  // in this workspace with no matching run_traces row, regardless of which
+  // PR or seed version created it; the two PR #482 'done' runs already have
+  // a trace, so the join excludes them and `onConflictDoNothing()` is the
+  // second line of defense if it didn't.
+  const runsMissingTrace = await db
+    .select({
+      id: t.agentRuns.id,
+      provider: t.agentRuns.provider,
+      model: t.agentRuns.model,
+      status: t.agentRuns.status,
+      durationMs: t.agentRuns.durationMs,
+      tokensIn: t.agentRuns.tokensIn,
+      tokensOut: t.agentRuns.tokensOut,
+      findingsCount: t.agentRuns.findingsCount,
+      grounding: t.agentRuns.grounding,
+      costUsd: t.agentRuns.costUsd,
+      costSource: t.agentRuns.costSource,
+      error: t.agentRuns.error,
+      agentName: t.agents.name,
+      prNumber: t.pullRequests.number,
+      prTitle: t.pullRequests.title,
+    })
+    .from(t.agentRuns)
+    .leftJoin(t.runTraces, eq(t.runTraces.runId, t.agentRuns.id))
+    .leftJoin(t.agents, eq(t.agents.id, t.agentRuns.agentId))
+    .leftJoin(t.pullRequests, eq(t.pullRequests.id, t.agentRuns.prId))
+    .where(and(eq(t.agentRuns.workspaceId, workspaceId), isNull(t.runTraces.runId)));
+
+  const backfillTraceRows = runsMissingTrace.flatMap((r) => {
+    // No PR to attribute the trace to (agentRuns.prId is nullable) — nothing
+    // sane to put in config.pr/prompt_assembly.user, so skip it.
+    if (r.prNumber == null || r.prTitle == null) return [];
+    return [
+      traceFor(r, {
+        // Real agent name when the run has one; otherwise the same
+        // provider-based fallback used for the hand-written PR #482 traces.
+        agent: r.agentName ?? (r.provider === 'openai' ? 'General Reviewer' : 'Security Reviewer'),
+        pr: r.prNumber,
+        prTitle: r.prTitle,
+      }),
+    ];
+  });
+  if (backfillTraceRows.length > 0) {
+    await db.insert(t.runTraces).values(backfillTraceRows).onConflictDoNothing();
   }
 
   return { workspaceId, userId };
