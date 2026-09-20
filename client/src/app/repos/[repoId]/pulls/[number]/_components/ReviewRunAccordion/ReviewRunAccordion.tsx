@@ -6,7 +6,7 @@
 "use client";
 
 import React from "react";
-import { Icon, Badge } from "@devdigest/ui";
+import { Icon, Badge, Collapse } from "@devdigest/ui";
 import type { ReviewRecord, Severity, Verdict } from "@devdigest/shared";
 import { FindingsPanel } from "../FindingsPanel";
 import { VerdictBanner } from "../VerdictBanner";
@@ -48,6 +48,7 @@ export function ReviewRunAccordion({
   targetNonce?: number;
 }) {
   const [open, setOpen] = React.useState(defaultOpen);
+  const bodyId = React.useId();
   const rootRef = React.useRef<HTMLDivElement | null>(null);
   const isTarget = targetReviewId != null && review.id === targetReviewId;
   React.useEffect(() => {
@@ -77,6 +78,8 @@ export function ReviewRunAccordion({
       <div
         role="button"
         tabIndex={0}
+        aria-expanded={open}
+        aria-controls={bodyId}
         onClick={() => setOpen((o) => !o)}
         onKeyDown={(e) => {
           if (e.key === "Enter" || e.key === " ") setOpen((o) => !o);
@@ -138,7 +141,7 @@ export function ReviewRunAccordion({
         />
       </div>
 
-      {open && (
+      <Collapse open={open} id={bodyId}>
         <div style={{ padding: "0 16px 16px" }}>
           {review.verdict && (
             <div style={{ marginBottom: 16 }}>
@@ -165,7 +168,7 @@ export function ReviewRunAccordion({
             targetNonce={isTarget ? targetNonce : 0}
           />
         </div>
-      )}
+      </Collapse>
     </div>
   );
 }

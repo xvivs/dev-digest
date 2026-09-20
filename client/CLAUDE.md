@@ -17,6 +17,8 @@ data through TanStack Query.
   `messages/<locale>/<namespace>.json`. Do not inline copy in components.
 - UI primitives come from `src/vendor/ui` (`@devdigest/ui`). Contracts come from
   `src/vendor/shared` (`@devdigest/shared`). Import via the alias, not a relative path.
+  A primitive used by more than one feature belongs in `@devdigest/ui`; a leaf used
+  by one or two screens belongs in `src/components/<name>/`.
 - Cross-cutting chrome (nav, breadcrumbs, `g`-then-key shortcuts) lives in
   `src/components/app-shell`.
 
@@ -36,8 +38,12 @@ data through TanStack Query.
 
 ## Do not touch
 
-- `src/vendor/**` — vendored UI kit and contracts. Contract changes must land in
-  `server/src/vendor/shared` too.
+- `src/vendor/shared/**` — vendored contracts. Changes must land in
+  `server/src/vendor/shared` too, in the same commit.
+  `src/vendor/ui/**` is **editable** — it is the design system, not a copy. Add a
+  component the way `src/vendor/ui/README.md` says and render it in
+  `src/components/showcase/Showcase.tsx`, which the smoke test mounts. See
+  `../docs/adr/0003-collapse-in-vendored-ui.md`.
 - Unused `messages/en/*.json` namespaces — lesson scaffolding.
 
 ## Read when
