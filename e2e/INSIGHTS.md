@@ -24,6 +24,8 @@ lives in the engineering-insights skill).
 
 ## Tool & Library Notes
 
+- **`agent-browser wait --text` matches CSS-transformed *rendered* text, case-sensitively.** `specs/04-pr-findings.flow.json` asserted `wait --text "Findings"` for the PR-list column header, but `client/src/app/repos/[repoId]/pulls/styles.ts:114` sets `textTransform: "uppercase"` on `headRow`, so only `FINDINGS` matches. Proven directly against agent-browser 0.27.0: `agent-browser wait --text FINDINGS` exits 0 while `wait --text Findings` times out. Correcting the case took the suite from 6/7 to 7/7 — the first time this flow has actually been executed. Write each assertion in the case the browser paints, not the case stored in `client/messages/en/*.json`. _(2026-09-20)_
+
 ## Recurring Errors & Fixes
 
 ## Session Notes
