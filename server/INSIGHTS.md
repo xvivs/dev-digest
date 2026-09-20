@@ -39,6 +39,8 @@ lives in the engineering-insights skill).
 
 ## Recurring Errors & Fixes
 
+- **`db/seed.ts` wrote its sample review with a null `run_id`, so every seeded PR timeline rendered its runs with no severity chips.** The review has to be inserted before the agents exist (and therefore before `agent_runs`), so the link can only be closed by an `update` after the runs insert — added at `src/db/seed.ts:411`, pointing the review at `runs[0]` (the fresher Security Reviewer run, the one whose `findingsCount`/`score` were already written to match it) and setting `agentId` alongside. The production path never had the bug (`src/modules/reviews/run-executor.ts:221` passes `runId` straight into `insertReview`), which is why it survived: only seeded data was affected, and the symptom on the client reads as a CSS problem, not a missing join. Re-running `pnpm db:seed` does NOT repair an already-seeded database — the block is guarded by `if (!existingRun)` — so an existing dev DB needs a manual `UPDATE reviews SET run_id = … WHERE run_id IS NULL`. _(2026-09-20)_
+
 ## Session Notes
 
 ### 2026-09-19 — Cost Badge (server) session
