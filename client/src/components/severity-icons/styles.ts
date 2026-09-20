@@ -13,8 +13,12 @@ export const s = {
    * `onSelect`, so every button-ism has to be neutralised here (no border, no
    * background, inherit the caller's font) — the two branches must be pixel
    * identical, otherwise the PR list and the popover anchor drift apart.
+   *
+   * `cursor: help` on both branches: every surface that renders these icons
+   * wraps them in a FindingsPopover, so hovering explains rather than acts.
+   * The underline on the count carries the click affordance.
    */
-  item: (interactive: boolean, active: boolean): CSSProperties => ({
+  item: (active: boolean): CSSProperties => ({
     display: "inline-flex",
     alignItems: "center",
     gap: 4,
@@ -26,7 +30,7 @@ export const s = {
     color: "inherit",
     font: "inherit",
     lineHeight: 1,
-    cursor: interactive ? "pointer" : "default",
+    cursor: "help",
   }),
 
   icon: (color: string): CSSProperties => ({ color, flexShrink: 0 }),

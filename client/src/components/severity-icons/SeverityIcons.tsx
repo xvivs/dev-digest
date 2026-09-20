@@ -66,12 +66,12 @@ function SeverityIconsBase({
             aria-label={label}
             aria-pressed={active}
             onClick={() => onSelect(sev)}
-            style={s.item(true, active)}
+            style={s.item(active)}
           >
             {body}
           </button>
         ) : (
-          <span key={sev} tabIndex={0} aria-label={label} style={s.item(false, active)}>
+          <span key={sev} tabIndex={0} aria-label={label} style={s.item(active)}>
             {body}
           </span>
         );
