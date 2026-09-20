@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { CostSource, CostMissingReason } from './cost.js';
 
 /**
  * Run trace. The ENTIRE trace of one run is persisted as a SINGLE
@@ -64,6 +65,12 @@ export const RunStats = z.object({
   tokens_out: z.number().int(),
   findings: z.number().int(),
   grounding: z.string(),
+  // .nullish() (not .nullable()) — this type is embedded in the jsonb
+  // `run_traces.trace` document; old traces predate these fields entirely and
+  // must still parse (absent key, not just a null value).
+  cost_usd: z.number().nullish(),
+  cost_source: CostSource.nullish(),
+  cost_missing_reason: CostMissingReason.nullish(),
 });
 export type RunStats = z.infer<typeof RunStats>;
 
@@ -110,5 +117,10 @@ export const RunSummary = z.object({
   // findings that trip the agent's gate. Null on failed/cancelled runs.
   score: z.number().int().nullable(),
   blockers: z.number().int().nullable(),
+  // Cost, persisted with its provenance tag (never one without the other).
+  // cost_missing_reason is derived from status at read time, never persisted.
+  cost_usd: z.number().nullish(),
+  cost_source: CostSource.nullish(),
+  cost_missing_reason: CostMissingReason.nullish(),
 });
 export type RunSummary = z.infer<typeof RunSummary>;

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { LLMProvider, StructuredResult } from '@devdigest/shared';
+import type { CostSource, LLMProvider, StructuredResult, UnifiedDiff } from '@devdigest/shared';
 import { MockLLMProvider, MockGitClient } from '../../server/src/adapters/mocks.js';
 import { reviewPullRequest } from '../src/index.js';
 
@@ -116,6 +116,7 @@ describe('reviewPullRequest (engine)', () => {
           tokensIn: 0,
           tokensOut: 0,
           costUsd: 0,
+          costSource: 'provider',
           raw: '',
           attempts: 1,
         };
@@ -134,5 +135,101 @@ describe('reviewPullRequest (engine)', () => {
     await reviewPullRequest({ systemPrompt: 's', model: 'm', diff, llm: recorder, sessionId: 'sess-abc' });
     expect(seen.length).toBeGreaterThan(0);
     expect(seen.every((s) => s === 'sess-abc')).toBe(true);
+  });
+});
+
+describe('reviewPullRequest cost-provenance fold (map-reduce, "weakest claim wins")', () => {
+  // Two files force map-reduce (strategy: 'map-reduce' + files.length > 1) —
+  // two completeStructured calls, one cost pair per chunk to fold.
+  const TWO_FILE_DIFF: UnifiedDiff = {
+    raw:
+      'diff --git a/a.ts b/a.ts\n--- a/a.ts\n+++ a/a.ts\n@@ -1,1 +1,1 @@\n+x\n' +
+      'diff --git a/b.ts b/b.ts\n--- a/b.ts\n+++ b/b.ts\n@@ -1,1 +1,1 @@\n+y',
+    files: [
+      { path: 'a.ts', additions: 1, deletions: 0, hunks: [] },
+      { path: 'b.ts', additions: 1, deletions: 0, hunks: [] },
+    ],
+  };
+  const EMPTY_REVIEW = { verdict: 'approve' as const, summary: 'ok', score: 100, findings: [] };
+
+  /** An LLMProvider that returns the next queued (costUsd, costSource) pair per call. */
+  function queuedCostProvider(
+    pairs: { costUsd: number | null; costSource: CostSource | null }[],
+  ): LLMProvider {
+    let i = 0;
+    return {
+      id: 'openai',
+      async completeStructured<T>(): Promise<StructuredResult<T>> {
+        const pair = pairs[i++]!;
+        return {
+          data: EMPTY_REVIEW as unknown as T,
+          model: 'm',
+          tokensIn: 10,
+          tokensOut: 5,
+          costUsd: pair.costUsd,
+          costSource: pair.costSource,
+          raw: '{}',
+          attempts: 1,
+        };
+      },
+      async listModels() {
+        return [];
+      },
+      async complete() {
+        throw new Error('not used');
+      },
+      async embed() {
+        return [];
+      },
+    };
+  }
+
+  it('all chunks provider-sourced → summed cost stays provider', async () => {
+    const llm = queuedCostProvider([
+      { costUsd: 0.01, costSource: 'provider' },
+      { costUsd: 0.02, costSource: 'provider' },
+    ]);
+    const outcome = await reviewPullRequest({
+      systemPrompt: 's',
+      model: 'm',
+      diff: TWO_FILE_DIFF,
+      llm,
+      strategy: 'map-reduce',
+    });
+    expect(outcome.mode).toBe('map-reduce');
+    expect(outcome.costUsd).toBeCloseTo(0.03, 10);
+    expect(outcome.costSource).toBe('provider');
+  });
+
+  it('a mix of provider and estimated chunks downgrades the sum to estimated', async () => {
+    const llm = queuedCostProvider([
+      { costUsd: 0.01, costSource: 'provider' },
+      { costUsd: 0.02, costSource: 'estimated' },
+    ]);
+    const outcome = await reviewPullRequest({
+      systemPrompt: 's',
+      model: 'm',
+      diff: TWO_FILE_DIFF,
+      llm,
+      strategy: 'map-reduce',
+    });
+    expect(outcome.costUsd).toBeCloseTo(0.03, 10);
+    expect(outcome.costSource).toBe('estimated');
+  });
+
+  it('any chunk missing a cost makes the whole sum unknown (both null)', async () => {
+    const llm = queuedCostProvider([
+      { costUsd: 0.01, costSource: 'provider' },
+      { costUsd: null, costSource: null },
+    ]);
+    const outcome = await reviewPullRequest({
+      systemPrompt: 's',
+      model: 'm',
+      diff: TWO_FILE_DIFF,
+      llm,
+      strategy: 'map-reduce',
+    });
+    expect(outcome.costUsd).toBeNull();
+    expect(outcome.costSource).toBeNull();
   });
 });

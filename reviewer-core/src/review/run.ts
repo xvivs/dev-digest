@@ -1,4 +1,5 @@
 import type {
+  CostSource,
   Finding,
   LLMProvider,
   PromptAssembly,
@@ -108,8 +109,27 @@ export interface ReviewOutcome {
   tokensIn: number;
   tokensOut: number;
   costUsd: number | null;
+  /**
+   * Provenance of `costUsd`, folded across chunks by "weakest claim wins": all
+   * `provider` → `provider`; any `estimated` in the mix → `estimated`; any
+   * chunk missing a cost → both `costUsd` and `costSource` are null (a sum
+   * without a number for every addend isn't a sum). Null iff `costUsd` is null.
+   */
+  costSource: CostSource | null;
   /** Joined raw model outputs (for the run trace). */
   raw: string;
+}
+
+/**
+ * Fold two chunks' cost provenance into one, "weakest claim wins": a sum is
+ * only as trustworthy as its least-trustworthy addend. `provider` + `provider`
+ * stays `provider`; any `estimated` in the mix downgrades the whole sum to
+ * `estimated`; any missing cost (`null`) makes the WHOLE sum unknown, because a
+ * partial total mislabeled as complete is worse than no total.
+ */
+function foldCostSource(a: CostSource | null, b: CostSource | null): CostSource | null {
+  if (a == null || b == null) return null;
+  return a === 'estimated' || b === 'estimated' ? 'estimated' : 'provider';
 }
 
 function selectMode(strategy: ReviewStrategy, diff: UnifiedDiff, threshold: number): ReviewMode {
@@ -157,6 +177,9 @@ export async function reviewPullRequest(input: ReviewInput): Promise<ReviewOutco
   let tokensIn = 0;
   let tokensOut = 0;
   let costUsd: number | null = 0;
+  // Identity element for foldCostSource: combining with 'provider' never
+  // downgrades — the first real chunk's source takes over immediately.
+  let costSource: CostSource | null = 'provider';
   const raws: string[] = [];
 
   for (const chunk of chunks) {
@@ -182,6 +205,7 @@ export async function reviewPullRequest(input: ReviewInput): Promise<ReviewOutco
     tokensIn += res.tokensIn;
     tokensOut += res.tokensOut;
     costUsd = costUsd == null || res.costUsd == null ? null : costUsd + res.costUsd;
+    costSource = foldCostSource(costSource, res.costSource);
     raws.push(res.raw);
     partials.push(res.data);
     emit('result', `${chunk.label}: ${res.data.findings.length} candidate finding(s)`);
@@ -214,6 +238,9 @@ export async function reviewPullRequest(input: ReviewInput): Promise<ReviewOutco
     tokensIn,
     tokensOut,
     costUsd,
+    // costUsd went null the moment any chunk's cost was unknown — keep
+    // costSource in lockstep so the pair is never null/non-null.
+    costSource: costUsd == null ? null : costSource,
     raw: raws.join('\n---\n'),
   };
 }

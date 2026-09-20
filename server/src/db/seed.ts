@@ -220,6 +220,145 @@ export async function seed(db: Db): Promise<{ workspaceId: string; userId: strin
     if (!existing) await db.insert(t.agents).values(a);
   }
 
+  // ---- run history for the Cost Badge (PR #482) ----
+  // Three runs covering all three states the UI must render: a 'provider'
+  // cost (OpenRouter returns usage.cost), an older 'estimated' cost (OpenAI/
+  // Anthropic never return one — always the local price-table estimate), and
+  // a failed run with no cost at all (never backfilled — a dash beats a made
+  // up number). No 'running' row: reapStaleRunningRuns would flip it to
+  // 'failed' on the next boot anyway.
+  const [existingRun] = await db
+    .select()
+    .from(t.agentRuns)
+    .where(and(eq(t.agentRuns.workspaceId, workspaceId), eq(t.agentRuns.prId, pr!.id)));
+  if (!existingRun) {
+    const [securityAgent] = await db
+      .select()
+      .from(t.agents)
+      .where(and(eq(t.agents.workspaceId, workspaceId), eq(t.agents.name, 'Security Reviewer')));
+    const [generalAgent] = await db
+      .select()
+      .from(t.agents)
+      .where(and(eq(t.agents.workspaceId, workspaceId), eq(t.agents.name, 'General Reviewer')));
+
+    const now = Date.now();
+    const HOUR = 3_600_000;
+    const runs = await db.insert(t.agentRuns).values([
+      {
+        // Fresher run — the PR list's COST column shows THIS one.
+        workspaceId,
+        agentId: securityAgent?.id ?? null,
+        prId: pr!.id,
+        ranAt: new Date(now - 2 * HOUR),
+        provider: DEFAULT_PROVIDER,
+        model: DEFAULT_MODEL,
+        status: 'done',
+        durationMs: 8200,
+        tokensIn: 14820,
+        tokensOut: 1240,
+        findingsCount: 1,
+        grounding: '1/1 passed',
+        score: 65,
+        blockers: 1,
+        costUsd: 0.0412,
+        costSource: 'provider',
+      },
+      {
+        // Older run — same PR, different agent/provider, estimated cost.
+        workspaceId,
+        agentId: generalAgent?.id ?? null,
+        prId: pr!.id,
+        ranAt: new Date(now - 26 * HOUR),
+        provider: 'openai',
+        model: 'gpt-4.1',
+        status: 'done',
+        durationMs: 6400,
+        tokensIn: 11200,
+        tokensOut: 980,
+        findingsCount: 1,
+        grounding: '1/1 passed',
+        score: 88,
+        blockers: 0,
+        costUsd: 0.0138,
+        costSource: 'estimated',
+      },
+      {
+        // Oldest run — failed before producing a review; no cost to show.
+        workspaceId,
+        agentId: securityAgent?.id ?? null,
+        prId: pr!.id,
+        ranAt: new Date(now - 50 * HOUR),
+        provider: DEFAULT_PROVIDER,
+        model: DEFAULT_MODEL,
+        status: 'failed',
+        durationMs: 1200,
+        tokensIn: 0,
+        tokensOut: 0,
+        findingsCount: 0,
+        grounding: '0/0 passed',
+        error: 'OpenRouter returned no choices for Review: rate limited',
+        costUsd: null,
+        costSource: null,
+      },
+    ]).returning({
+      id: t.agentRuns.id,
+      model: t.agentRuns.model,
+      provider: t.agentRuns.provider,
+      status: t.agentRuns.status,
+      durationMs: t.agentRuns.durationMs,
+      tokensIn: t.agentRuns.tokensIn,
+      tokensOut: t.agentRuns.tokensOut,
+      findingsCount: t.agentRuns.findingsCount,
+      grounding: t.agentRuns.grounding,
+      costUsd: t.agentRuns.costUsd,
+      costSource: t.agentRuns.costSource,
+    });
+
+    // One trace document per completed run. Without these the trace drawer
+    // renders "No trace available yet" and its Stats block — the surface the
+    // COST card lives on — never appears after a clean seed.
+    const traceRows = runs
+      .filter((r) => r.status === 'done')
+      .map((r) => ({
+        runId: r.id,
+        trace: {
+          config: {
+            agent: r.provider === 'openai' ? 'General Reviewer' : 'Security Reviewer',
+            provider: r.provider,
+            model: r.model ?? DEFAULT_MODEL,
+            pr: pr!.number,
+            source: 'local' as const,
+          },
+          stats: {
+            duration_ms: r.durationMs ?? 0,
+            tokens_in: r.tokensIn ?? 0,
+            tokens_out: r.tokensOut ?? 0,
+            findings: r.findingsCount ?? 0,
+            grounding: r.grounding ?? '0/0 passed',
+            cost_usd: r.costUsd,
+            cost_source: r.costSource,
+            cost_missing_reason: null,
+          },
+          prompt_assembly: {
+            system: 'You are a code reviewer. Report only issues grounded in the diff.',
+            user: `Review PR #${pr!.number}: ${pr!.title}`,
+          },
+          tool_calls: [],
+          raw_output: '{"verdict":"request_changes","findings":[]}',
+          memory_pulled: [],
+          specs_read: [],
+          log: [
+            { t: '00.00', kind: 'info' as const, msg: 'Run started' },
+            { t: '00.12', kind: 'info' as const, msg: `Model ${r.model ?? DEFAULT_MODEL}` },
+            { t: '08.20', kind: 'result' as const, msg: 'Review complete' },
+          ],
+        },
+      }));
+    if (traceRows.length > 0) {
+      await db.insert(t.runTraces).values(traceRows).onConflictDoNothing();
+    }
+  }
+
   return { workspaceId, userId };
 }
 

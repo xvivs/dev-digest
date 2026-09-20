@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { Provider } from './knowledge.js';
+import { CostSource, CostMissingReason } from './cost.js';
 
 /**
  * Platform / scaffolding DTOs owned by F1:
@@ -170,6 +171,10 @@ export const PrMeta = z.object({
   updated_at: z.string().nullish(),
   // Latest-review score (list endpoint only; null/absent until reviewed).
   score: z.number().int().nullish(),
+  // Cost of the PR's LATEST run (any status), not a sum across runs.
+  last_run_cost_usd: z.number().nullish(),
+  last_run_cost_source: CostSource.nullish(),
+  last_run_cost_missing_reason: CostMissingReason.nullish(),
 });
 export type PrMeta = z.infer<typeof PrMeta>;
 

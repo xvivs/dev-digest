@@ -1,6 +1,6 @@
 import type { Db } from '../../db/client.js';
 import * as t from '../../db/schema.js';
-import type { Finding, Intent, RunSummary, RunTrace } from '@devdigest/shared';
+import type { CostSource, Finding, Intent, RunSummary, RunTrace } from '@devdigest/shared';
 
 /**
  * A2 — review data-access. The ONLY layer touching the DB for the review
@@ -163,6 +163,10 @@ export class ReviewRepository {
       blockers?: number | null;
       /** Failure reason (status='failed') / cancellation note. Null clears it. */
       error?: string | null;
+      /** Snapshot cost + provenance; null/null on failed/cancelled runs and on a
+       *  done run whose model has no price entry. Never backfilled later. */
+      costUsd?: number | null;
+      costSource?: CostSource | null;
     },
   ): Promise<void> {
     return runRepo.completeAgentRun(this.db, runId, values);

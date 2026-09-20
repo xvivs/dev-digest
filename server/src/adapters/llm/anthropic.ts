@@ -12,6 +12,7 @@ import { withRetry, withTimeout } from '../../platform/resilience.js';
 import { toJsonSchema, parseWithRepair } from '../../platform/structured.js';
 import { estimateCost } from './pricing.js';
 import { ExternalServiceError } from '../../platform/errors.js';
+import { pickCost } from '@devdigest/reviewer-core';
 
 const DEFAULT_TIMEOUT = 60_000;
 const DEFAULT_MAX_TOKENS = 4096;
@@ -77,12 +78,16 @@ export class AnthropicProvider implements LLMProvider {
       .join('');
     const tokensIn = res.usage.input_tokens;
     const tokensOut = res.usage.output_tokens;
+    // Anthropic never returns its own charge — always the local estimate, or
+    // null for an unpriced model.
+    const { costUsd, costSource } = pickCost(null, estimateCost(req.model, tokensIn, tokensOut));
     return {
       text,
       model: req.model,
       tokensIn,
       tokensOut,
-      costUsd: estimateCost(req.model, tokensIn, tokensOut),
+      costUsd,
+      costSource,
     };
   }
 
@@ -127,12 +132,14 @@ export class AnthropicProvider implements LLMProvider {
 
       const parsed = parseWithRepair(req.schema, lastRaw);
       if (parsed.ok) {
+        const { costUsd, costSource } = pickCost(null, estimateCost(req.model, tokensIn, tokensOut));
         return {
           data: parsed.data,
           model: req.model,
           tokensIn,
           tokensOut,
-          costUsd: estimateCost(req.model, tokensIn, tokensOut),
+          costUsd,
+          costSource,
           raw: lastRaw,
           attempts: attempt,
         };

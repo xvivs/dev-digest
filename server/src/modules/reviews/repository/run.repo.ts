@@ -1,7 +1,19 @@
 import { and, desc, eq } from 'drizzle-orm';
 import type { Db } from '../../../db/client.js';
 import * as t from '../../../db/schema.js';
-import type { RunSummary, RunTrace } from '@devdigest/shared';
+import type { CostMissingReason, CostSource, RunSummary, RunTrace } from '@devdigest/shared';
+
+/**
+ * Derive WHY a run has no cost from its status — computed at read time, never
+ * persisted (`cost_missing_reason` isn't a column). Keeps the three surfaces
+ * (timeline, sidebar, PR list) from each reimplementing this mapping.
+ */
+function costMissingReason(status: string | null, costUsd: number | null): CostMissingReason | null {
+  if (costUsd != null) return null;
+  if (status === 'running' || status === 'queued') return 'pending';
+  if (status === 'failed' || status === 'cancelled') return 'failed';
+  return 'no_price';
+}
 
 // ---- in-flight / history --------------------------------------------------
 
@@ -64,6 +76,9 @@ export async function listRunsForPull(
     ran_at: run.ranAt ? run.ranAt.toISOString() : null,
     score: run.score,
     blockers: run.blockers,
+    cost_usd: run.costUsd,
+    cost_source: run.costSource,
+    cost_missing_reason: costMissingReason(run.status, run.costUsd),
   }));
 }
 
@@ -154,6 +169,10 @@ export async function completeAgentRun(
     blockers?: number | null;
     /** Failure reason (status='failed') / cancellation note. Null clears it. */
     error?: string | null;
+    /** Snapshot cost + provenance; null/null on failed/cancelled runs and on a
+     *  done run whose model has no price entry. Never backfilled later. */
+    costUsd?: number | null;
+    costSource?: CostSource | null;
   },
 ): Promise<void> {
   await db
@@ -168,6 +187,8 @@ export async function completeAgentRun(
       score: values.score ?? null,
       blockers: values.blockers ?? null,
       error: values.error ?? null,
+      costUsd: values.costUsd ?? null,
+      costSource: values.costSource ?? null,
     })
     .where(eq(t.agentRuns.id, runId));
 }
