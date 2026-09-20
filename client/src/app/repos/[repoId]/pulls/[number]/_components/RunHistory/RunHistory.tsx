@@ -14,6 +14,7 @@ import { RunCostValue } from "@/components/run-cost-value";
 import { SeverityIcons, ZERO_COUNTS } from "@/components/severity-icons";
 import { FindingsPopover } from "@/components/findings-popover";
 import { formatTokenTotal } from "./helpers";
+import { RowAction } from "./_components/RowAction";
 
 /**
  * PR timeline — every agent run interleaved with the PR's commits, newest-first
@@ -45,33 +46,21 @@ function outcomeOf(run: RunSummary): Outcome {
   return { key: "approved", color: "var(--ok)", bg: "var(--ok-bg)", icon: "CheckCircle" };
 }
 
-const rowStyle: React.CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: 12,
-  width: "100%",
-  padding: "10px 14px",
-  borderRadius: 8,
-  border: "1px solid var(--border)",
-  background: "var(--bg-elevated)",
-  textAlign: "left",
-};
-
-// Bare glyphs, no button chrome. A bordered, filled box here competes with the
-// status badge at the other end of the row for the same attention; the trailing
-// actions are meant to recede until the cursor is already on the row.
-const iconBtnStyle: React.CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  padding: 2,
-  borderRadius: 5,
-  border: "none",
-  background: "none",
-  color: "var(--text-muted)",
-  cursor: "pointer",
-  flexShrink: 0,
-};
+function rowStyle(hovered: boolean): React.CSSProperties {
+  return {
+    display: "flex",
+    alignItems: "center",
+    gap: 12,
+    width: "100%",
+    padding: "10px 14px",
+    borderRadius: 8,
+    border: "1px solid var(--border)",
+    background: hovered ? "var(--bg-hover)" : "var(--bg-elevated)",
+    textAlign: "left",
+    transition: "background .12s",
+    cursor: "pointer",
+  };
+}
 
 /** The two trailing actions travel together, spaced wider than the row's gap —
  *  roughly one glyph-width apart, so "open trace" and "delete" never read as a
@@ -158,6 +147,8 @@ export function RunHistory({
     return handlers;
   }, [countsByRun, onGoToReview]);
 
+  const [hoveredRun, setHoveredRun] = React.useState<string | null>(null);
+
   if (runs.length === 0 && commits.length === 0) return null;
 
   const items: TimelineItem[] = [
@@ -211,7 +202,19 @@ export function RunHistory({
         const settled = r.status === "done";
         const tokenTotal = formatTokenTotal(r.tokens_in, r.tokens_out);
         return (
-          <div key={`run:${r.run_id}`} style={rowStyle}>
+          // The whole panel opens the trace drawer; nested controls (agent name,
+          // severity chips, row actions) stop propagation so their own click
+          // behaviour wins. The row stays a `<div>`, not a `<button>` — it
+          // already nests `<button>`s, and nested interactive elements are
+          // invalid — so `Open run trace & logs` remains the keyboard path in.
+          <div
+            key={`run:${r.run_id}`}
+            data-run-id={r.run_id}
+            style={rowStyle(hoveredRun === r.run_id)}
+            onMouseEnter={() => setHoveredRun(r.run_id)}
+            onMouseLeave={() => setHoveredRun((prev) => (prev === r.run_id ? null : prev))}
+            onClick={() => onOpenTrace(r.run_id)}
+          >
             <Badge color={o.color} bg={o.bg} icon={o.icon}>
               {t(`runStatus.${o.key}`)}
             </Badge>
@@ -220,7 +223,10 @@ export function RunHistory({
               <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>
                 <button
                   type="button"
-                  onClick={() => onGoToReview?.(r.run_id)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onGoToReview?.(r.run_id);
+                  }}
                   title={t("timeline.goToReview")}
                   style={{
                     background: "none",
@@ -254,17 +260,19 @@ export function RunHistory({
                 // carries the same total, broken down and clickable. Blockers
                 // stay as text: they're a gate outcome, not a severity.
                 <div style={findingsLineStyle}>
-                  <FindingsPopover
-                    total={r.findings_count ?? 0}
-                    findings={findingsByRun.get(r.run_id)}
-                    runLinked={countsByRun.has(r.run_id)}
-                  >
-                    <SeverityIcons
-                      counts={countsByRun.get(r.run_id) ?? ZERO_COUNTS}
-                      size={13}
-                      onSelect={selectHandlers.get(r.run_id)}
-                    />
-                  </FindingsPopover>
+                  <span onClick={(e) => e.stopPropagation()}>
+                    <FindingsPopover
+                      total={r.findings_count ?? 0}
+                      findings={findingsByRun.get(r.run_id)}
+                      runLinked={countsByRun.has(r.run_id)}
+                    >
+                      <SeverityIcons
+                        counts={countsByRun.get(r.run_id) ?? ZERO_COUNTS}
+                        size={13}
+                        onSelect={selectHandlers.get(r.run_id)}
+                      />
+                    </FindingsPopover>
+                  </span>
                   {(r.blockers ?? 0) > 0 && (
                     <span>{t("runStatus.blockers", { count: r.blockers ?? 0 })}</span>
                   )}
@@ -273,31 +281,15 @@ export function RunHistory({
             </div>
             <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2, fontSize: 11, color: "var(--text-muted)", flexShrink: 0 }}>
               {r.ran_at && <span>{new Date(r.ran_at).toLocaleTimeString()}</span>}
-              <span className="tnum">
+              <span className="tnum" style={{ color: "var(--text-secondary)" }}>
                 {tokenTotal && `${tokenTotal} · `}
                 <RunCostValue usd={r.cost_usd} source={r.cost_source} missingReason={r.cost_missing_reason} />
               </span>
             </div>
             <div style={actionsStyle}>
-              <button
-                type="button"
-                title={t("timeline.openTrace")}
-                aria-label={t("timeline.openTrace")}
-                onClick={() => onOpenTrace(r.run_id)}
-                style={iconBtnStyle}
-              >
-                <Icon.Copy size={15} />
-              </button>
+              <RowAction icon="Copy" label={t("timeline.openTrace")} onClick={() => onOpenTrace(r.run_id)} />
               {onDelete && r.status !== "running" && (
-                <button
-                  type="button"
-                  aria-label={t("timeline.deleteRun")}
-                  title={t("timeline.deleteRun")}
-                  onClick={() => onDelete(r.run_id)}
-                  style={iconBtnStyle}
-                >
-                  <Icon.Trash size={15} />
-                </button>
+                <RowAction icon="Trash" label={t("timeline.deleteRun")} danger onClick={() => onDelete(r.run_id)} />
               )}
             </div>
           </div>

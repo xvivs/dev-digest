@@ -69,6 +69,8 @@ function renderRuns(
     findingsByRun?: ReadonlyMap<string, FindingRecord[]>;
     countsByRun?: ReadonlyMap<string, SeverityCounts>;
     onGoToReview?: (runId: string, severity?: Severity) => void;
+    onOpenTrace?: (runId: string) => void;
+    onDelete?: (runId: string) => void;
   } = {},
 ) {
   return render(
@@ -194,5 +196,102 @@ describe("RunHistory — severity strip", () => {
 
     expect(screen.queryByRole("button", { name: /findings$/ })).not.toBeInTheDocument();
     expect(screen.getByText(/1 blockers/)).toBeInTheDocument();
+  });
+});
+
+describe("RunHistory — row click behaviour", () => {
+  const counts: ReadonlyMap<string, SeverityCounts> = new Map([
+    ["run-1", { critical: 0, warning: 2, suggestion: 0 }],
+  ]);
+  const findingsByRun: ReadonlyMap<string, FindingRecord[]> = new Map([
+    ["run-1", [finding({ id: "f1", severity: "WARNING" }), finding({ id: "f2", severity: "WARNING" })]],
+  ]);
+
+  it("clicking the row container opens the trace for that run", () => {
+    const onOpenTrace = vi.fn();
+    const { container } = renderRuns(
+      [run({ status: "done", findings_count: 0, blockers: 0, score: 80 })],
+      { onOpenTrace },
+    );
+
+    fireEvent.click(container.querySelector('[data-run-id="run-1"]')!);
+    expect(onOpenTrace).toHaveBeenCalledWith("run-1");
+  });
+
+  it("clicking the delete action deletes the run and does not open the trace", () => {
+    const onOpenTrace = vi.fn();
+    const onDelete = vi.fn();
+    renderRuns([run({ status: "done", findings_count: 0, blockers: 0, score: 80 })], {
+      onOpenTrace,
+      onDelete,
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Delete run" }));
+    expect(onDelete).toHaveBeenCalledWith("run-1");
+    expect(onOpenTrace).not.toHaveBeenCalled();
+  });
+
+  it("clicking a severity chip goes to the review and does not open the trace", () => {
+    const onOpenTrace = vi.fn();
+    const onGoToReview = vi.fn();
+    renderRuns([run({ status: "done", findings_count: 2, blockers: 0, score: 80 })], {
+      onOpenTrace,
+      onGoToReview,
+      countsByRun: counts,
+      findingsByRun,
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "2 Warning findings" }));
+    expect(onGoToReview).toHaveBeenCalledWith("run-1", "WARNING");
+    expect(onOpenTrace).not.toHaveBeenCalled();
+  });
+
+  it("clicking the agent name button goes to the review and does not open the trace", () => {
+    const onOpenTrace = vi.fn();
+    const onGoToReview = vi.fn();
+    renderRuns([run({ status: "done", findings_count: 0, blockers: 0, score: 80 })], {
+      onOpenTrace,
+      onGoToReview,
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Security Reviewer" }));
+    expect(onGoToReview).toHaveBeenCalledWith("run-1");
+    expect(onOpenTrace).not.toHaveBeenCalled();
+  });
+});
+
+describe("RunHistory — hover styles", () => {
+  // React 19 synthesises enter/leave from delegated mouseover/mouseout;
+  // `fireEvent.mouseEnter`/`mouseLeave` never reach the handlers (see INSIGHTS.md).
+  it("hovering the row swaps the background from elevated to hover, and back on mouse-out", () => {
+    const { container } = renderRuns([
+      run({ status: "done", findings_count: 0, blockers: 0, score: 80 }),
+    ]);
+    const row = container.querySelector('[data-run-id="run-1"]') as HTMLElement;
+
+    expect(row.style.background).toBe("var(--bg-elevated)");
+
+    fireEvent.mouseOver(row);
+    expect(row.style.background).toBe("var(--bg-hover)");
+
+    fireEvent.mouseOut(row, { relatedTarget: document.body });
+    expect(row.style.background).toBe("var(--bg-elevated)");
+  });
+
+  it("hovering the delete action colors it critical; hovering the trace action colors it text-primary", () => {
+    renderRuns([run({ status: "done", findings_count: 0, blockers: 0, score: 80 })], {
+      onDelete: () => {},
+    });
+
+    const deleteBtn = screen.getByRole("button", { name: "Delete run" });
+    const traceBtn = screen.getByRole("button", { name: "Open run trace & logs" });
+
+    fireEvent.mouseOver(deleteBtn);
+    expect(deleteBtn.style.color).toBe("var(--crit)");
+    fireEvent.mouseOut(deleteBtn, { relatedTarget: document.body });
+
+    fireEvent.mouseOver(traceBtn);
+    expect(traceBtn.style.color).toBe("var(--text-primary)");
+    fireEvent.mouseOut(traceBtn, { relatedTarget: document.body });
   });
 });
