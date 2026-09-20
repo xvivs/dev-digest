@@ -1,0 +1,32 @@
+{
+  "name": "Collapse disclosures expose aria-expanded and respond to the keyboard",
+  "description": "The run accordion and every FindingCard are built on the shared `Collapse` primitive: each trigger carries `aria-expanded` + `aria-controls`, and the body stays mounted for the ~180ms ddCollapseOut animation before it unmounts. Counting `[aria-expanded]` is therefore both an a11y assertion and a mount assertion — a trigger that never wires the attribute, and a body that never unmounts, both fail here.\n\nTargets PR #479: one agent run, one review accordion, four findings, so the counts are exact — 1 accordion trigger + 4 FindingCard triggers = 5. Two are open on arrival (the accordion via defaultOpen, plus the first finding card).\n\nEvery `wait 600` below outlasts ddCollapseOut on purpose; a shorter wait would read the body while it is still mounted and mis-assert.\n\n`scrollintoview` before each click is mandatory, not tidiness: agent-browser's `find ... click` silently no-ops on a below-the-fold element, exiting 0 with '✓ Done' while the click never lands.\n\nRead-only seeded data (no model call).",
+  "steps": [
+    { "cmd": ["open", "{BASE}/"], "label": "load the app root" },
+    { "cmd": ["wait", "--url", "/pulls"], "label": "land on the PR list" },
+    { "cmd": ["wait", "--text", "acme/payments-api"], "label": "guard: the home redirect landed on the demo repo — the seed holds TWO repos (acme/payments-api and xvivs/dev-digest) and ReposRepository.listByWorkspace has no ORDER BY, so which one `/` redirects to is not guaranteed by contract" },
+    { "cmd": ["wait", "--load", "networkidle"], "label": "PR list data settles" },
+    { "cmd": ["find", "text", "Migrate sessions table to UUID primary key", "click"], "label": "open PR #479 by title, not by row position" },
+    { "cmd": ["wait", "--url", "/pulls/479"], "label": "navigate to the PR detail route" },
+    { "cmd": ["wait", "--load", "networkidle"], "label": "PR detail data settles" },
+    { "cmd": ["find", "role", "button", "click", "--name", "Agent runs"], "label": "switch to the Agent runs tab" },
+    { "cmd": ["wait", "--url", "tab=findings"], "label": "findings tab is active in the URL" },
+    { "cmd": ["get", "count", "[aria-expanded]"], "assert": { "stdoutIncludes": "5" }, "label": "every disclosure trigger is wired: 1 run accordion + 4 FindingCards" },
+    { "cmd": ["get", "count", "[aria-expanded=\"true\"]"], "assert": { "stdoutIncludes": "2" }, "label": "two arrive open — the run accordion and the first finding card" },
+    { "cmd": ["get", "count", "[data-finding-id]"], "assert": { "stdoutIncludes": "4" }, "label": "all four finding cards are mounted inside the open accordion" },
+    { "cmd": ["scrollintoview", "[aria-expanded]"], "label": "bring the run accordion trigger into the viewport before clicking it" },
+    { "cmd": ["find", "first", "[aria-expanded]", "click"], "label": "collapse the run accordion" },
+    { "cmd": ["wait", "600"], "label": "outlast the ~180ms ddCollapseOut animation so the body has really unmounted" },
+    { "cmd": ["get", "count", "[aria-expanded]"], "assert": { "stdoutIncludes": "1" }, "label": "collapsing unmounts the body: only the accordion trigger itself is left" },
+    { "cmd": ["get", "count", "[aria-expanded=\"false\"]"], "assert": { "stdoutIncludes": "1" }, "label": "and that surviving trigger reports itself collapsed" },
+    { "cmd": ["get", "count", "[data-finding-id]"], "assert": { "stdoutIncludes": "0" }, "label": "no finding card outlives the collapse" },
+    { "cmd": ["find", "first", "[aria-expanded]", "click"], "label": "re-expand the run accordion" },
+    { "cmd": ["wait", "600"], "label": "let the open animation settle" },
+    { "cmd": ["get", "count", "[aria-expanded]"], "assert": { "stdoutIncludes": "5" }, "label": "the body comes back with all four card triggers" },
+    { "cmd": ["get", "count", "[aria-expanded=\"true\"]"], "assert": { "stdoutIncludes": "2" }, "label": "and restores the same two open disclosures" },
+    { "cmd": ["focus", "[data-finding-id] [aria-expanded=\"false\"]"], "label": "keyboard-focus the first COLLAPSED finding-card trigger" },
+    { "cmd": ["press", "Enter"], "label": "activate it with Enter — these triggers are div[role=button], so Enter must be handled by hand" },
+    { "cmd": ["wait", "600"], "label": "let the open animation settle" },
+    { "cmd": ["get", "count", "[aria-expanded=\"true\"]"], "assert": { "stdoutIncludes": "3" }, "label": "Enter opened a third disclosure — the card body is keyboard-reachable" }
+  ]
+}

@@ -67,7 +67,9 @@ client/src/lib/               api.ts + every data hook in hooks/
 - **Never run `docker compose down -v`.** The `-v` drops the `devdigest_pgdata`
   volume with every imported repo and review. To reset, drop and re-migrate the
   database instead.
-- `*/src/vendor/**` — vendored copies. Server and client change together, or not at all.
+- `*/src/vendor/shared/**` — vendored copies. Server and client change together,
+  or not at all. (`client/src/vendor/ui/**` is **not** covered: it has no second
+  copy and is editable — see `docs/adr/0003-collapse-in-vendored-ui.md`.)
 - Unwired schema tables, unused `client/messages/en/*.json`,
   `server/src/platform/model-router.ts`, `server/src/platform/prompts.ts` —
   lesson scaffolding, intentionally unwired.
@@ -92,6 +94,9 @@ client/src/lib/               api.ts + every data hook in hooks/
 
 ## Before you finish
 
-Update the touched package's `INSIGHTS.md` (or the root one for cross-package
-findings) with anything durable you learned this session — don't skip this
-step.
+File anything durable you learned this session into the touched package's
+`INSIGHTS.md` (or the root one for cross-package findings) **through the
+`engineering-insights` skill** — don't skip this step, and don't edit those
+files by hand. Hand-written entries land undated, unreferenced and in the
+wrong section, and nothing catches it until someone audits the file months
+later.

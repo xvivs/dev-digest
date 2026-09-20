@@ -1,0 +1,53 @@
+import type { CSSProperties } from "react";
+
+/** Co-located styles for SeverityIcons. */
+export const s = {
+  row: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 10,
+  } satisfies CSSProperties,
+
+  /**
+   * One severity cell. Renders as a <button> or a <span> depending on
+   * `onSelect`, so every button-ism has to be neutralised here (no border, no
+   * background, inherit the caller's font) — the two branches must be pixel
+   * identical, otherwise the PR list and the popover anchor drift apart.
+   *
+   * `cursor: help` on both branches: every surface that renders these icons
+   * wraps them in a FindingsPopover, so hovering explains rather than acts.
+   * The underline on the count carries the click affordance.
+   */
+  item: (active: boolean): CSSProperties => ({
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 4,
+    padding: "1px 3px",
+    margin: "-1px -3px",
+    border: "none",
+    borderRadius: 4,
+    background: active ? "var(--bg-hover)" : "transparent",
+    color: "inherit",
+    font: "inherit",
+    lineHeight: 1,
+    cursor: "help",
+  }),
+
+  icon: (color: string): CSSProperties => ({ color, flexShrink: 0 }),
+
+  /**
+   * The underline is the affordance: it is the only thing that tells the user
+   * this number is hoverable/clickable, since the cell carries no button chrome.
+   * Dotted and tinted to the severity — solid would read as a link, and an
+   * untinted rule detaches the number from the icon it belongs to.
+   */
+  count: (size: number, color: string): CSSProperties => ({
+    fontSize: size,
+    fontWeight: 600,
+    color: "var(--text-primary)",
+    textDecorationLine: "underline",
+    textDecorationStyle: "dotted",
+    textDecorationColor: color,
+    textUnderlineOffset: 3,
+  }),
+} as const;

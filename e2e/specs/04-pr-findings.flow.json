@@ -1,16 +1,33 @@
 {
-  "name": "PR detail shows the seeded review run, verdict, and findings",
-  "description": "From PR #482, open the Agent runs tab and confirm the seeded review run renders (verdict 'request changes', 2 findings) in its accordion header. The newest run's accordion is open by default (FindingsTab passes defaultOpen to the first run), so the VerdictBanner and the seeded FindingCard ('Hardcoded Stripe secret key in commit') are revealed without an extra click. Exercises the refactored ReviewRunAccordion / VerdictBanner / FindingsPanel / FindingCard. Read-only seeded data (no model call). Assumes a freshly-seeded DB where acme/payments-api (PR #482) is the first repo — guaranteed by e2e-web.yml; run locally via the hermetic stack (see e2e/README.md).",
+  "name": "PR findings: severity tally, the severity filter, and the filtered card count",
+  "description": "From PR #482, open the Agent runs tab and exercise the FINDINGS feature end to end against seeded data. The newest run's accordion is open by default (FindingsTab passes defaultOpen to the first run), so the VerdictBanner, the severity tally and the FindingCard list are all revealed without an extra click. The seed gives #482 exactly 1 CRITICAL + 2 WARNING + 1 SUGGESTION, which is what makes the tally assertions meaningful: a single finding per level could not tell a real counter apart from a hardcoded '1'.\n\nTwo agent-browser landmines shape this flow. (1) `find ... click` SILENTLY NO-OPS on an element below the fold — it prints '✓ Done' and exits 0 while the click never lands, so every earlier revision of this flow passed without ever applying the filter. Hence the `scrollintoview` before the filter click, and the `get count [data-finding-id]` assertions, which fail loudly if the filter did nothing. (2) `find text` is case-INSENSITIVE substring matching, so `find text \"Warning\"` is ambiguous between the tally pill ('2 WARNING'), the timeline chip and the filter button. The filter is therefore addressed by role + exact accessible name, which only the filter button carries ('Warning'); the timeline chips read '2 Warning findings'.\n\nRead-only seeded data (no model call).",
   "steps": [
     { "cmd": ["open", "{BASE}/"], "label": "load the app root" },
     { "cmd": ["wait", "--url", "/pulls"], "label": "land on the PR list" },
-    { "cmd": ["find", "text", "Add rate limiting to public API endpoints", "click"], "label": "open the PR row" },
+    { "cmd": ["wait", "--text", "acme/payments-api"], "label": "guard: the home redirect landed on the demo repo — the seed holds TWO repos (acme/payments-api and xvivs/dev-digest) and ReposRepository.listByWorkspace has no ORDER BY, so which one `/` redirects to is not guaranteed by contract" },
+    { "cmd": ["wait", "--load", "networkidle"], "label": "PR list data settles" },
+    { "cmd": ["wait", "--text", "FINDINGS"], "label": "the FINDINGS column header is present on the list — headRow is text-transform: uppercase, and agent-browser matches rendered text" },
+    { "cmd": ["find", "text", "Add rate limiting to public API endpoints", "click"], "label": "open PR #482 by title — row order is not asserted (#482 has a NULL updated_at and sorts second, behind #479)" },
     { "cmd": ["wait", "--url", "/pulls/482"], "label": "navigate to the PR detail route" },
     { "cmd": ["wait", "--load", "networkidle"], "label": "PR detail data settles" },
     { "cmd": ["find", "role", "button", "click", "--name", "Agent runs"], "label": "switch to the Agent runs tab" },
     { "cmd": ["wait", "--url", "tab=findings"], "label": "findings tab is active in the URL" },
     { "cmd": ["wait", "--text", "request changes"], "label": "seeded run accordion shows its verdict" },
-    { "cmd": ["wait", "--text", "2 findings"], "label": "accordion header shows the seeded finding count" },
-    { "cmd": ["wait", "--text", "Hardcoded Stripe secret key in commit"], "label": "seeded FindingCard is visible (newest run is open by default)" }
+    { "cmd": ["wait", "--text", "4 findings"], "label": "accordion header shows the seeded finding count" },
+    { "cmd": ["wait", "--text", "1 CRITICAL"], "label": "severity tally: critical pill" },
+    { "cmd": ["wait", "--text", "2 WARNING"], "label": "severity tally: warning pill (two, so the number is load-bearing)" },
+    { "cmd": ["wait", "--text", "1 SUGGESTION"], "label": "severity tally: suggestion pill" },
+    { "cmd": ["wait", "--text", "Hardcoded Stripe secret key in commit"], "label": "the CRITICAL finding card is visible unfiltered" },
+    { "cmd": ["get", "count", "[data-finding-id]"], "assert": { "stdoutIncludes": "4" }, "label": "unfiltered, all four seeded findings are mounted" },
+    { "cmd": ["scrollintoview", "[aria-expanded]"], "label": "bring the run accordion — and the filter row just under it — into the viewport; without this the next click silently no-ops" },
+    { "cmd": ["find", "role", "button", "click", "--name", "Warning", "--exact"], "label": "apply the Warning severity filter (exact accessible name 'Warning' hits only the filter button, never the '2 Warning findings' chip)" },
+    { "cmd": ["get", "count", "[data-finding-id]"], "assert": { "stdoutIncludes": "2" }, "label": "the filter really applied: exactly the two WARNING findings stay mounted" },
+    { "cmd": ["wait", "--text", "N+1 query in user list endpoint"], "label": "first WARNING finding survives the filter" },
+    { "cmd": ["wait", "--text", "Retry-After"], "label": "second WARNING finding survives too — the filter keeps a set, not one row" },
+    { "cmd": ["find", "role", "button", "click", "--name", "Warning", "--exact"], "label": "click the active filter again to clear it" },
+    { "cmd": ["get", "count", "[data-finding-id]"], "assert": { "stdoutIncludes": "4" }, "label": "clearing the filter remounts all four findings" },
+    { "cmd": ["wait", "--text", "Hardcoded Stripe secret key in commit"], "label": "clearing the filter restores the CRITICAL finding" },
+    { "cmd": ["wait", "--text", "Accept"], "label": "the expanded finding card exposes its Accept action" },
+    { "cmd": ["wait", "--text", "Reject"], "label": "the dismiss action on that same card reads 'Reject'" }
   ]
 }

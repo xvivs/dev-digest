@@ -13,6 +13,7 @@ export { Toggle } from "./Toggle";
 export { Kbd } from "./Kbd";
 export { SectionLabel } from "./SectionLabel";
 export { Card } from "./Card";
+export { Collapse } from "./Collapse";
 export { EmptyState } from "./EmptyState";
 export { Skeleton } from "./Skeleton";
 export { ErrorState } from "./ErrorState";

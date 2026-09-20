@@ -45,6 +45,15 @@ for dir in server client; do
   fi
 done
 
+# Untracked files are never inherited by a linked worktree, which breaks two
+# things: its .env starts with blank API keys (the GitHub sync then fails
+# silently), and its pnpm-workspace.yaml carries no answer for pnpm 11's
+# build-script prompt, which makes the pnpm install below exit 1. Both are
+# fixed here; set local values (DATABASE_URL, ports) are left alone. This must
+# stay AHEAD of the install step — pnpm writes the file it wants answered only
+# at the moment it fails, so answering afterwards never saves the first run.
+./scripts/sync-env.sh
+
 # --- Postgres ----------------------------------------------------------------
 # The container name is fixed (container_name: devdigest-postgres), so if one is
 # already running (possibly under another compose project) we reuse it instead

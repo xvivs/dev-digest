@@ -70,8 +70,9 @@ and add one new final section:
 ```
 ## Before you finish
 
-Update `INSIGHTS.md` with anything durable you learned this session — don't
-skip this step.
+File anything durable you learned this session into `INSIGHTS.md` **through
+the `engineering-insights` skill** — don't skip this step, and don't edit the
+file by hand.
 ```
 
 If the module's `CLAUDE.md` fans out to more than one `INSIGHTS.md` (a root
