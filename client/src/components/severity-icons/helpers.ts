@@ -30,8 +30,11 @@ export const SEV_KEY: Record<Severity, keyof SeverityCounts> = {
 /**
  * `Object.hasOwn`, not `in`: `"toString" in SEV_KEY` is true through the
  * prototype chain, which would let a junk severity land on a real bucket.
+ *
+ * Exported because `FindingsPopover` reads a severity back out of the DOM
+ * (`data-severity`) and must not trust the string it finds there.
  */
-function isSeverity(raw: string): raw is Severity {
+export function isSeverity(raw: string): raw is Severity {
   return Object.hasOwn(SEV_KEY, raw);
 }
 

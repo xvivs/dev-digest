@@ -1,10 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, within, fireEvent, cleanup, act } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
-import type { FindingRecord } from "@devdigest/shared";
+import type { FindingRecord, SeverityCounts } from "@devdigest/shared";
 import findingsMessages from "../../../messages/en/findings.json";
 import { OPEN_DELAY, CLOSE_DELAY } from "./constants";
 import { FindingsPopover } from "./FindingsPopover";
+import { SeverityIcons } from "@/components/severity-icons";
 
 function finding(o: Partial<FindingRecord>): FindingRecord {
   return {
@@ -74,6 +75,35 @@ function renderPopover(props: Partial<Props> = {}) {
 }
 
 const anchor = () => screen.getByText("anchor");
+
+/** The tally the FINDINGS fixture adds up to: 1 CRITICAL, 2 WARNING, 1 SUGGESTION. */
+const COUNTS: SeverityCounts = { critical: 1, warning: 2, suggestion: 1 };
+
+/**
+ * Anchor made of real `SeverityIcons`, so the `data-severity` contract between
+ * the two components is exercised end to end instead of being restated here.
+ */
+function renderWithChips(props: Partial<Props> = {}, counts: SeverityCounts = COUNTS) {
+  return render(
+    <NextIntlClientProvider locale="en" messages={{ findings: findingsMessages }}>
+      <FindingsPopover total={4} findings={FINDINGS} runLinked {...props}>
+        <SeverityIcons counts={counts} />
+      </FindingsPopover>
+    </NextIntlClientProvider>,
+  );
+}
+
+/** The chip for one severity — located the way a user finds it, by its label. */
+const chip = (label: string) => screen.getByLabelText(label);
+
+function openFrom(el: Element) {
+  // `mouseOver`, never `mouseEnter`: React 19 does not synthesise enter/leave
+  // from fireEvent, and the popover listens on the bubbling pair by design.
+  fireEvent.mouseOver(el);
+  act(() => {
+    vi.advanceTimersByTime(OPEN_DELAY);
+  });
+}
 
 function openIt() {
   fireEvent.mouseOver(anchor());
@@ -270,6 +300,67 @@ describe("FindingsPopover", () => {
 
     expect(onArm).not.toHaveBeenCalled();
     expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+  });
+
+  it("scopes the preview to the severity chip under the cursor", () => {
+    renderWithChips();
+    openFrom(chip("2 Warning findings"));
+
+    const tip = screen.getByRole("tooltip");
+    expect(within(tip).getByText("2 Warning findings in this run")).toBeInTheDocument();
+    expect(within(tip).getByText("N+1 query")).toBeInTheDocument();
+    expect(within(tip).getByText("Missing test")).toBeInTheDocument();
+    // The worst finding overall is CRITICAL and would otherwise sort first.
+    expect(within(tip).queryByText("SQL injection")).not.toBeInTheDocument();
+    expect(within(tip).queryByText("Prefer const")).not.toBeInTheDocument();
+  });
+
+  it("counts '+N more' against the scoped set, not the whole tally", () => {
+    // Four SUGGESTIONs, one chip: the preview caps at three and the overflow
+    // line must say "+1", not "+N" derived from `total`.
+    const many = [
+      finding({ id: "s1", severity: "SUGGESTION", title: "Sugg one" }),
+      finding({ id: "s2", severity: "SUGGESTION", title: "Sugg two" }),
+      finding({ id: "s3", severity: "SUGGESTION", title: "Sugg three" }),
+      finding({ id: "s4", severity: "SUGGESTION", title: "Sugg four" }),
+      finding({ id: "c1", severity: "CRITICAL", title: "Crit one" }),
+    ];
+    renderWithChips({ total: 5, findings: many }, { critical: 1, warning: 0, suggestion: 4 });
+    openFrom(chip("4 Suggestion findings"));
+
+    expect(within(screen.getByRole("tooltip")).getByText("+1 more")).toBeInTheDocument();
+  });
+
+  it("keeps the scope when the cursor leaves the chip for the panel", () => {
+    renderWithChips();
+    openFrom(chip("1 Critical finding"));
+    expect(screen.getByText("SQL injection")).toBeInTheDocument();
+
+    // Back onto the row but not onto any chip — the cursor is in transit to the
+    // panel, and swapping the content out from under it would be hostile.
+    fireEvent.mouseOver(screen.getByLabelText("1 Critical finding").parentElement!);
+
+    const tip = screen.getByRole("tooltip");
+    expect(within(tip).getByText("1 Critical finding in this run")).toBeInTheDocument();
+    expect(within(tip).queryByText("N+1 query")).not.toBeInTheDocument();
+  });
+
+  it("drops the scope once the panel has closed", () => {
+    renderWithChips();
+    openFrom(chip("1 Critical finding"));
+
+    fireEvent.mouseOut(chip("1 Critical finding"));
+    act(() => {
+      vi.advanceTimersByTime(CLOSE_DELAY);
+    });
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+
+    // Reopened from the row itself: no chip is under the cursor, so the panel
+    // goes back to the whole tally.
+    openFrom(screen.getByLabelText("1 Critical finding").parentElement!);
+    const tip = screen.getByRole("tooltip");
+    expect(within(tip).getByText("4 findings in this run")).toBeInTheDocument();
+    expect(within(tip).getByText("N+1 query")).toBeInTheDocument();
   });
 
   it("clears its timers when the anchor unmounts mid-flight", () => {

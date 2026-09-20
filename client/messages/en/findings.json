@@ -1,7 +1,9 @@
 {
   "popover": {
     "titleRun": "{count, plural, one {# finding} other {# findings}} in this run",
+    "titleRunSeverity": "{count, plural, one {# {severity} finding} other {# {severity} findings}} in this run",
     "titleReview": "{count, plural, one {# finding} other {# findings}} in this review",
+    "titleReviewSeverity": "{count, plural, one {# {severity} finding} other {# {severity} findings}} in this review",
     "loading": "Loading findings…",
     "empty": "No findings in this run.",
     "error": "Could not load findings.",

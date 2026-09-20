@@ -10,6 +10,11 @@
  *
  * Only non-zero severities render, worst first; an all-zero tally renders
  * nothing at all (the caller owns the "no findings" dash — `findings.cell.none`).
+ *
+ * Every chip carries `data-severity`. `FindingsPopover` wraps these chips and
+ * reads that attribute off the event target to scope its preview to the chip
+ * under the cursor — event delegation, so this component gains no prop and
+ * stays memo-clean.
  */
 "use client";
 
@@ -63,6 +68,7 @@ function SeverityIconsBase({
           <button
             key={sev}
             type="button"
+            data-severity={sev}
             aria-label={label}
             aria-pressed={active}
             onClick={() => onSelect(sev)}
@@ -71,7 +77,7 @@ function SeverityIconsBase({
             {body}
           </button>
         ) : (
-          <span key={sev} tabIndex={0} aria-label={label} style={s.item(active)}>
+          <span key={sev} tabIndex={0} data-severity={sev} aria-label={label} style={s.item(active)}>
             {body}
           </span>
         );

@@ -54,6 +54,26 @@ describe("SeverityIcons", () => {
     expect(focusable[0]).toHaveAttribute("aria-label", "2 Critical findings");
   });
 
+  it("tags every chip with data-severity, in both render shapes", () => {
+    // The attribute is a contract, not decoration: FindingsPopover delegates on
+    // it to scope its preview to the chip under the cursor. Both shapes carry
+    // it — the button one (a filter control) and the inert span one (a bare
+    // popover anchor).
+    const { container, rerender } = renderIcons({ onSelect: vi.fn() });
+    expect(
+      Array.from(container.querySelectorAll("[data-severity]")).map((el) =>
+        el.getAttribute("data-severity"),
+      ),
+    ).toEqual(["CRITICAL", "WARNING", "SUGGESTION"]);
+
+    rerender(
+      <NextIntlClientProvider locale="en" messages={{ findings: findingsMessages }}>
+        <SeverityIcons counts={{ critical: 2, warning: 3, suggestion: 1 }} />
+      </NextIntlClientProvider>,
+    );
+    expect(container.querySelectorAll("[data-severity]")).toHaveLength(3);
+  });
+
   it("underlines the count — the only affordance that the cell is interactive", () => {
     renderIcons();
     // Dotted and tinted to the severity: a solid rule reads as a link, and an

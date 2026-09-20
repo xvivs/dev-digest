@@ -13,14 +13,21 @@
  *    button: the target is unreachable by keyboard and hostile by pointer.
  *    That is why `file:line` is a plain span and not `MonoLink` (which renders
  *    a <button> when given no href).
+ *
+ * The panel is scoped to the severity chip under the cursor. That severity is
+ * read off the event target's `data-severity` (see `SeverityIcons`) rather than
+ * pushed in through a prop: `onMouseOver`/`onFocus` already bubble to this
+ * anchor, so delegation costs nothing, adds no prop to a `React.memo` child and
+ * keeps the hover state in the only component that renders the panel.
  */
 "use client";
 
 import React from "react";
 import { createPortal } from "react-dom";
 import { useTranslations } from "next-intl";
-import { Icon, SeverityBadge, CategoryTag, ConfidenceNum } from "@devdigest/ui";
-import type { FindingRecord } from "@devdigest/shared";
+import { Icon, SEV, SeverityBadge, CategoryTag, ConfidenceNum } from "@devdigest/ui";
+import type { FindingRecord, Severity } from "@devdigest/shared";
+import { isSeverity } from "@/components/severity-icons";
 import { CLOSE_DELAY, OPEN_DELAY, PANEL_GAP, PREVIEW_LIMIT } from "./constants";
 import { clampToViewport, lineLabel, sortBySeverity, type PanelPosition } from "./helpers";
 import { s } from "./styles";
@@ -30,6 +37,8 @@ type Timer = ReturnType<typeof setTimeout> | null;
 interface PanelContentProps {
   /** Known up-front from the severity counts — drives the header and "+N more". */
   total: number;
+  /** Chip under the cursor. `null` = the whole tally, i.e. no chip hovered yet. */
+  severity?: Severity | null;
   /** `undefined` = not fetched yet. An empty array is a real, loaded "no findings". */
   findings: FindingRecord[] | undefined;
   loading?: boolean;
@@ -53,11 +62,28 @@ export function FindingsPopover({
   onArm?: () => void;
 }) {
   const [open, setOpen] = React.useState(false);
+  const [hovered, setHovered] = React.useState<Severity | null>(null);
   const anchorRef = React.useRef<HTMLSpanElement>(null);
   const openTimer = React.useRef<Timer>(null);
   const closeTimer = React.useRef<Timer>(null);
   const armed = React.useRef(false);
   const panelId = React.useId();
+
+  /**
+   * Which chip is the pointer (or focus) on? Reads the nearest `data-severity`
+   * ancestor of the event target. Never trusts the string: the attribute is DOM
+   * state, and `isSeverity` is the same guard the tally itself uses.
+   *
+   * Leaving a chip deliberately does NOT clear the scope. The cursor has to
+   * cross dead space to reach the panel, and dropping the filter halfway there
+   * would swap the content out from under the reader. It clears when the panel
+   * closes, and only then.
+   */
+  const trackSeverity = React.useCallback((e: React.SyntheticEvent) => {
+    const chip = (e.target as HTMLElement | null)?.closest?.("[data-severity]");
+    const raw = chip?.getAttribute("data-severity");
+    if (raw != null && isSeverity(raw)) setHovered(raw);
+  }, []);
 
   const cancelOpen = React.useCallback(() => {
     if (openTimer.current !== null) clearTimeout(openTimer.current);
@@ -90,6 +116,7 @@ export function FindingsPopover({
     closeTimer.current = setTimeout(() => {
       closeTimer.current = null;
       setOpen(false);
+      setHovered(null);
     }, CLOSE_DELAY);
   }, [cancelOpen]);
 
@@ -99,6 +126,7 @@ export function FindingsPopover({
     cancelOpen();
     cancelClose();
     setOpen(false);
+    setHovered(null);
   }, [cancelClose, cancelOpen]);
 
   // The anchor can unmount mid-flight — the PR list re-polls every 60s.
@@ -134,9 +162,15 @@ export function FindingsPopover({
       ref={anchorRef}
       style={s.anchor}
       aria-describedby={open ? panelId : undefined}
-      onMouseOver={scheduleOpen}
+      onMouseOver={(e) => {
+        trackSeverity(e);
+        scheduleOpen();
+      }}
       onMouseOut={scheduleClose}
-      onFocus={scheduleOpen}
+      onFocus={(e) => {
+        trackSeverity(e);
+        scheduleOpen();
+      }}
       onBlur={scheduleClose}
       onClick={scheduleOpen}
     >
@@ -147,6 +181,7 @@ export function FindingsPopover({
             anchorRef={anchorRef}
             panelId={panelId}
             total={total}
+            severity={hovered}
             findings={findings}
             loading={loading}
             error={error}
@@ -200,6 +235,17 @@ function FindingsPanel({
   // icon derived from the findings themselves would flip under the user.
   const HeaderIcon = content.total > 0 ? Icon.AlertOctagon : Icon.Info;
 
+  // The scoped count can only be known once the findings are in hand — the
+  // `total` prop is the whole tally and `SeverityCounts` is not passed down. So
+  // while the fetch is in flight the header stays unscoped rather than lying.
+  const scope =
+    content.severity != null && content.findings !== undefined
+      ? {
+          severity: content.severity,
+          count: content.findings.filter((f) => f.severity === content.severity).length,
+        }
+      : null;
+
   return (
     <div style={s.shell(pos)} onMouseOver={onMouseOver} onMouseOut={onMouseOut}>
       <div ref={cardRef} id={panelId} role="tooltip" style={s.card}>
@@ -208,7 +254,16 @@ function FindingsPanel({
           {/* Uppercased in CSS, not in the message: the JSON stays lowercase so
               locales without a case distinction are not mangled. */}
           <span style={s.headerText}>
-            {t(runLinked ? "popover.titleRun" : "popover.titleReview", { count: content.total })}
+            {scope
+              ? t(runLinked ? "popover.titleRunSeverity" : "popover.titleReviewSeverity", {
+                  count: scope.count,
+                  // `SEV` labels are the same source `SeverityIcons` uses for its
+                  // `aria-label`, so the chip and the panel always read alike.
+                  severity: SEV[scope.severity].label,
+                })
+              : t(runLinked ? "popover.titleRun" : "popover.titleReview", {
+                  count: content.total,
+                })}
           </span>
         </div>
         <PanelBody {...content} />
@@ -217,15 +272,23 @@ function FindingsPanel({
   );
 }
 
-function PanelBody({ total, findings, loading, error }: PanelContentProps) {
+function PanelBody({ total, severity, findings, loading, error }: PanelContentProps) {
   const t = useTranslations("findings");
 
   if (error) return <div style={s.status}>{t("popover.error")}</div>;
   if (loading || findings === undefined) return <div style={s.status}>{t("popover.loading")}</div>;
   if (findings.length === 0) return <div style={s.status}>{t("popover.empty")}</div>;
 
-  const preview = sortBySeverity(findings).slice(0, PREVIEW_LIMIT);
-  const hidden = total - PREVIEW_LIMIT;
+  // Scoped to the hovered chip. `shown.length` rather than the `total` prop
+  // once scoped — and it is safe to count here because the guards above have
+  // already proven the findings are loaded. It also fixes an "+N more" that
+  // used to mix two sources: `total` comes from the severity tally, which is
+  // computed independently of the findings this panel actually received.
+  const shown = severity != null ? findings.filter((f) => f.severity === severity) : findings;
+  if (shown.length === 0) return <div style={s.status}>{t("popover.empty")}</div>;
+
+  const preview = sortBySeverity(shown).slice(0, PREVIEW_LIMIT);
+  const hidden = (severity != null ? shown.length : total) - PREVIEW_LIMIT;
 
   return (
     <>
