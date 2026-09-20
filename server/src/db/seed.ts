@@ -407,6 +407,26 @@ export async function seed(db: Db): Promise<{ workspaceId: string; userId: strin
     if (traceRows.length > 0) {
       await db.insert(t.runTraces).values(traceRows).onConflictDoNothing();
     }
+
+    // Attach the review seeded above to the run it belongs to — the fresher
+    // Security Reviewer run, the one whose findingsCount/score were written to
+    // match it. The review row is inserted long before this point (it has to
+    // exist before the agents, and therefore before the runs), so the link can
+    // only be closed here, by update.
+    //
+    // Without it the PR timeline renders that run with no severity chips at
+    // all: `FindingsTab` keys `countsByRun` by `reviews.run_id` and skips every
+    // review where it is null, `RunHistory` falls back to ZERO_COUNTS, and
+    // `SeverityIcons` renders nothing for an all-zero tally — a missing join
+    // that looks exactly like a styling bug. The production path sets this
+    // inline (`modules/reviews/run-executor.ts`); only the seed could drift.
+    const securityRun = runs[0];
+    if (securityRun) {
+      await db
+        .update(t.reviews)
+        .set({ runId: securityRun.id, agentId: securityAgent?.id ?? null })
+        .where(and(eq(t.reviews.prId, pr!.id), eq(t.reviews.kind, 'review')));
+    }
   }
 
   // ---- three more PRs so the list's FINDINGS + STATUS columns show every state ----
