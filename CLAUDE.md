@@ -92,6 +92,9 @@ client/src/lib/               api.ts + every data hook in hooks/
 
 ## Before you finish
 
-Update the touched package's `INSIGHTS.md` (or the root one for cross-package
-findings) with anything durable you learned this session — don't skip this
-step.
+File anything durable you learned this session into the touched package's
+`INSIGHTS.md` (or the root one for cross-package findings) **through the
+`engineering-insights` skill** — don't skip this step, and don't edit those
+files by hand. Hand-written entries land undated, unreferenced and in the
+wrong section, and nothing catches it until someone audits the file months
+later.
