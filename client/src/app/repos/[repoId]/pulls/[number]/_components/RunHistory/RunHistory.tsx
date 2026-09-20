@@ -3,8 +3,16 @@
 import React from "react";
 import { useTranslations } from "next-intl";
 import { Badge, Icon, CircularScore, type IconName } from "@devdigest/ui";
-import type { RunSummary, PrCommit } from "@devdigest/shared";
+import type {
+  RunSummary,
+  PrCommit,
+  FindingRecord,
+  Severity,
+  SeverityCounts,
+} from "@devdigest/shared";
 import { RunCostValue } from "@/components/run-cost-value";
+import { SeverityIcons, ZERO_COUNTS } from "@/components/severity-icons";
+import { FindingsPopover } from "@/components/findings-popover";
 import { formatTokenTotal } from "./helpers";
 
 /**
@@ -75,6 +83,18 @@ const commitRowStyle: React.CSSProperties = {
   background: "transparent",
 };
 
+/** Stable default for the optional lookup maps: a `new Map()` in a default
+ *  parameter is a fresh object every render and would defeat every memo below. */
+const EMPTY_MAP: ReadonlyMap<string, never> = new Map<string, never>();
+
+const findingsLineStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 4,
+  fontSize: 12,
+  color: "var(--text-muted)",
+};
+
 type TimelineItem =
   | { kind: "run"; ts: number; run: RunSummary }
   | { kind: "commit"; ts: number; commit: PrCommit };
@@ -89,19 +109,41 @@ function tsOf(s: string | null | undefined): number {
 export function RunHistory({
   runs,
   commits = [],
+  findingsByRun = EMPTY_MAP,
+  countsByRun = EMPTY_MAP,
   onOpenTrace,
   onGoToReview,
   onDelete,
 }: {
   runs: RunSummary[];
   commits?: PrCommit[];
+  /** run_id → that run's findings, for the hover popover. Optional: the
+   *  timeline still renders standalone, just without the severity strip. */
+  findingsByRun?: ReadonlyMap<string, FindingRecord[]>;
+  /** run_id → severity tally. Its key set doubles as "this run has a review",
+   *  which is what gates the chips being clickable. */
+  countsByRun?: ReadonlyMap<string, SeverityCounts>;
   /** Open the trace + log drawer for a run (the logs icon). */
   onOpenTrace: (runId: string) => void;
-  /** Jump to this run's inline review accordion below (clicking the agent name). */
-  onGoToReview?: (runId: string) => void;
+  /** Jump to this run's inline review accordion below (clicking the agent name,
+   *  or a severity chip — which also pre-filters the panel to that severity). */
+  onGoToReview?: (runId: string, severity?: Severity) => void;
   onDelete?: (runId: string) => void;
 }) {
   const t = useTranslations("prReview");
+  // One stable handler per run rather than an arrow in the row's JSX: a fresh
+  // closure every render would defeat the `React.memo` on `SeverityIcons` just
+  // as surely as a fresh counts object. Only runs that actually resolved to a
+  // review get one — a chip with no review behind it would be a dead button.
+  const selectHandlers = React.useMemo(() => {
+    const handlers = new Map<string, (severity: Severity) => void>();
+    if (!onGoToReview) return handlers;
+    for (const runId of countsByRun.keys()) {
+      handlers.set(runId, (severity) => onGoToReview(runId, severity));
+    }
+    return handlers;
+  }, [countsByRun, onGoToReview]);
+
   if (runs.length === 0 && commits.length === 0) return null;
 
   const items: TimelineItem[] = [
@@ -192,9 +234,24 @@ export function RunHistory({
                 </div>
               )}
               {settled && (
-                <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                  {t("runStatus.findings", { count: r.findings_count ?? 0 })}
-                  {(r.blockers ?? 0) > 0 ? t("runStatus.blockers", { count: r.blockers ?? 0 }) : ""}
+                // The severity strip REPLACES the old "N finding(s)" text — it
+                // carries the same total, broken down and clickable. Blockers
+                // stay as text: they're a gate outcome, not a severity.
+                <div style={findingsLineStyle}>
+                  <FindingsPopover
+                    total={r.findings_count ?? 0}
+                    findings={findingsByRun.get(r.run_id)}
+                    runLinked={countsByRun.has(r.run_id)}
+                  >
+                    <SeverityIcons
+                      counts={countsByRun.get(r.run_id) ?? ZERO_COUNTS}
+                      size={13}
+                      onSelect={selectHandlers.get(r.run_id)}
+                    />
+                  </FindingsPopover>
+                  {(r.blockers ?? 0) > 0 && (
+                    <span>{t("runStatus.blockers", { count: r.blockers ?? 0 })}</span>
+                  )}
                 </div>
               )}
             </div>

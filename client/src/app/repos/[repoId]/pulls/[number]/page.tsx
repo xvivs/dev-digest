@@ -21,7 +21,25 @@ import { usePrReviews, useCancelRun, usePrActiveRuns, usePrRuns, useDeleteRun } 
 import { useActiveRepo, useRepoNotFound } from "../../../../../lib/repo-context";
 import { ApiError } from "../../../../../lib/api";
 import { githubPrUrl } from "../../../../../lib/github-urls";
+import type { Severity } from "@devdigest/shared";
 import type { FindingRecord } from "@devdigest/shared";
+
+/**
+ * `?severity=` → a Severity, or null for anything else.
+ *
+ * Deliberately a literal check and NOT `Severity.safeParse` from
+ * `@devdigest/shared`: importing the zod schema is a VALUE import of the
+ * vendored barrel, and `vendor/shared/index.ts` re-exports with explicit `.js`
+ * specifiers that Next's webpack cannot resolve back to `.ts`. Every other
+ * client import of that barrel is `import type`, which the compiler erases —
+ * so the bad specifiers have never had to resolve. A value import turns the
+ * whole page into a 500 at request time, with typecheck and vitest both green.
+ */
+const SEVERITIES = ["CRITICAL", "WARNING", "SUGGESTION"] as const;
+
+function parseSeverity(raw: string | null): Severity | null {
+  return SEVERITIES.includes(raw as Severity) ? (raw as Severity) : null;
+}
 
 export default function PRDetailPage() {
   const params = useParams<{ repoId: string; number: string }>();
@@ -59,6 +77,10 @@ export default function PRDetailPage() {
 
   const tab = search.get("tab") ?? "overview";
   const traceRunId = search.get("trace");
+  // ?severity= pre-filters the newest run's findings (the link a severity chip
+  // elsewhere in the app points at). Anything not in the contract's enum is
+  // dropped rather than passed down as a filter nothing can match.
+  const initialSeverity = parseSeverity(search.get("severity"));
   const setParam = (key: string, val: string | null) => {
     const sp = new URLSearchParams(search.toString());
     if (val == null) sp.delete(key);
@@ -68,10 +90,12 @@ export default function PRDetailPage() {
   const setTab = (t: string) => setParam("tab", t);
 
   // Reviews come newest-first; each is its own run (grouped into accordions).
-  const runs = reviews ?? [];
+  // Memoised so the lookup maps FindingsTab derives from it stay referentially
+  // stable across renders (they feed memoised children in the timeline).
+  const runs = React.useMemo(() => reviews ?? [], [reviews]);
   const allFindings: FindingRecord[] = React.useMemo(
     () => runs.flatMap((r) => r.findings),
-    [reviews],
+    [runs],
   );
   const lethalTrifecta = allFindings.filter((f) => f.kind === "lethal_trifecta");
   const findingsCount = allFindings.length;
@@ -147,6 +171,7 @@ export default function PRDetailPage() {
             prCommits={pr.commits}
             repoFullName={repoFullName}
             headSha={pr.head_sha}
+            initialSeverity={initialSeverity}
             cancelMutation={cancel}
             onOpenTrace={(id) => setParam("trace", id)}
             onDelete={(id) => {

@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import { createDb, type Db } from './client.js';
 import * as t from './schema.js';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, desc } from 'drizzle-orm';
 import {
   GENERAL_REVIEWER_PROMPT,
   SECURITY_REVIEWER_PROMPT,
@@ -17,9 +17,15 @@ const DEFAULT_MODEL = 'deepseek/deepseek-v4-flash';
  * workspace/user and the demo fixtures.
  *
  * Seeds: default workspace + system user + membership, default settings,
- * demo repo (acme/payments-api), PR #482 with files/commits, a sample review
- * with a few findings, and the three built-in agents (General + Security +
+ * demo repo (acme/payments-api), four PRs with files/commits, sample reviews
+ * with findings, and the three built-in agents (General + Security +
  * Performance), all on the default openrouter/deepseek-v4-flash provider+model.
+ *
+ * The four PRs are chosen so the Pull Requests list shows every column state
+ * on a clean seed: #482 needs_review (4 findings across all three severities,
+ * one below the low-confidence cutoff), #479 needs_review (head moved since the
+ * review), #477 reviewed (1 suggestion), #460 stale (no review at all → a dash
+ * in SCORE / FINDINGS / COST).
  *
  * Course lessons populate the other tables (skills, conventions, memory, eval,
  * …) once their features are built — they start empty here.
@@ -172,6 +178,37 @@ export async function seed(db: Db): Promise<{ workspaceId: string; userId: strin
         suggestion: 'Use a single IN query and group in memory.',
         confidence: 0.86,
       },
+      {
+        // Second WARNING on purpose: with only one per severity the FINDINGS
+        // column and the panel's severity filter can't be told apart from a
+        // plain "one of each" fixture.
+        reviewId: review!.id,
+        file: 'src/middleware/ratelimit.ts',
+        startLine: 52,
+        endLine: 52,
+        severity: 'WARNING',
+        category: 'bug',
+        title: '`Retry-After` header omitted on 429',
+        rationale:
+          'The limiter returns 429 at line 52 without a `Retry-After` header, so clients have no signal for when to retry and fall back to tight retry loops.',
+        suggestion: 'Set `Retry-After` to the bucket refill window (in seconds) alongside the 429.',
+        confidence: 0.72,
+      },
+      {
+        // Below LOW_CONFIDENCE_THRESHOLD (0.65) so the panel's "hide low
+        // confidence" toggle actually hides something on a clean seed.
+        reviewId: review!.id,
+        file: 'src/middleware/ratelimit.ts',
+        startLine: 18,
+        endLine: 18,
+        severity: 'SUGGESTION',
+        category: 'style',
+        title: 'Bucket capacity is a bare magic number',
+        rationale:
+          'Line 18 hardcodes the token-bucket capacity inline; the same value is re-derived further down the file, so the two can drift apart silently.',
+        suggestion: 'Lift it into a named constant next to the other limiter defaults.',
+        confidence: 0.55,
+      },
     ]);
   }
 
@@ -220,6 +257,15 @@ export async function seed(db: Db): Promise<{ workspaceId: string; userId: strin
     if (!existing) await db.insert(t.agents).values(a);
   }
 
+  // Name → id for the agents just seeded. Runs below attribute themselves with
+  // this; an unattributed run makes the Review-runs card read a literal
+  // "Agent" while the timeline row right above it names the reviewer.
+  const agentRows = await db
+    .select({ id: t.agents.id, name: t.agents.name })
+    .from(t.agents)
+    .where(eq(t.agents.workspaceId, workspaceId));
+  const agentIdByName = new Map(agentRows.map((a) => [a.name, a.id]));
+
   // ---- run history for the Cost Badge (PR #482) ----
   // Three runs covering all three states the UI must render: a 'provider'
   // cost (OpenRouter returns usage.cost), an older 'estimated' cost (OpenAI/
@@ -256,9 +302,13 @@ export async function seed(db: Db): Promise<{ workspaceId: string; userId: strin
         durationMs: 8200,
         tokensIn: 14820,
         tokensOut: 1240,
-        findingsCount: 1,
-        grounding: '1/1 passed',
-        score: 65,
+        // Must match the seeded review above: `run_traces.stats.findings` is
+        // built from this column (.returning() below), and `score` shows on the
+        // same PR surface as `reviews.score` — a mismatch renders two numbers
+        // for one review.
+        findingsCount: 4,
+        grounding: '4/4 passed',
+        score: 61,
         blockers: 1,
         costUsd: 0.0412,
         costSource: 'provider',
@@ -356,6 +406,299 @@ export async function seed(db: Db): Promise<{ workspaceId: string; userId: strin
       }));
     if (traceRows.length > 0) {
       await db.insert(t.runTraces).values(traceRows).onConflictDoNothing();
+    }
+  }
+
+  // ---- three more PRs so the list's FINDINGS + STATUS columns show every state ----
+  // The review STATUS is DERIVED (see `modules/pulls/status.ts`), never stored:
+  // last_reviewed_sha vs head_sha decides needs_review/reviewed, and updated_at
+  // age decides stale. The rows below are shaped to land on one state each.
+  const DAY = 86_400_000;
+  const nowMs = Date.now();
+
+  // #479 — needs_review: reviewed at an older commit, head has moved since.
+  let [pr479] = await db
+    .select()
+    .from(t.pullRequests)
+    .where(and(eq(t.pullRequests.repoId, repoId), eq(t.pullRequests.number, 479)));
+  if (!pr479) {
+    [pr479] = await db
+      .insert(t.pullRequests)
+      .values({
+        workspaceId,
+        repoId,
+        number: 479,
+        title: 'Migrate sessions table to UUID primary key',
+        author: 'deepak.r',
+        branch: 'chore/sessions-uuid-pk',
+        base: 'main',
+        headSha: '7f3c91aa20de',
+        lastReviewedSha: 'b0119c4e8d71', // ≠ headSha → needs_review
+        additions: 412,
+        deletions: 156,
+        filesCount: 14,
+        status: 'open',
+        openedAt: new Date(nowMs - 4 * DAY),
+        updatedAt: new Date(nowMs - 6 * 3_600_000),
+        body: 'Swap the sessions primary key from bigserial to UUID ahead of the multi-region rollout.',
+      })
+      .returning();
+
+    await db.insert(t.prFiles).values([
+      { prId: pr479!.id, path: 'migrations/0042_sessions_uuid.sql', additions: 96, deletions: 0 },
+      { prId: pr479!.id, path: 'src/db/sessions.ts', additions: 118, deletions: 74 },
+    ]);
+    await db.insert(t.prCommits).values({
+      prId: pr479!.id,
+      sha: '7f3c91aa20de',
+      message: 'Backfill session UUIDs before dropping the serial key',
+      author: 'deepak.r',
+    });
+
+    const [review479] = await db
+      .insert(t.reviews)
+      .values({
+        workspaceId,
+        prId: pr479!.id,
+        kind: 'review',
+        verdict: 'request_changes',
+        summary:
+          'The migration drops the old serial key in the same transaction that backfills UUIDs, so a mid-migration failure leaves sessions unreadable. Foreign keys pointing at the old column are also left behind.',
+        score: 44,
+        model: 'seed',
+      })
+      .returning();
+
+    await db.insert(t.findings).values([
+      {
+        reviewId: review479!.id,
+        file: 'migrations/0042_sessions_uuid.sql',
+        startLine: 61,
+        endLine: 74,
+        severity: 'CRITICAL',
+        category: 'bug',
+        title: 'Backfill and column drop share one transaction',
+        rationale:
+          'Lines 61-74 backfill every session UUID and then drop the serial column in the same statement batch. On a table this size the backfill can time out, and the rollback leaves the app pointing at a column that no longer matches the ORM.',
+        suggestion: 'Split into two migrations: backfill + dual-write first, drop the old column once the backfill is verified.',
+        confidence: 0.93,
+      },
+      {
+        reviewId: review479!.id,
+        file: 'migrations/0042_sessions_uuid.sql',
+        startLine: 12,
+        endLine: 12,
+        severity: 'WARNING',
+        category: 'perf',
+        title: 'Rewrite locks the sessions table with no lock timeout',
+        rationale:
+          'The ALTER TABLE at line 12 takes an ACCESS EXCLUSIVE lock without a `lock_timeout`, so a single long-running read blocks every session write until it finishes.',
+        suggestion: 'Set a short `lock_timeout` and retry, rather than queueing behind an open transaction.',
+        confidence: 0.81,
+      },
+      {
+        reviewId: review479!.id,
+        file: 'src/db/sessions.ts',
+        startLine: 88,
+        endLine: 95,
+        severity: 'WARNING',
+        category: 'bug',
+        title: 'Session lookup still parses the id as an integer',
+        rationale:
+          'The lookup at lines 88-95 keeps `Number(id)` from the serial era, so every UUID lookup after the migration resolves to NaN and silently misses.',
+        suggestion: 'Pass the id through as a string and validate it against a UUID schema.',
+        confidence: 0.89,
+      },
+      {
+        reviewId: review479!.id,
+        file: 'src/db/sessions.ts',
+        startLine: 21,
+        endLine: 21,
+        severity: 'SUGGESTION',
+        category: 'style',
+        title: 'Legacy `sessionIdInt` alias left in place',
+        rationale:
+          'Line 21 keeps the old integer-typed alias exported next to the new UUID type; nothing imports it any more.',
+        suggestion: 'Remove the alias so callers cannot pick the wrong one.',
+        confidence: 0.58,
+      },
+    ]);
+
+    await db.insert(t.agentRuns).values({
+      workspaceId,
+      agentId: agentIdByName.get('Security Reviewer') ?? null,
+      prId: pr479!.id,
+      ranAt: new Date(nowMs - 30 * 3_600_000),
+      provider: DEFAULT_PROVIDER,
+      model: DEFAULT_MODEL,
+      status: 'done',
+      durationMs: 11400,
+      tokensIn: 21600,
+      tokensOut: 1980,
+      findingsCount: 4,
+      grounding: '4/4 passed',
+      score: 44,
+      blockers: 1,
+      costUsd: 0.0631,
+      costSource: 'provider',
+    });
+  }
+
+  // #477 — reviewed: head_sha === last_reviewed_sha and touched recently.
+  let [pr477] = await db
+    .select()
+    .from(t.pullRequests)
+    .where(and(eq(t.pullRequests.repoId, repoId), eq(t.pullRequests.number, 477)));
+  if (!pr477) {
+    [pr477] = await db
+      .insert(t.pullRequests)
+      .values({
+        workspaceId,
+        repoId,
+        number: 477,
+        title: 'Fix flaky checkout integration test',
+        author: 'tomek.w',
+        branch: 'fix/flaky-checkout-it',
+        base: 'main',
+        headSha: 'c48d2be7f015',
+        lastReviewedSha: 'c48d2be7f015', // === headSha → reviewed
+        additions: 23,
+        deletions: 11,
+        filesCount: 2,
+        status: 'open',
+        openedAt: new Date(nowMs - 2 * DAY),
+        updatedAt: new Date(nowMs - 3 * 3_600_000),
+        body: 'The checkout suite raced the webhook fixture; await the delivery instead of sleeping.',
+      })
+      .returning();
+
+    await db.insert(t.prFiles).values([
+      { prId: pr477!.id, path: 'test/checkout.it.test.ts', additions: 21, deletions: 11 },
+      { prId: pr477!.id, path: 'test/helpers/webhooks.ts', additions: 2, deletions: 0 },
+    ]);
+    await db.insert(t.prCommits).values({
+      prId: pr477!.id,
+      sha: 'c48d2be7f015',
+      message: 'Await the webhook delivery instead of a fixed sleep',
+      author: 'tomek.w',
+    });
+
+    const [review477] = await db
+      .insert(t.reviews)
+      .values({
+        workspaceId,
+        prId: pr477!.id,
+        kind: 'review',
+        verdict: 'approve',
+        summary:
+          'Replaces the fixed sleep with an explicit wait on the webhook fixture. Correct fix for the race; only a naming nit left.',
+        score: 92,
+        model: 'seed',
+      })
+      .returning();
+
+    await db.insert(t.findings).values({
+      reviewId: review477!.id,
+      file: 'test/helpers/webhooks.ts',
+      startLine: 9,
+      endLine: 14,
+      severity: 'SUGGESTION',
+      category: 'test',
+      title: 'Wait helper has no upper bound',
+      rationale:
+        '`waitForDelivery` at lines 9-14 polls until the delivery lands with no deadline, so a genuinely dropped webhook hangs the suite until the runner kills it instead of failing with a readable message.',
+      suggestion: 'Take a timeout argument and throw naming the delivery that never arrived.',
+      confidence: 0.74,
+    });
+
+    await db.insert(t.agentRuns).values({
+      workspaceId,
+      agentId: agentIdByName.get('General Reviewer') ?? null,
+      prId: pr477!.id,
+      ranAt: new Date(nowMs - 5 * 3_600_000),
+      provider: DEFAULT_PROVIDER,
+      model: DEFAULT_MODEL,
+      status: 'done',
+      durationMs: 4300,
+      tokensIn: 5200,
+      tokensOut: 610,
+      findingsCount: 1,
+      grounding: '1/1 passed',
+      score: 92,
+      blockers: 0,
+      costUsd: 0.0074,
+      costSource: 'estimated',
+    });
+  }
+
+  // #460 — stale: head_sha === last_reviewed_sha but untouched past STALE_DAYS.
+  // Deliberately has NO review and NO runs, so the list renders a dash in the
+  // SCORE / FINDINGS / COST columns (null, not an all-zero tally).
+  let [pr460] = await db
+    .select()
+    .from(t.pullRequests)
+    .where(and(eq(t.pullRequests.repoId, repoId), eq(t.pullRequests.number, 460)));
+  if (!pr460) {
+    [pr460] = await db
+      .insert(t.pullRequests)
+      .values({
+        workspaceId,
+        repoId,
+        number: 460,
+        title: 'Bump node 18 → 20 in CI',
+        author: 'deepak.r',
+        branch: 'chore/ci-node-20',
+        base: 'main',
+        headSha: '9ab7150c33e2',
+        lastReviewedSha: '9ab7150c33e2', // === headSha, but updatedAt is old → stale
+        additions: 6,
+        deletions: 6,
+        filesCount: 1,
+        status: 'open',
+        openedAt: new Date(nowMs - 40 * DAY),
+        updatedAt: new Date(nowMs - 21 * DAY),
+        body: 'Node 18 is out of LTS support; move the CI matrix to 20.',
+      })
+      .returning();
+
+    await db.insert(t.prFiles).values({
+      prId: pr460!.id,
+      path: '.github/workflows/ci.yml',
+      additions: 6,
+      deletions: 6,
+    });
+    await db.insert(t.prCommits).values({
+      prId: pr460!.id,
+      sha: '9ab7150c33e2',
+      message: 'Bump the CI node matrix to 20',
+      author: 'deepak.r',
+    });
+  }
+
+  // ---- link each PR's seeded review to its newest completed run ----
+  // Separate idempotent pass rather than inline: the review rows are created
+  // inside `if (!pr)` guards and the runs inside their own, so neither block
+  // can see the other's `.returning()` value. Without run_id the Timeline and
+  // the Review-runs list stay unjoined and the run drawer opens empty.
+  for (const prRow of [pr, pr479, pr477]) {
+    if (!prRow) continue;
+    const [freshRun] = await db
+      .select({ id: t.agentRuns.id, agentId: t.agentRuns.agentId })
+      .from(t.agentRuns)
+      .where(and(eq(t.agentRuns.prId, prRow.id), eq(t.agentRuns.status, 'done')))
+      .orderBy(desc(t.agentRuns.ranAt))
+      .limit(1);
+    if (freshRun) {
+      // agentId travels with runId: the review rows are seeded before the
+      // agents exist, so without this the Review-runs card falls back to the
+      // literal "Agent" while the timeline row right above it names the agent.
+      await db
+        .update(t.reviews)
+        .set({ runId: freshRun.id, agentId: freshRun.agentId })
+        // No `isNull` guard: both values are derived from the newest done run,
+        // so re-running the seed rewrites them with what they already hold.
+        // Guarding on runId alone would strand agentId on an older seeded DB.
+        .where(and(eq(t.reviews.prId, prRow.id), eq(t.reviews.kind, 'review')));
     }
   }
 

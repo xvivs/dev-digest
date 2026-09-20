@@ -11,6 +11,18 @@ import { z } from 'zod';
 export const Severity = z.enum(['CRITICAL', 'WARNING', 'SUGGESTION']);
 export type Severity = z.infer<typeof Severity>;
 
+/**
+ * Severity tally for a set of findings. Lowercase keys mirror the shape
+ * `rollupSeverities()` returns in `server/src/modules/pulls/status.ts`, so the
+ * server can hand its rollup straight to the wire without a mapper.
+ */
+export const SeverityCounts = z.object({
+  critical: z.number().int().nonnegative(),
+  warning: z.number().int().nonnegative(),
+  suggestion: z.number().int().nonnegative(),
+});
+export type SeverityCounts = z.infer<typeof SeverityCounts>;
+
 export const FindingCategory = z.enum(['bug', 'security', 'perf', 'style', 'test']);
 export type FindingCategory = z.infer<typeof FindingCategory>;
 

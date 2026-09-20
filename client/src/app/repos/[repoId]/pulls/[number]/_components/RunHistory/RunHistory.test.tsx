@@ -3,13 +3,18 @@
  * Regression guard for the "green ✓ done on a run that found 5 blockers" bug:
  * a settled run is colored/labelled by its denormalized blocker/finding counts,
  * and shows the review score ring.
+ *
+ * Second concern here: the severity strip that REPLACED the "N finding(s)" text.
+ * It only appears for runs the tab could resolve to a review — a chip with no
+ * review behind it would be a button that goes nowhere.
  */
-import { describe, it, expect, afterEach } from "vitest";
-import { render, screen, cleanup } from "@testing-library/react";
+import { describe, it, expect, afterEach, vi } from "vitest";
+import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
-import type { RunSummary } from "@devdigest/shared";
+import type { FindingRecord, RunSummary, Severity, SeverityCounts } from "@devdigest/shared";
 import messages from "../../../../../../../../messages/en/prReview.json";
 import costMessages from "../../../../../../../../messages/en/cost.json";
+import findingsMessages from "../../../../../../../../messages/en/findings.json";
 import { RunHistory } from "./RunHistory";
 
 afterEach(cleanup);
@@ -38,10 +43,40 @@ function run(o: Partial<RunSummary>): RunSummary {
   };
 }
 
-function renderRuns(runs: RunSummary[]) {
+function finding(o: Partial<FindingRecord> & { id: string; severity: Severity }): FindingRecord {
+  return {
+    category: "security",
+    title: "Hardcoded secret",
+    file: "src/config.ts",
+    start_line: 11,
+    end_line: 11,
+    rationale: "A secret is committed.",
+    suggestion: null,
+    confidence: 0.9,
+    kind: "finding",
+    trifecta_components: null,
+    evidence: null,
+    review_id: "rev-1",
+    accepted_at: null,
+    dismissed_at: null,
+    ...o,
+  };
+}
+
+function renderRuns(
+  runs: RunSummary[],
+  extra: {
+    findingsByRun?: ReadonlyMap<string, FindingRecord[]>;
+    countsByRun?: ReadonlyMap<string, SeverityCounts>;
+    onGoToReview?: (runId: string, severity?: Severity) => void;
+  } = {},
+) {
   return render(
-    <NextIntlClientProvider locale="en" messages={{ prReview: messages, cost: costMessages }}>
-      <RunHistory runs={runs} onOpenTrace={() => {}} />
+    <NextIntlClientProvider
+      locale="en"
+      messages={{ prReview: messages, cost: costMessages, findings: findingsMessages }}
+    >
+      <RunHistory runs={runs} onOpenTrace={() => {}} {...extra} />
     </NextIntlClientProvider>,
   );
 }
@@ -107,5 +142,57 @@ describe("RunHistory — cost + tokens", () => {
     ]);
     expect(screen.queryByText(/tok/)).not.toBeInTheDocument();
     expect(screen.getByText("—")).toBeInTheDocument();
+  });
+});
+
+describe("RunHistory — severity strip", () => {
+  const counts: ReadonlyMap<string, SeverityCounts> = new Map([
+    ["run-1", { critical: 1, warning: 2, suggestion: 0 }],
+  ]);
+  const findingsByRun: ReadonlyMap<string, FindingRecord[]> = new Map([
+    [
+      "run-1",
+      [
+        finding({ id: "f1", severity: "CRITICAL" }),
+        finding({ id: "f2", severity: "WARNING" }),
+        finding({ id: "f3", severity: "WARNING" }),
+      ],
+    ],
+  ]);
+
+  it("severity chips replace the 'N finding(s)' text; the blockers tail stays", () => {
+    renderRuns([run({ status: "done", findings_count: 3, blockers: 1, score: 40 })], {
+      countsByRun: counts,
+      findingsByRun,
+      onGoToReview: () => {},
+    });
+
+    expect(screen.queryByText(/finding\(s\)/)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "1 Critical finding" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "2 Warning findings" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Suggestion findings/ })).not.toBeInTheDocument();
+    expect(screen.getByText(/1 blockers/)).toBeInTheDocument();
+  });
+
+  it("clicking a chip asks the tab to open that run filtered to that severity", () => {
+    const onGoToReview = vi.fn();
+    renderRuns([run({ status: "done", findings_count: 3, blockers: 1, score: 40 })], {
+      countsByRun: counts,
+      findingsByRun,
+      onGoToReview,
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "2 Warning findings" }));
+    expect(onGoToReview).toHaveBeenCalledWith("run-1", "WARNING");
+  });
+
+  it("a tile with no review behind it renders no severity buttons at all", () => {
+    // Failed runs never persist a review, so they never make it into the maps.
+    renderRuns([run({ status: "done", findings_count: 3, blockers: 1, score: 40 })], {
+      onGoToReview: () => {},
+    });
+
+    expect(screen.queryByRole("button", { name: /findings$/ })).not.toBeInTheDocument();
+    expect(screen.getByText(/1 blockers/)).toBeInTheDocument();
   });
 });

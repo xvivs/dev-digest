@@ -1,0 +1,14 @@
+{
+  "popover": {
+    "titleRun": "{count} findings in this run",
+    "titleReview": "{count} findings in this review",
+    "loading": "Loading findings…",
+    "empty": "No findings in this run.",
+    "error": "Could not load findings.",
+    "more": "+{count} more"
+  },
+  "cell": {
+    "none": "—",
+    "label": "{count, plural, one {# {severity} finding} other {# {severity} findings}}"
+  }
+}
