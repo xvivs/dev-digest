@@ -38,6 +38,8 @@ lives in the engineering-insights skill).
   `FindingsTab`'s `?severity=` target on the render the async reviews first
   arrive on. (`src/app/repos/[repoId]/pulls/[number]/_components/FindingsPanel/FindingsPanel.tsx:45-48`) _(2026-09-20)_
 
+- **Animate a disclosure with `grid-template-rows: 0fr → 1fr`, never `height` or `max-height`** — `height: auto` does not interpolate without `interpolate-size: allow-keywords` (not Baseline yet), and `max-height` needs a guessed ceiling that breaks the moment the body holds Markdown or a nested panel — which every collapsible body here does. The keyframes live in `client/src/vendor/ui/styles.css:277-296` and the two-node structure that makes them work (`display: grid` outside, `min-height: 0; overflow: hidden` inside — without `min-height: 0` the 0fr track floors at min-content) is in `client/src/vendor/ui/primitives/Collapse.tsx:74-88`. No JS ever measures a node. _(2026-09-20)_
+
 ## What Doesn't Work
 
 ## Codebase Patterns
@@ -78,6 +80,8 @@ lives in the engineering-insights skill).
   (`Math.min(focusIdx, shown.length - 1)`) instead of keeping a corrected copy
   in state (`src/app/repos/[repoId]/pulls/[number]/_components/FindingsPanel/FindingsPanel.tsx:60`). _(2026-09-20)_
 
+- **`FindingsPopover` learns which severity chip is hovered by DOM event delegation (`data-severity`), not by a prop or context — and that is load-bearing, not a shortcut** — `SeverityIcons` is `React.memo` precisely because the PR list re-polls every 60s (`client/src/components/severity-icons/SeverityIcons.tsx:86-87`); a new callback prop would need a `useCallback` at every call site, and a context consumer would re-render on every pointer move. Instead each chip carries `data-severity` (`SeverityIcons.tsx:71,80`) and the popover reads `e.target.closest("[data-severity]")` inside handlers it already had (`client/src/components/findings-popover/FindingsPopover.tsx:82-86`). This only works because the popover listens on `onMouseOver`/`onFocus`, which bubble — `onMouseEnter` would not. Validate the attribute with the exported `isSeverity` guard; it is DOM state, not a typed value. _(2026-09-20)_
+
 ## Tool & Library Notes
 
 - In this worktree, `pnpm typecheck` / `pnpm test` / any `pnpm exec …` first
@@ -90,6 +94,8 @@ lives in the engineering-insights skill).
   Both produced clean results once called this way. _(2026-09-19)_
 
 - **`fireEvent.mouseEnter` never reaches an `onMouseEnter` handler under React 19** — React synthesises enter/leave from delegated `mouseover`/`mouseout`, and `mouseenter` does not bubble, so it never reaches the root delegate. A hover test written with it passes while asserting nothing. Use `fireEvent.mouseOver(el)` / `fireEvent.mouseOut(el, { relatedTarget: document.body })`. `fireEvent.focus`/`blur` DO work. `@testing-library/user-event` is not a dependency here, so `userEvent.hover` is not an option. _(2026-09-20)_
+
+- **jsdom implements neither `Element.getAnimations()` nor `animationend`, so an exit animation that unmounts on `onAnimationEnd` leaves the node in the DOM forever under vitest** — `Collapse` waits on `ref.current?.getAnimations?.() ?? []` and treats the empty list as "already finished" (`client/src/vendor/ui/primitives/Collapse.tsx:54-66`), which makes the unmount synchronous in jsdom and keeps the DOM contract identical to a plain `{open && …}`. An `animationend` listener would simply never fire there, and every existing test asserting that a collapsed body is gone would have started passing for the wrong reason or hanging. Verified in Chrome: unmount lands at ~210ms for an OUT_MS of 180. _(2026-09-20)_
 
 ## Recurring Errors & Fixes
 
@@ -122,6 +128,8 @@ lives in the engineering-insights skill).
 
 - **A PR timeline row that shows only `· N blockers` and no severity chips is a `run_id` join miss, not a styling bug.** `FindingsTab` keys `countsByRun` by `review.run_id` (`src/app/repos/[repoId]/pulls/[number]/_components/FindingsTab/FindingsTab.tsx:90`), `RunHistory` reads `countsByRun.get(r.run_id) ?? ZERO_COUNTS`, and `SeverityIcons` returns `null` for an all-zero tally (`src/components/severity-icons/SeverityIcons.tsx:42`) — so a review whose `run_id` matches no row in `prRuns` renders nothing at all, with no element and no `aria-label` left on the page to grep for. Seeded PR #482 of `acme/payments-api` shows it: the Review runs section reports `1 CRITICAL · 1 WARNING` while the timeline row above it has no chips. Check the join before touching any CSS. _(2026-09-20)_
 
+- **"+N more" in the findings popover counted against a number from a different source than the list it summarised** — `total` reaches the panel from the severity tally (`PrMeta.last_review_findings` on the list, `r.findings_count` in the timeline), while the previewed rows come from `GET /pulls/:id/reviews`; the two are computed independently and the comment at `client/src/app/repos/[repoId]/pulls/_components/PrFindingsCell/PrFindingsCell.tsx:42-46` already warned they can disagree. Fixed by counting from the loaded findings once the panel is scoped (`client/src/components/findings-popover/FindingsPopover.tsx:287-291`), which is safe there because the `error`/`loading`/`undefined` guards above it have already proven they arrived. When a component holds two numbers for the same thing, prefer the one derived from what is actually on screen. _(2026-09-20)_
+
 ## Session Notes
 
 - Cost Badge (L01, client half): added `RunCostValue` + `formatCost`/`exactCost`
@@ -151,5 +159,8 @@ lives in the engineering-insights skill).
   `tsc --noEmit` clean. _(2026-09-20)_
 ### 2026-09-20 — FINDINGS feature (client) session
 Shipped the severity surface: a shared `severity-icons` + `findings-popover` pair under `src/components/`, a `PrFindingsCell` FINDINGS column between SCORE and STATUS on the PR list, and the tally/filter row inside `FindingsPanel`. Hover previews load lazily off the existing `usePrReviews` cache, so the 60s-polled list ships counts only. Verified in a real browser against a throwaway seeded DB — which is the only reason the vendored-barrel value-import 500 (see Recurring Errors & Fixes) was caught at all; typecheck and 85 vitest tests were green the whole time it was broken. Two loose ends from the parallel agents were closed here: the unconsumed `prReview.timeline.goToSeverity` key was removed (`SeverityIcons` owns its own `aria-label`), and the `borderColor`/`borderLeftColor` React warning in `FindingCard/styles.ts` was fixed by going all-longhand per side.
+
+### 2026-09-20 — animated disclosure + severity-scoped popover session
+Added `Collapse` to `@devdigest/ui` (`primitives/Collapse.tsx`) and routed all four collapsible regions through it — `ReviewRunAccordion`, `FindingCard`, `TraceSection`, `ToolCallRow` — which also closed an accessibility gap: every trigger now carries `aria-expanded`/`aria-controls`, and three that were bare `div`s gained `role="button"` plus Enter/Space. `FindingsPopover` now scopes its preview to the severity chip under the cursor via `data-severity` delegation, with new ICU keys `popover.titleRunSeverity`/`titleReviewSeverity`. Landing this in `vendor/ui` is a deliberate break from the old blanket "do not touch vendor" rule, recorded in `docs/adr/0003-collapse-in-vendored-ui.md` and reflected in both `CLAUDE.md` files. Verified: `tsc --noEmit` clean, vitest 96/96 (up from 85; `ReviewRunAccordion` had no test at all before), browser-checked in Chrome, and e2e 10/10. Left undone: `ToolCallRow` is unreachable from the browser because every seeded trace carries `tool_calls: []`, so it rests on unit tests only.
 
 ## Open Questions
