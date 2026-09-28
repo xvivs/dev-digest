@@ -1,6 +1,6 @@
 # Spec: Skills
 
-**Spec ID:** SPEC-02 · **Status:** draft · **Lesson:** L02
+**Spec ID:** SPEC-02 · **Status:** implemented (see Known gaps) · **Lesson:** L02
 
 **Affected modules:** `server` (new `skills` module · agents · reviews/run-executor · db · seed) ·
 `client` (new `/skills` route · agents editor · RunTraceDrawer · vendor/ui Markdown · nav) ·
@@ -94,6 +94,8 @@ spec implements.
 - **AC-4** The Add Skill button shall open a menu with *Create* and *Import from file*.
 - **AC-5** If a skill has `needs_vetting`, then its card shall show a "needs vetting"
   badge, and switching it on shall open a *Review & trust* dialog instead of enabling it.
+  Confirming sends the `version` the person reviewed; if the body changed since, the
+  server refuses with 409 and nothing is vetted.
 
 ### Skill editor
 
@@ -263,6 +265,16 @@ Protocol:
 - [ ] An enabled skill shows as its own block in the trace; a disabled one does not.
 - [ ] An import went through the preview, and the archive's script never ran (no marker file).
 - [ ] The control experiment reproduces on both agents.
+
+## Known gaps
+
+Found during implementation review. Each one is deliberate for this lesson and listed so
+nobody mistakes the ACs for full coverage.
+
+| AC | Gap | Why it stays |
+|---|---|---|
+| AC-8 | The dirty-form guard covers skill cards, editor tabs, the Add menu and tab close (`beforeunload`). Sidebar and breadcrumb links are not gated | App Router exposes no route-change interception; gating them means wrapping every AppShell link, a change to the shell, not to Skills |
+| AC-27 | The trace shows `skills_tokens` for one model call. In map-reduce it does not render the per-chunk multiplier | Default strategy is single-pass, where the multiplier is 1. A `skills_chunk_count` field belongs with the cost work in a later lesson |
 
 ## Open questions
 

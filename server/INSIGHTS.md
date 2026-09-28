@@ -51,6 +51,8 @@ lives in the engineering-insights skill).
 
 - **`pnpm typecheck` in `server/` fails with `TS2307: Cannot find module 'openai'` / `'zod'` from `../reviewer-core/src/llm/*.ts` in a fresh worktree** — the server type-checks reviewer-core's raw source through the tsconfig path alias (`server/tsconfig.json` `paths`), so reviewer-core's own deps must be installed; fix: `cd reviewer-core && npm ci` (CI does the same step in `.github/workflows/server-unit.yml`). The follow-on `TS2322 'unknown' is not assignable to 'T'` errors in `src/adapters/llm/*.ts` are the same cause, not a real type bug. _(2026-09-28)_
 
+- **Changing an exported TypeScript shape can leave `tsc --noEmit -p tsconfig.json` green while `server/test/**` breaks: the server tsconfig includes only `src/**/*.ts` (`server/tsconfig.json:28`), and vitest strips types without checking them** — changing `PromptParts.skills` from `string[]` to `SkillInput[]` broke `test/prompt-structured.test.ts` and `test/prompt-callers.test.ts` with no type error, only failing assertions (`### undefined`). After any contract change, run the full `vitest run`, or grep `test/` for the old shape; typecheck alone proves nothing about `test/`. `reviewer-core/tsconfig.json:28` has the same `src/**` include. _(2026-09-28)_
+
 ## Session Notes
 
 ### 2026-09-19 — Cost Badge (server) session
