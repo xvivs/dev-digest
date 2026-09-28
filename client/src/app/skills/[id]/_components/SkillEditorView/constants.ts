@@ -9,3 +9,6 @@ export const SKELETON_BODY_HEIGHT = 200;
 
 /** Width (px) of the "Discard changes?" confirm modal. */
 export const DIRTY_GUARD_MODAL_WIDTH = 440;
+
+/** `?fromVersion=N`: the Config tab opens vN as an unsaved draft (ADR 0016, restore "Edit"). */
+export const FROM_VERSION_PARAM = "fromVersion";

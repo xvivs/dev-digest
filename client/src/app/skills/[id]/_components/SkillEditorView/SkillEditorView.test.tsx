@@ -24,6 +24,8 @@ const h = vi.hoisted(() => ({
   search: "",
   skill: { data: undefined as unknown, isLoading: false, isError: false, error: null as unknown, refetch: vi.fn() },
   skills: [] as unknown[],
+  versions: [] as unknown[],
+  snapshot: undefined as unknown,
 }));
 
 vi.mock("next/navigation", () => ({
@@ -45,6 +47,13 @@ vi.mock("@/lib/hooks", async (importOriginal) => {
     useDeleteSkill: () => ({ mutate: vi.fn(), isPending: false }),
     useVetSkill: () => ({ mutateAsync: vi.fn(), isPending: false }),
     useCreateSkill: () => ({ mutateAsync: vi.fn(), isPending: false }),
+    useSkillVersions: () => ({ data: h.versions, isLoading: false, isError: false, refetch: vi.fn() }),
+    useSkillVersion: (_id: string, version: number | null) => ({
+      data: version == null ? undefined : h.snapshot,
+      isLoading: false,
+      isError: false,
+    }),
+    useRestoreSkillVersion: () => ({ mutate: vi.fn(), reset: vi.fn(), isPending: false, isError: false }),
   };
 });
 
@@ -77,6 +86,8 @@ beforeEach(() => {
     { ...OTHER, agent_count: 0 },
   ];
   h.skill = { data: SKILL, isLoading: false, isError: false, error: null, refetch: vi.fn() };
+  h.versions = [];
+  h.snapshot = undefined;
 });
 afterEach(cleanup);
 
@@ -157,5 +168,48 @@ describe("SkillEditorView", () => {
     fireEvent.click(screen.getByText("Flags breaking route changes."));
     expect(screen.getByRole("dialog", { name: "Discard changes?" })).toBeInTheDocument();
     expect(h.push).not.toHaveBeenCalled();
+  });
+
+  describe("restore Edit hand-off (ADR 0016)", () => {
+    const V3 = { ...SKILL, version: 3, body: "# Rule v3" };
+    const snap = (version: number, body: string) => ({
+      skill_id: "sk1",
+      version,
+      name: SKILL.name,
+      description: SKILL.description,
+      type: SKILL.type,
+      change_note: null,
+      created_at: "2026-09-29T10:00:00.000Z",
+      body,
+    });
+
+    it("Versions → Restore… → Edit opens Config with fromVersion", () => {
+      h.search = "tab=versions";
+      h.skill = { data: V3, isLoading: false, isError: false, error: null, refetch: vi.fn() };
+      h.versions = [snap(3, "# Rule v3"), snap(2, "# Rule v2"), snap(1, "# Rule")];
+      renderView();
+      fireEvent.click(screen.getByRole("button", { name: "Restore v2" }));
+      fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+      expect(h.replace).toHaveBeenCalledWith("/skills/sk1?tab=config&fromVersion=2");
+    });
+
+    it("?fromVersion seeds the Config draft, and leaving drops the param", () => {
+      h.search = "tab=config&fromVersion=2";
+      h.skill = { data: V3, isLoading: false, isError: false, error: null, refetch: vi.fn() };
+      h.snapshot = snap(2, "# Rule v2");
+      renderView();
+      expect(screen.getByDisplayValue("# Rule v2")).toBeInTheDocument();
+      // The seeded draft is dirty, so leaving asks first — then lands without the seed.
+      fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+      fireEvent.click(screen.getByRole("button", { name: "Discard changes" }));
+      expect(h.replace).toHaveBeenCalledWith("/skills/sk1?tab=preview");
+    });
+
+    it("ignores fromVersion on any tab but Config", () => {
+      h.search = "tab=preview&fromVersion=2";
+      h.snapshot = snap(2, "# Rule v2");
+      renderView();
+      expect(screen.queryByDisplayValue("# Rule v2")).not.toBeInTheDocument();
+    });
   });
 });

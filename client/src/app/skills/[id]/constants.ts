@@ -8,7 +8,7 @@ export interface SkillEditorTab {
   icon: IconName;
 }
 
-/** Skill editor tabs (SPEC-02 D3): Evals/Stats/Versions render as placeholders. */
+/** Skill editor tabs (SPEC-02 D3): Evals/Stats still render as placeholders. */
 export const SKILL_EDITOR_TABS: readonly SkillEditorTab[] = [
   { key: DEFAULT_EDITOR_TAB, labelKey: "detail.tabs.config", icon: "Settings" },
   { key: "preview", labelKey: "detail.tabs.preview", icon: "Eye" },

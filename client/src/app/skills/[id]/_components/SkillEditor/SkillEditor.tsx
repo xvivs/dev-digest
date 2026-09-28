@@ -12,9 +12,27 @@ import { SKILL_EDITOR_TABS } from "../../constants";
 import { ConfigTab } from "./_components/ConfigTab";
 import { PreviewTab } from "./_components/PreviewTab";
 import { PlaceholderTab } from "./_components/PlaceholderTab";
+import { VersionsTab } from "./_components/VersionsTab";
 import { s } from "./styles";
 
-export function SkillEditor({ skill, tab, onTab }: { skill: Skill; tab: string; onTab: (t: string) => void }) {
+export function SkillEditor({
+  skill,
+  tab,
+  onTab,
+  fromVersion = null,
+  onEditVersion,
+  onDraftSaved,
+}: {
+  skill: Skill;
+  tab: string;
+  onTab: (t: string) => void;
+  /** Config opens this snapshot as an unsaved draft (restore "Edit", ADR 0016). */
+  fromVersion?: number | null;
+  /** Versions → "Edit": switch to Config seeded from vN. */
+  onEditVersion?: (version: number) => void;
+  /** Config saved the draft that came from `fromVersion`. */
+  onDraftSaved?: () => void;
+}) {
   const t = useTranslations("skills");
   const guard = useNavigationGuard();
   const tabs = SKILL_EDITOR_TABS.map((tb) => ({ key: tb.key, label: t(tb.labelKey), icon: tb.icon }));
@@ -25,7 +43,7 @@ export function SkillEditor({ skill, tab, onTab }: { skill: Skill; tab: string; 
         <Tabs tabs={tabs} value={tab} onChange={(k) => guard.confirmNavigation(() => onTab(k))} pad="0 24px" />
       </div>
       <div style={s.body}>
-        {tab === "config" && <ConfigTab skill={skill} />}
+        {tab === "config" && <ConfigTab skill={skill} fromVersion={fromVersion} onDraftSaved={onDraftSaved} />}
         {tab === "preview" && <PreviewTab body={skill.body} />}
         {tab === "evals" && (
           <PlaceholderTab titleKey="placeholder.evals.title" bodyKey="placeholder.evals.body" />
@@ -34,7 +52,12 @@ export function SkillEditor({ skill, tab, onTab }: { skill: Skill; tab: string; 
           <PlaceholderTab titleKey="placeholder.stats.title" bodyKey="placeholder.stats.body" />
         )}
         {tab === "versions" && (
-          <PlaceholderTab titleKey="placeholder.versions.title" bodyKey="placeholder.versions.body" />
+          <VersionsTab
+            skill={skill}
+            // Versions holds no draft, but route through the guard anyway so
+            // this stays correct if that ever changes.
+            onEditVersion={(v) => guard.confirmNavigation(() => onEditVersion?.(v))}
+          />
         )}
       </div>
     </div>

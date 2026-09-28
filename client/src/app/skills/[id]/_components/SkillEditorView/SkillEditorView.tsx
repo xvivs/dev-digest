@@ -20,8 +20,8 @@ import { SkillsListPane } from "@/app/skills/_components/SkillsListPane";
 import { CreateSkillModal } from "@/app/skills/_components/CreateSkillModal";
 import { ImportSkillDrawer } from "@/app/skills/_components/ImportSkillDrawer";
 import { SkillEditor } from "../SkillEditor";
-import { DIRTY_GUARD_MODAL_WIDTH, HEADER_ICON_SIZE, SKELETON_BODY_HEIGHT, SKELETON_TITLE } from "./constants";
-import { resolveTab, withTab } from "./helpers";
+import { DIRTY_GUARD_MODAL_WIDTH, FROM_VERSION_PARAM, HEADER_ICON_SIZE, SKELETON_BODY_HEIGHT, SKELETON_TITLE } from "./constants";
+import { editorQuery, parseFromVersion, resolveTab } from "./helpers";
 import { s } from "./styles";
 
 export function SkillEditorView({ id }: { id: string }) {
@@ -35,10 +35,17 @@ export function SkillEditorView({ id }: { id: string }) {
   const [importing, setImporting] = React.useState(false);
 
   const tab = resolveTab(search.get("tab"));
+  const fromVersion = tab === "config" ? parseFromVersion(search.get(FROM_VERSION_PARAM)) : null;
+  const navigate = (next: string, version: number | null = null) =>
+    router.replace(`${SKILLS_HREF}/${encodeURIComponent(id)}?${editorQuery(search.toString(), next, version)}`);
   // Not guarded here — SkillEditor's Tabs already route every change through
-  // `guard.confirmNavigation` before calling this.
-  const setTab = (next: string) =>
-    router.replace(`${SKILLS_HREF}/${encodeURIComponent(id)}?${withTab(search.toString(), next)}`);
+  // `guard.confirmNavigation` before calling this. Any tab change drops
+  // `fromVersion`, so the restore draft seeds Config once.
+  const setTab = (next: string) => navigate(next);
+  // Restore popup → "Edit": Config opens vN as an unsaved draft (ADR 0016).
+  const editFromVersion = (version: number) => navigate("config", version);
+  // After the draft is saved it is the current version; drop the seed.
+  const clearFromVersion = () => navigate("config");
 
   // A mutable ref, not state: the Config tab reports every keystroke's dirty
   // flag, and a `dirty` re-render of this whole screen per keystroke would be
@@ -134,7 +141,15 @@ export function SkillEditorView({ id }: { id: string }) {
                 </div>
               </div>
               <div style={s.editorBody}>
-                <SkillEditor key={skill.id} skill={skill} tab={tab} onTab={setTab} />
+                <SkillEditor
+                  key={skill.id}
+                  skill={skill}
+                  tab={tab}
+                  onTab={setTab}
+                  fromVersion={fromVersion}
+                  onEditVersion={editFromVersion}
+                  onDraftSaved={clearFromVersion}
+                />
               </div>
             </div>
           )}
