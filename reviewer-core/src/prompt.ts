@@ -76,9 +76,11 @@ export function neutralizeDelimiters(text: string): string {
  */
 function renderSkillsBlock(skills: SkillInput[] | undefined): string | undefined {
   if (!skills || skills.length === 0) return undefined;
-  const body = skills
-    .map((sk) => `### ${neutralizeDelimiters(sk.name)}\n${neutralizeDelimiters(sk.body)}`)
-    .join('\n\n');
+  // Neutralize the ASSEMBLED text, not each field: a tag split across a
+  // name/body (or skill/skill) join would survive per-field escaping.
+  const body = neutralizeDelimiters(
+    skills.map((sk) => `### ${sk.name}\n${sk.body}`).join('\n\n'),
+  );
   return `${SKILLS_PREAMBLE}\n<skills>\n${body}\n</skills>`;
 }
 
