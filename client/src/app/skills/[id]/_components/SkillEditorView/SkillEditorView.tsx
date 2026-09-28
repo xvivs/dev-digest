@@ -20,7 +20,7 @@ import { SkillsListPane } from "@/app/skills/_components/SkillsListPane";
 import { CreateSkillModal } from "@/app/skills/_components/CreateSkillModal";
 import { ImportSkillDrawer } from "@/app/skills/_components/ImportSkillDrawer";
 import { SkillEditor } from "../SkillEditor";
-import { HEADER_ICON_SIZE, SKELETON_BODY_HEIGHT, SKELETON_TITLE } from "./constants";
+import { DIRTY_GUARD_MODAL_WIDTH, HEADER_ICON_SIZE, SKELETON_BODY_HEIGHT, SKELETON_TITLE } from "./constants";
 import { resolveTab, withTab } from "./helpers";
 import { s } from "./styles";
 
@@ -152,7 +152,7 @@ function DirtyGuardModal({ onDiscard, onCancel }: { onDiscard: () => void; onCan
   const tShell = useTranslations("shell");
   return (
     <Modal
-      width={440}
+      width={DIRTY_GUARD_MODAL_WIDTH}
       title={t("config.dirtyGuard.title")}
       closeLabel={tShell("ui.close")}
       onClose={onCancel}

@@ -81,7 +81,7 @@ function KeyRow({
         </Button>
       </div>
       {res && (
-        <div style={s.result(res.ok)}>
+        <div role="status" aria-live="polite" style={s.result(res.ok)}>
           {res.ok ? <Icon.CheckCircle size={13} /> : <Icon.XCircle size={13} />}
           {res.message}
         </div>

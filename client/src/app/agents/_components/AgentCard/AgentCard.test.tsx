@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach, vi, beforeEach } from "vitest";
 import { screen, cleanup, fireEvent, within } from "@testing-library/react";
 import type { Agent } from "@devdigest/shared";
 import { renderWithProviders } from "@/test/render";
-import messages from "../../../messages/en/agents.json";
+import messages from "../../../../../messages/en/agents.json";
 
 const { mutateMock, pushMock } = vi.hoisted(() => ({ mutateMock: vi.fn(), pushMock: vi.fn() }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: pushMock }) }));

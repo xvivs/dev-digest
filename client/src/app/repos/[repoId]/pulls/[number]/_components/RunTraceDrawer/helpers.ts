@@ -36,3 +36,13 @@ export function formatApproxTokens(n: number): string {
   if (n < 1000) return `≈${n} tokens`;
   return `≈${(n / 1000).toFixed(1)}k tokens`;
 }
+
+/**
+ * Whether a skill referenced in a trace's `skills_used` list has since been
+ * deleted (AC-27). `knownSkillIds` is `null`/`undefined` while the live skills
+ * list is still loading — deliberately returns `false` in that case so
+ * "deleted" never flashes on a skill that simply hasn't loaded yet.
+ */
+export function isSkillDeleted(knownSkillIds: Set<string> | null | undefined, id: string): boolean {
+  return knownSkillIds != null && !knownSkillIds.has(id);
+}

@@ -9,7 +9,7 @@ import type { RunTrace, FindingRecord } from "@devdigest/shared";
 import { RunCostValue } from "@/components/run-cost-value";
 import { useSkills } from "@/lib/hooks";
 import { PROMPT_COLORS } from "../../constants";
-import { formatApproxTokens, formatSeconds, formatTokens } from "../../helpers";
+import { formatApproxTokens, formatSeconds, formatTokens, isSkillDeleted } from "../../helpers";
 import { s } from "../../styles";
 import { TraceSection } from "../TraceSection";
 import { ToolCallRow } from "../ToolCallRow";
@@ -104,7 +104,7 @@ export function TraceBody({ trace, findings }: { trace: RunTrace; findings: Find
                       <span style={s.skillsUsedMeta}>
                         {t("trace.prompt.skillsUsedVersion", { version: su.version })} · {formatApproxTokens(su.tokens)}
                       </span>
-                      {knownSkillIds != null && !knownSkillIds.has(su.id) && (
+                      {isSkillDeleted(knownSkillIds, su.id) && (
                         <span style={s.skillsUsedDeleted}>{t("trace.prompt.skillsUsedDeleted")}</span>
                       )}
                     </div>

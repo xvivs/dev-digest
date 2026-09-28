@@ -49,6 +49,7 @@ export function ImportSkillDrawer({ onClose }: { onClose: () => void }) {
   const toast = useToast();
   // 409/422 render inline next to the field, so skip the global toast (ADR 0011).
   const create = useCreateSkill({ meta: { errorSurface: "local" } });
+  const nameErrorId = React.useId();
 
   const [phase, setPhase] = React.useState<Phase>("pick");
   const [reading, setReading] = React.useState(false);
@@ -170,10 +171,17 @@ export function ImportSkillDrawer({ onClose }: { onClose: () => void }) {
           <div style={s.trustBanner}>{t("drawer.trustBanner")}</div>
 
           <FormField label={t("file.nameLabel")} hint={t("file.nameHint")} required>
-            <TextInput value={name} onChange={setName} placeholder={t("file.namePlaceholder")} mono />
+            <TextInput
+              value={name}
+              onChange={setName}
+              placeholder={t("file.namePlaceholder")}
+              mono
+              aria-describedby={submitError?.field === "name" ? nameErrorId : undefined}
+              aria-invalid={submitError?.field === "name"}
+            />
           </FormField>
           {submitError?.field === "name" && (
-            <div role="alert" style={s.fieldError}>
+            <div id={nameErrorId} role="alert" style={s.fieldError}>
               {submitError.message}
             </div>
           )}

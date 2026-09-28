@@ -11,6 +11,7 @@ import { useTranslations } from "next-intl";
 import { Button, Modal } from "@devdigest/ui";
 import { useVetSkill, useUpdateSkill } from "@/lib/hooks";
 import { hasHtmlComment, splitInvisibleChars } from "../../helpers";
+import { InvisibleCharSegments } from "../InvisibleCharSegments";
 import { s } from "./styles";
 
 export function VetSkillModal({
@@ -65,15 +66,7 @@ export function VetSkillModal({
         {commented && <div style={s.warning}>{t("preview.commentWarning")}</div>}
         <div style={s.sourceCaption}>{t("vet.sourceCaption")}</div>
         <pre className="mono" style={s.source}>
-          {segments.map((seg, i) =>
-            seg.invisibleLabel ? (
-              <mark key={i} style={s.invisibleMark} title={seg.invisibleLabel}>
-                [{seg.invisibleLabel}]
-              </mark>
-            ) : (
-              <React.Fragment key={i}>{seg.text}</React.Fragment>
-            ),
-          )}
+          <InvisibleCharSegments segments={segments} />
         </pre>
       </div>
     </Modal>

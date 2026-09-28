@@ -16,6 +16,7 @@ import React from "react";
 import { useTranslations } from "next-intl";
 import { Tabs, Markdown } from "@devdigest/ui";
 import { hasHtmlComment, hasInvisibleChars, splitInvisibleChars } from "@/app/skills/helpers";
+import { InvisibleCharSegments } from "@/app/skills/_components/InvisibleCharSegments";
 import { DEFAULT_PREVIEW_MODE, PREVIEW_MODES, type PreviewMode } from "./constants";
 import { s } from "./styles";
 
@@ -24,7 +25,7 @@ export function SkillBodyPreview({ body }: { body: string }) {
   const [mode, setMode] = React.useState<PreviewMode>(DEFAULT_PREVIEW_MODE);
 
   const tabs = PREVIEW_MODES.map((m) => ({ key: m, label: t(`preview.${m}`) }));
-  const segments = React.useMemo(() => splitInvisibleChars(body), [body]);
+  const segments = splitInvisibleChars(body);
   const commented = hasHtmlComment(body);
   const invisible = hasInvisibleChars(body);
 
@@ -42,15 +43,7 @@ export function SkillBodyPreview({ body }: { body: string }) {
         </div>
       ) : (
         <pre className="mono" style={s.source}>
-          {segments.map((seg, i) =>
-            seg.invisibleLabel ? (
-              <mark key={i} style={s.invisibleMark} title={seg.invisibleLabel}>
-                [{seg.invisibleLabel}]
-              </mark>
-            ) : (
-              <React.Fragment key={i}>{seg.text}</React.Fragment>
-            ),
-          )}
+          <InvisibleCharSegments segments={segments} />
         </pre>
       )}
     </div>

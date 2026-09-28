@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { Repo } from "@devdigest/shared";
-import { homeView, repoPullsHref } from "./helpers";
+import { homeView } from "./helpers";
 
 const repo = { id: "r1", full_name: "acme/api" } as Repo;
 
@@ -21,11 +21,5 @@ describe("homeView", () => {
       repo,
       href: "/repos/r1/pulls",
     });
-  });
-});
-
-describe("repoPullsHref", () => {
-  it("builds the PR list path", () => {
-    expect(repoPullsHref("x")).toBe("/repos/x/pulls");
   });
 });

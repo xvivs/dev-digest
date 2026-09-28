@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import { Icon, Avatar, Badge, Button, Tabs } from "@devdigest/ui";
 import type { PrDetail } from "@/lib/types";
 import { STATUS_META } from "@/app/repos/[repoId]/pulls/constants";
+import type { PrTab } from "@/app/repos/[repoId]/pulls/[number]/_components/PrDetailView/constants";
 import { RunReviewDropdown } from "../RunReviewDropdown";
 import { isSettledPr } from "./helpers";
 import { s } from "./styles";
@@ -12,11 +13,11 @@ import { s } from "./styles";
 export interface PrDetailHeaderProps {
   pr: PrDetail;
   prId: string | null;
-  tab: string;
+  tab: PrTab;
   findingsCount: number;
   /** github.com PR URL; null when the repo's full_name isn't known yet. */
   githubUrl?: string | null;
-  onSetTab: (tab: string) => void;
+  onSetTab: (tab: PrTab) => void;
   /** Fired the moment a review is kicked off (the page switches to the runs tab). */
   onRunStart: () => void;
 }
@@ -81,7 +82,9 @@ export function PrDetailHeader({ pr, prId, tab, findingsCount, githubUrl, onSetT
       )}
       <Tabs
         value={tab}
-        onChange={onSetTab}
+        // Tabs is a generic string-keyed primitive; the keys below are always
+        // one of PR_TABS, so the cast back to PrTab is safe.
+        onChange={(k) => onSetTab(k as PrTab)}
         pad="0"
         tabs={[
           { key: "overview", label: t("detail.tabs.overview"), icon: "FileText" },

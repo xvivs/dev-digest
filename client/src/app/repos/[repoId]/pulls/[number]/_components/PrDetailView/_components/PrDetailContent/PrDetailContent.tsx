@@ -18,8 +18,8 @@ import { FindingsTab } from "@/app/repos/[repoId]/pulls/[number]/_components/Fin
 import { DiffTab } from "@/app/repos/[repoId]/pulls/[number]/_components/DiffTab";
 import { RunTraceDrawer } from "@/app/repos/[repoId]/pulls/[number]/_components/RunTraceDrawer";
 import { PrDetailSkeleton } from "../PrDetailSkeleton";
-import { DEFAULT_TAB, RUNS_TAB } from "../../constants";
-import { parseSeverity, prDetailHref } from "../../helpers";
+import { RUNS_TAB, type PrTab } from "../../constants";
+import { parseSeverity, parseTab, prDetailHref } from "../../helpers";
 import { s } from "../../styles";
 
 export interface PrDetailContentProps {
@@ -49,28 +49,22 @@ export function PrDetailContent({ repoId, number, repoFullName }: PrDetailConten
   const { mutate: deleteRun } = useDeleteRun(prId);
   const liveRunIds = React.useMemo(() => (activeRuns ?? []).map((r) => r.run_id), [activeRuns]);
 
-  const tab = search.get("tab") ?? DEFAULT_TAB;
+  const tab: PrTab = parseTab(search.get("tab"));
   const traceRunId = search.get("trace");
   // ?severity= pre-filters the newest run's findings (the link a severity chip
   // elsewhere in the app points at). Anything outside the enum is dropped
   // rather than passed down as a filter nothing can match.
   const initialSeverity = parseSeverity(search.get("severity"));
 
-  const setParam = React.useCallback(
-    (key: string, val: string | null) =>
-      router.replace(prDetailHref(repoId, number, search.toString(), key, val)),
-    [router, repoId, number, search],
-  );
-  const setTab = React.useCallback((next: string) => setParam("tab", next), [setParam]);
-  const openRunsTab = React.useCallback(() => setParam("tab", RUNS_TAB), [setParam]);
-  const openTrace = React.useCallback((id: string) => setParam("trace", id), [setParam]);
-  const closeTrace = React.useCallback(() => setParam("trace", null), [setParam]);
-  const confirmDeleteRun = React.useCallback(
-    (id: string) => {
-      if (window.confirm(t("detail.confirmDeleteRun"))) deleteRun(id);
-    },
-    [t, deleteRun],
-  );
+  const setParam = (key: string, val: string | null) =>
+    router.replace(prDetailHref(repoId, number, search.toString(), key, val));
+  const setTab = (next: PrTab) => setParam("tab", next);
+  const openRunsTab = () => setParam("tab", RUNS_TAB);
+  const openTrace = (id: string) => setParam("trace", id);
+  const closeTrace = () => setParam("trace", null);
+  const confirmDeleteRun = (id: string) => {
+    if (window.confirm(t("detail.confirmDeleteRun"))) deleteRun(id);
+  };
 
   // Reviews come newest-first; each is its own run (grouped into accordions).
   // Memoised so the lookup maps FindingsTab derives from it stay referentially

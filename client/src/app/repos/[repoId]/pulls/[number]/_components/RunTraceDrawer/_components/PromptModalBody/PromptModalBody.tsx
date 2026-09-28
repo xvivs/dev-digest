@@ -36,9 +36,12 @@ export function PromptModalBody({ text }: { text: string }) {
   const t = useTranslations("runs");
   const [q, setQ] = React.useState("");
   const shownText = text || t("trace.empty");
-  const lines = React.useMemo(() => shownText.split("\n"), [shownText]);
+  const lines = React.useMemo(
+    () => shownText.split("\n").map((line, n) => ({ line, n })),
+    [shownText],
+  );
   const ql = q.trim().toLowerCase();
-  const shown = ql ? lines.filter((l) => l.toLowerCase().includes(ql)) : lines;
+  const shown = ql ? lines.filter(({ line }) => line.toLowerCase().includes(ql)) : lines;
   return (
     <div style={s.modalBody}>
       <div style={s.modalSearch}>
@@ -63,7 +66,7 @@ export function PromptModalBody({ text }: { text: string }) {
           <div style={s.modalNoMatches}>{t("trace.prompt.noMatches", { q: q.trim() })}</div>
         ) : (
           <pre className="mono" style={s.modalPre}>
-            {ql ? shown.map((l, i) => <div key={i}>{highlightLine(l, q)}</div>) : shownText}
+            {ql ? shown.map(({ line, n }) => <div key={n}>{highlightLine(line, q)}</div>) : shownText}
           </pre>
         )}
       </div>

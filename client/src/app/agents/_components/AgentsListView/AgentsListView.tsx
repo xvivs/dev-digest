@@ -8,7 +8,7 @@ import { Button, Dropdown, EmptyState, ErrorState, Skeleton, Icon, TextInput } f
 import { AppShell } from "@/components/app-shell";
 import { useAgents, useUpdateAgent } from "@/lib/hooks";
 import { agentEditorHref } from "../../helpers";
-import { AgentCard } from "@/components/agent-card";
+import { AgentCard } from "@/app/agents/_components/AgentCard";
 import { CreateAgentModal } from "./_components/CreateAgentModal";
 import { ADD_MENU_WIDTH, SEARCH_ICON_SIZE, SKELETON_CARD_COUNT, SKELETON_CARD_HEIGHT, TEMPLATES } from "./constants";
 import { filterAgents } from "./helpers";

@@ -1,14 +1,12 @@
 import { DEFAULT_EDITOR_TAB } from "@/app/agents/constants";
+import { resolveTab as resolveTabGeneric, withTab } from "@/lib/tabs";
 import { EDITOR_TABS } from "../../constants";
+
+const TAB_KEYS = EDITOR_TABS.map((tb) => tb.key);
 
 /** `?tab=` → a known editor tab key; anything else (missing, stale, typo) → the default tab. */
 export function resolveTab(raw: string | null): string {
-  return raw != null && EDITOR_TABS.some((tb) => tb.key === raw) ? raw : DEFAULT_EDITOR_TAB;
+  return resolveTabGeneric(raw, TAB_KEYS, DEFAULT_EDITOR_TAB);
 }
 
-/** The current query string with `tab` set, keeping every other param. */
-export function withTab(search: string, tab: string): string {
-  const sp = new URLSearchParams(search);
-  sp.set("tab", tab);
-  return sp.toString();
-}
+export { withTab };

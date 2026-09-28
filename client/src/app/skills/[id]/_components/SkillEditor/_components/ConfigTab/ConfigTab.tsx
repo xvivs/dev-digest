@@ -21,6 +21,7 @@ import { useDeleteSkill, useUpdateSkill } from "@/lib/hooks";
 import { useToast } from "@/lib/toast";
 import { useNavigationGuard } from "@/app/skills/navigation-guard";
 import { VetSkillModal } from "@/app/skills/_components/VetSkillModal";
+import { DELETE_MODAL_WIDTH } from "./constants";
 import { estimateTokens, isSkillDirty } from "./helpers";
 import { s } from "./styles";
 
@@ -154,7 +155,7 @@ export function ConfigTab({ skill }: { skill: Skill }) {
 
       {confirmingDelete && (
         <Modal
-          width={420}
+          width={DELETE_MODAL_WIDTH}
           title={t("config.delete")}
           closeLabel={tShell("ui.close")}
           onClose={() => setConfirmingDelete(false)}

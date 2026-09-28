@@ -6,7 +6,7 @@
    The skill name is a real <Link>: the keyboard, middle-click and prefetch
    path. A plain same-tab click on it, and on the rest of the card, pushes the
    href through the dirty-form navigation guard (see ../../navigation-guard).
-   Mirrors AgentCard (client/src/components/agent-card/AgentCard.tsx) — no
+   Mirrors AgentCard (client/src/app/agents/_components/AgentCard/AgentCard.tsx) — no
    stretched-link overlay, for the same agent-browser click reason. */
 "use client";
 

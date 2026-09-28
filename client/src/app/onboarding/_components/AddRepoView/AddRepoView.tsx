@@ -11,7 +11,8 @@ import { useTranslations } from "next-intl";
 import { Button, Icon, IconBtn, Kbd, TextInput, FormField } from "@devdigest/ui";
 import { useAddRepo } from "@/lib/hooks";
 import { ApiError } from "@/lib/api";
-import { API_KEYS_HREF, CLOSE_HREF, repoPullsHref } from "./constants";
+import { repoPullsHref } from "@/lib/routes";
+import { API_KEYS_HREF, CLOSE_HREF } from "./constants";
 import { s } from "./styles";
 
 export function AddRepoView() {
