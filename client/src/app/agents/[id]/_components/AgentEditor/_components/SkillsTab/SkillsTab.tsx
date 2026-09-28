@@ -64,12 +64,15 @@ export function SkillsTab({ agent }: { agent: Agent }) {
   const dragSkillId = React.useRef<string | null>(null);
 
   // Whenever nothing is queued AND no save is in flight, the query's own data
-  // IS the confirmed baseline — keep the rollback target current (a plain ref
-  // write during render; it never affects THIS render's output, only a future
-  // error's). `isPending` matters here: without it, a re-render that happens
-  // WHILE a save is outstanding would "confirm" its own not-yet-acked
-  // optimistic write, leaving nothing correct to roll back to on failure.
-  if (!debounceRef.current && !setAgentSkills.isPending) confirmedRef.current = links;
+  // IS the confirmed baseline — keep the rollback target current. Written
+  // after commit, not during render (component purity). `isPending` matters
+  // here: without it, a commit that happens WHILE a save is outstanding would
+  // "confirm" its own not-yet-acked optimistic write, leaving nothing correct
+  // to roll back to on failure.
+  const isSaving = setAgentSkills.isPending;
+  React.useEffect(() => {
+    if (!debounceRef.current && !isSaving) confirmedRef.current = links;
+  }, [links, isSaving]);
 
   // Plain function, not useCallback: it's never a memo-child prop or another
   // hook's dependency (the unmount effect below reads it through a ref
@@ -82,6 +85,9 @@ export function SkillsTab({ agent }: { agent: Agent }) {
   // (The hook's OWN unconditional onSuccess does not get this filtering for
   // free, which is why useSetAgentSkills carries its own generation guard.)
   function flush() {
+    // Cancel the queued timer too: the unmount effect can call this early,
+    // and a still-armed timeout would then send a second PUT.
+    if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = null;
     const toSave = latestRef.current;
     setAgentSkills.mutate(
@@ -113,7 +119,9 @@ export function SkillsTab({ agent }: { agent: Agent }) {
   // component is keyed by agent.id, so switching remounts it) or navigating
   // off the page entirely (SPEC-02 AC-16).
   const flushRef = React.useRef(flush);
-  flushRef.current = flush;
+  React.useLayoutEffect(() => {
+    flushRef.current = flush;
+  });
   React.useEffect(
     () => () => {
       if (debounceRef.current) flushRef.current();
@@ -146,7 +154,11 @@ export function SkillsTab({ agent }: { agent: Agent }) {
       <p style={s.hint}>{t("skills.orderHint")}</p>
       <p style={s.hint}>{t("skills.autosaveHint")}</p>
 
-      {saveError && <div style={s.saveError}>{saveError}</div>}
+      {saveError && (
+        <div role="alert" style={s.saveError}>
+          {saveError}
+        </div>
+      )}
 
       <div style={s.list}>
         {visibleRows.length === 0 ? (

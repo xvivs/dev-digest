@@ -199,7 +199,13 @@ describe("C2 SkillsTab — autosave debounce", () => {
       unmount();
       await vi.advanceTimersByTimeAsync(0);
     });
+    expect(putCalls).toHaveLength(1);
 
+    // The early flush must cancel the queued debounce, not leave it to fire a
+    // second PUT after the tab is gone.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(400);
+    });
     expect(putCalls).toHaveLength(1);
   });
 });
@@ -263,6 +269,6 @@ describe("C2 SkillsTab — response handling", () => {
     await settleDeep();
 
     expect(zuluCheckbox()).toHaveAttribute("aria-checked", "false"); // rolled back
-    expect(screen.getByText("Budget exceeded: 26 KB > 24 KB")).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent("Budget exceeded: 26 KB > 24 KB");
   });
 });
