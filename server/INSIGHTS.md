@@ -29,6 +29,12 @@ lives in the engineering-insights skill).
 
 - **Seeded run counters are copied into `run_traces`, so they must be edited in the `.values([...])` literal, not by a follow-up UPDATE** — `seed.ts` builds `trace.stats.findings` from `.returning()` on the `agent_runs` insert. An UPDATE after the fact fixes the row but leaves the trace document behind, and the run drawer then shows a different finding count than the list. _(2026-09-20)_
 
+- **`dependency-cruiser` in server deps is a runtime library for the repo-intel indexer, not an architecture lint of our own code** — `server/src/adapters/depgraph/index.ts:17` imports `cruise()` to graph *target* repos; there is no `.dependency-cruiser.*` config and no arch-check script, so an import-boundary lint would be a new, separate usage and must not share config with the `DepGraph` adapter. _(2026-09-28)_
+
+- **No production code uses `db.transaction(` — multi-step writes are non-atomic** — e.g. `server/src/modules/reviews/repository/run.repo.ts:92-105` (`deleteAgentRun`) deletes `reviews` then `agentRuns` in two independent queries although its comment requires both. A Drizzle `tx` is structurally a `Db`, so `new ReviewRepository(tx)` inside `db.transaction` works, but never use `container.reviewRepo` there: it memoizes a `db`-bound instance (`server/src/platform/container.ts:99-100`). _(2026-09-28)_
+
+- **The pgvector extension is created by the migrate script, not by a migration file** — `server/src/db/migrate.ts:23` runs `CREATE EXTENSION IF NOT EXISTS vector` before migrations; grepping only `src/db/migrations/` gives a false "extension missing". _(2026-09-28)_
+
 ## Tool & Library Notes
 
 - **`pnpm exec <bin>` / `pnpm run <script>` can fail non-interactively with `ERR_PNPM_IGNORED_BUILDS` even when `node_modules` is already correct** — both `pnpm db:generate` and `pnpm exec drizzle-kit generate` refused to run this way, erroring "Run \"pnpm approve-builds\" to pick which dependencies should be allowed to run scripts." Workaround: invoke the wrapper under `node_modules/.bin/` directly with `sh`, e.g. `sh node_modules/.bin/drizzle-kit generate`, `sh node_modules/.bin/tsx src/db/migrate.ts`, `sh node_modules/.bin/vitest run` — bypasses pnpm's pre-flight check entirely. _(2026-09-19)_
@@ -42,6 +48,8 @@ lives in the engineering-insights skill).
 - **A seeded DB can be stale rather than wrong: `reviews.run_id` was null on PR #482 even though `seed.ts` already closes that link.** The symptom (timeline runs with no severity chips) looks like a client styling bug, and grepping the client for the join is a dead end — the fix loop has lived at `src/db/seed.ts:698` since `0d3ef61`, is deliberately idempotent, and rewrites `runId`/`agentId` unconditionally on every run. The database simply predated that commit and nobody re-ran `pnpm db:seed`. **Check whether the seed already handles it, and just re-seed, before adding code**: an inline `update` next to the runs insert looks right but is strictly worse — it sits inside the `if (!existingRun)` guard, so it is skipped on exactly the already-seeded databases that need repairing. Read `seed.ts` end to end first; it is ~750 lines and its cross-cutting passes live at the bottom, far from the inserts they repair. _(2026-09-20)_
 
 - **`server/.env` in this worktree points `DATABASE_URL` at `devdigest_l01`, not the default `devdigest`, so a bare `psql -d devdigest` reads a different database than the API serves** — the default DB holds only PR #482's three runs, while `devdigest_l01` holds every seeded repo; auditing a data gap against the wrong one shows a tidy, complete picture and sends you after a bug that does not exist. Hit while checking `run_traces` coverage: `devdigest` looked fine, `devdigest_l01` had 3 of 7 runs with no trace. Read `DATABASE_URL` out of `server/.env` and pass it with `-d` before any `docker exec devdigest-postgres psql`. _(2026-09-20)_
+
+- **`pnpm typecheck` in `server/` fails with `TS2307: Cannot find module 'openai'` / `'zod'` from `../reviewer-core/src/llm/*.ts` in a fresh worktree** — the server type-checks reviewer-core's raw source through the tsconfig path alias (`server/tsconfig.json` `paths`), so reviewer-core's own deps must be installed; fix: `cd reviewer-core && npm ci` (CI does the same step in `.github/workflows/server-unit.yml`). The follow-on `TS2322 'unknown' is not assignable to 'T'` errors in `src/adapters/llm/*.ts` are the same cause, not a real type bug. _(2026-09-28)_
 
 ## Session Notes
 
@@ -57,5 +65,12 @@ Implemented cost provenance persistence end to end: `agent_runs.cost_usd`/`cost_
 ### 2026-09-28 — server session
 Renamed `server/CLAUDE.md` to `AGENTS.md` and added a one-line `@AGENTS.md` stub `CLAUDE.md` next to it, per ADR 0004. Edit rules in `AGENTS.md` only; the content itself did not change.
 
+### 2026-09-28 — server session
+Research-only session: surveyed server layering against Onion Architecture (5 parallel research subagents) and wrote the skill plan at `server/specs/onion-architecture-skill.md`. No code changed. Left: ADR 0005, the skill itself, `.dependency-cruiser.cjs` + `arch:check` with a baseline for the existing violations in `pulls`/`polling`/`settings`/`workspace`.
+
+### 2026-09-28 — server session (onion-architecture skill)
+Built the `onion-architecture` skill (`.claude/skills/onion-architecture/`: SKILL.md, 8 references, compiling module templates), ADR 0005 (proposed), `server/.dependency-cruiser.cjs` with 15 rules, `pnpm arch:check`/`arch:baseline` and a CI step in `server-unit.yml`. Every rule was proved against throwaway violating files. The 19 legacy violations are frozen in `.dependency-cruiser-known-violations.json`. Left: migrate `pulls`/`polling`/`settings`/`workspace` and the services that build their own repositories, and fix the non-atomic `deleteAgentRun`.
+
 ## Open Questions
 
+- **Stale entry: "no `.dependency-cruiser.*` config and no arch-check script" (Codebase Patterns, 2026-09-28) is no longer true** — `server/.dependency-cruiser.cjs` and `pnpm arch:check` now exist (`docs/adr/0005-onion-layering-for-server-modules.md`); the runtime-library half (`src/adapters/depgraph/index.ts:17`) still holds. Prune or rewrite the entry during cleanup. _(2026-09-28)_

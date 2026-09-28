@@ -10,11 +10,19 @@ One feature = one folder = one Fastify plugin.
 ```
 modules/<name>/
   routes.ts       HTTP surface + zod schemas (the only file Fastify sees)
-  service.ts      business logic
-  repository.ts   Drizzle queries
-  helpers.ts      pure transforms
+  wiring.ts       module composition root: new XService(new XRepository(container.db))
+  service.ts      business logic; takes ports, never builds a repository
+  ports.ts        interfaces the service needs (only for services with logic)
+  domain.ts       entity shapes, invariants, domain errors — pure
+  repository.ts   Drizzle queries; implements the port
+  helpers.ts      pure transforms (row types via `import type` only)
   constants.ts    literals
 ```
+
+Layering is Onion (dependencies point inward) and is checked by
+`pnpm arch:check` (dependency-cruiser, `server/.dependency-cruiser.cjs`) in CI.
+Use the `onion-architecture` skill when creating, changing or reviewing a
+module. Decision: `docs/adr/0005-onion-layering-for-server-modules.md`.
 
 **To add a module:** create `modules/<name>/routes.ts` with a default Fastify
 plugin, then add one import + one entry to `src/modules/index.ts`. Registration
@@ -32,6 +40,10 @@ because native dynamic `import()` of `.ts` is not portable.
   `fastify-type-provider-zod`; invalid input becomes a 422 before the handler
   runs. Do not hand-roll `Schema.parse(req.body)` inside a handler.
 - Services hold no raw SQL. Persistence goes through `repository.ts`.
+- `pnpm arch:check` fails only on violations missing from
+  `.dependency-cruiser-known-violations.json`. Never regenerate that baseline
+  (`pnpm arch:baseline`) to hide a new violation — only after removing old ones
+  or after a drizzle-orm/postgres version bump (it stores versioned paths).
 - Every request resolves tenancy through `getContext(container, req)` so
   workspace scoping is never forgotten.
 - Route params that address a DB row use `IdParams` from `modules/_shared/schemas.ts`

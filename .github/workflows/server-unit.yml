@@ -65,6 +65,12 @@ jobs:
 
       - run: pnpm typecheck
 
+      # Onion layering gate (docs/adr/0005). Fails only on violations that are
+      # not in .dependency-cruiser-known-violations.json. Inlined for the same
+      # reason as the vitest call below (package.json may be a local variant).
+      - name: Architecture gate
+        run: pnpm exec depcruise --config .dependency-cruiser.cjs --ignore-known --output-type err src
+
   unit:
     name: tests
     runs-on: ubuntu-latest
