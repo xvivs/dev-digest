@@ -36,6 +36,8 @@ lives in the engineering-insights skill).
 
 - **A flow fails on your dev DB with healthy code because the seed never repairs an existing repo — it inserts the demo repo only when it is missing** (`server/src/db/seed.ts:84`, `if (!repo)`). A database seeded before a fixture was widened keeps the old rows forever, and re-running `pnpm db:seed` does not touch them: live #482 carried 2 findings and `1/1 passed` grounding where `seed.ts` says 4 and `4/4`, so `wait --text "4 findings"` timed out against correct code. Symptom to pattern-match: a count assertion fails locally but the same flow passes under `./scripts/e2e.sh`, whose Postgres is ephemeral and therefore always matches `seed.ts`. Trust the hermetic run; do not "fix" the flow to match a stale database. _(2026-09-20)_
 
+- **`wait --url` passing does not mean the target view has mounted: a `find role button click` issued right after it fails with `✗ Element not found` for a button that exists a moment later** — the App Router updates the URL before the route's client component (here the agent editor and its tab bar) renders, so `find` runs against the old tree. Put a `wait --text` for something inside the target view between the two (`e2e/specs/11-skills.flow.json:19-20`: `wait --text "Config"` before clicking the Skills tab button). Measured on agent-browser 0.27.0; the same click passed when run by hand a second later. _(2026-09-28)_
+
 ## Session Notes
 
 ### 2026-09-20 — FINDINGS feature (e2e) session
