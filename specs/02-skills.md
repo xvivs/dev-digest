@@ -258,13 +258,22 @@ Protocol:
 
 ## Final checklist
 
+Status as of 2026-09-28 (isolated DB `devdigest_l02`; evidence in brackets).
+
 - [ ] `pr-self-review` exists with auto-invocation off; a manual run pulled both frontend
-      and backend skills.
-- [ ] A skill is created and edited in the UI.
-- [ ] Both new agents have skills attached.
-- [ ] An enabled skill shows as its own block in the trace; a disabled one does not.
-- [ ] An import went through the preview, and the archive's script never ran (no marker file).
-- [ ] The control experiment reproduces on both agents.
+      and backend skills. **Half done:** `disable-model-invocation: true` is set and the
+      gate hook now tells the person to run it (32/32 hook cases pass). The manual run is
+      a person's step: the flag stops the model from invoking it.
+- [x] A skill is created and edited in the UI (browser check; `ConfigTab` tests).
+- [x] Both new agents have skills attached (Test Quality: 4, API Contract: 2 incl. the
+      imported one).
+- [x] An enabled skill shows as its own block in the trace; a disabled one does not
+      (arm B traces show `Skills (dynamic) ≈1.7k tokens` + per-skill list; arm A has none).
+- [x] An import went through the preview, and the archive's script never ran (fixture zip
+      imported disabled + needs vetting; `/tmp/devdigest-skill-executed.marker` absent).
+- [ ] The control experiment reproduces on both agents. **Test Quality: yes** (boundary
+      case 0/3 → 3/3). **API Contract: no**, the no-skills arm already flags the breaking
+      change. See `specs/02-skills-rubric.md` § Results.
 
 ## Known gaps
 

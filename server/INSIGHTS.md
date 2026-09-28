@@ -73,6 +73,9 @@ Research-only session: surveyed server layering against Onion Architecture (5 pa
 ### 2026-09-28 — server session (onion-architecture skill)
 Built the `onion-architecture` skill (`.claude/skills/onion-architecture/`: SKILL.md, 8 references, compiling module templates), ADR 0005 (proposed), `server/.dependency-cruiser.cjs` with 15 rules, `pnpm arch:check`/`arch:baseline` and a CI step in `server-unit.yml`. Every rule was proved against throwaway violating files. The 19 legacy violations are frozen in `.dependency-cruiser-known-violations.json`. Left: migrate `pulls`/`polling`/`settings`/`workspace` and the services that build their own repositories, and fix the non-atomic `deleteAgentRun`.
 
+### 2026-09-28 — server session (SPEC-02 Skills)
+Added the `skills` module (ports/wiring, first production `db.transaction`), transactional tenant-checked `PUT /agents/:id/skills` with a 24 KB budget, `skill_count`, and effective-skill resolution in `run-executor`. Review follow-ups bound vetting to the reviewed `version` (atomic UPDATE, Postgres-side sha256) and made the resolver require a matching `vetted_body_hash` for imports. 215 tests and arch:check green.
+
 ## Open Questions
 
 - **Stale entry: "no `.dependency-cruiser.*` config and no arch-check script" (Codebase Patterns, 2026-09-28) is no longer true** — `server/.dependency-cruiser.cjs` and `pnpm arch:check` now exist (`docs/adr/0005-onion-layering-for-server-modules.md`); the runtime-library half (`src/adapters/depgraph/index.ts:17`) still holds. Prune or rewrite the entry during cleanup. _(2026-09-28)_

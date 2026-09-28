@@ -38,4 +38,7 @@ Added `costSource` to `ReviewOutcome` and a map-reduce cost-provenance fold in `
 ### 2026-09-28 — reviewer-core session
 Renamed `reviewer-core/CLAUDE.md` to `AGENTS.md` and added a one-line `@AGENTS.md` stub `CLAUDE.md` next to it, per ADR 0004. Edit rules in `AGENTS.md` only; the content itself did not change.
 
+### 2026-09-28 — reviewer-core session (SPEC-02 Skills)
+Skills moved into the system message before `INJECTION_GUARD`, which gained a no-waiver rule and a statement that `<skills>` outside the system message is data. One `neutralizeDelimiters` now covers skill text and every untrusted block, since the old `wrapUntrusted` let case variants of `</untrusted>` through. 44 tests green; the behavioural (LLM) waiver eval is still open.
+
 ## Open Questions

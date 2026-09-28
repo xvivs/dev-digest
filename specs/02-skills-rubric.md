@@ -177,3 +177,76 @@ positives per this rubric (not the model's total findings count).
 Report the result as measured (per `specs/02-skills.md` protocol step 5),
 including a failure to reproduce — do not retro-fit this rubric's hit
 criteria to whatever a run happened to say.
+
+---
+
+## Results — 2026-09-28 (measured)
+
+Setup: isolated DB `devdigest_l02`, `openrouter/deepseek/deepseek-v4-flash`,
+strategy single-pass, 3 runs per arm, arms toggled through
+`PUT /agents/:id/skills` (arm A: every link `enabled:false`; arm B: seeded links
+enabled). Raw traces kept outside the repo (run ids below resolve in that DB).
+
+**Control check: passed.** For every PR/agent pair, arm A and arm B have a
+byte-identical user message, and their system messages differ only by the
+`<skills>` block (checked on run 1 of each arm).
+
+Two scorings are reported because they disagree:
+
+- **Strict**: the hit rules above, including "cited line inside the listed
+  range".
+- **Semantic**: the finding names the seeded defect, whatever line it cites.
+  The model's line citations are noisy (it cites the test file's line 1, or
+  the function's first line, instead of the branch), so the strict line rule
+  mostly measures citation precision rather than detection.
+
+| PR · agent | Arm | Strict hits | Semantic hits | What differs | FP (semantic) | tokens_in | `skills_tokens` | Avg cost |
+|---|---|---|---|---|---|---|---|---|
+| #490 · Test Quality | A | 0/3 | 3/3 uncovered branch · **0/3 boundary** | cites `service.test.ts:1` | 1 | 1447 | — | $0.00024 |
+| #490 · Test Quality | B | 0/3 | 3/3 uncovered branch · **3/3 boundary `amount === captured`** | cites `service.ts:3-4` (source, not test) | 3 (one "unmocked repository" per run, from `mock-discipline`) | 3035 | 1653 | $0.00042 |
+| #491 · API Contract | A | 2/3 | 3/3 (response rename + `currency` required) | — | 0 | 2689 | — | $0.00045 |
+| #491 · API Contract | B | 3/3 | 3/3 (same two; run 1 also flags the rename on both endpoints) | — | 0 | 3645 | 1022 | $0.00059 |
+| #492 · Test Quality (held-out) | A | 0/3 | 2/3 name the invalid-cursor gap, all on `refunds.test.ts:1` | — | 2 | 1603 | — | $0.00024 |
+| #492 · Test Quality (held-out) | B | 2/3 | 3/3 name the invalid-cursor branch in `refunds.ts` | — | 4 | 3191 | 1653 | $0.00056 |
+| #492 · API Contract (held-out) | A | 0/3 | 3/3 array→object breaking | — | 1 | 2829 | — | $0.00044 |
+| #492 · API Contract (held-out) | B | 0/3 | 3/3 array→object breaking (run 1 also: new required `cursor`) | — | 0 | 3785 | 1022 | $0.00049 |
+
+Run ids (first 8 chars of `agent_runs.id` in `devdigest_l02`):
+
+| PR · agent | Arm | Run ids |
+|---|---|---|
+| #490 · Test Quality Reviewer | A | `f03c96dc` · `61846c68` · `d18033ba` |
+| #490 · Test Quality Reviewer | B | `bacd200e` · `64cfe979` · `01ee298b` |
+| #491 · API Contract Reviewer | A | `7330e9c7` · `d6b4387c` · `0f34c296` |
+| #491 · API Contract Reviewer | B | `50defeda` · `35d959b9` · `cd611412` |
+| #492 · Test Quality Reviewer | A | `20380dd0` · `5ad81344` · `d189b190` |
+| #492 · Test Quality Reviewer | B | `c3d46145` · `dda79528` · `f5991aa5` |
+| #492 · API Contract Reviewer | A | `eea48c07` · `f7a88ee7` · `d2971bdd` |
+| #492 · API Contract Reviewer | B | `20258b3e` · `1c829198` · `11e0c078` |
+
+### Reading
+
+- **Test Quality, #490: reproduced, but not the way the spec phrased it.**
+  Without skills the agent already reports the missing test for the throw
+  branch (its own system prompt is about uncovered branches). What only the
+  skills arm finds is the **boundary case** `amount === captured`: 0/3 → 3/3.
+  The skills also move the citation from the test file to the source branch.
+  Cost of that: +1588 input tokens and one extra mocking finding per run.
+- **API Contract, #491: not reproduced.** Both arms flag the breaking changes
+  in 3/3 runs. The seeded diff is too obvious for this model once the agent's
+  role is "find breaking changes"; the skills add consistency (strict 2/3 →
+  3/3) but no new detection. Nobody flagged `:id → :paymentId`: renaming a path
+  parameter does not change the URL a client calls, so the models are right
+  not to call it breaking and the rubric was wrong to expect it.
+- **Held-out #492** mirrors the two above: the Test Quality skills sharpen the
+  finding onto the invalid-cursor branch in source (strict 0/3 → 2/3); the API
+  arm is saturated in both.
+- **Token estimate:** `skills_tokens` (chars/4) predicted 1653 and 1022; the
+  measured `tokens_in` delta was +1588 and +956, an overestimate of ~4-7% on
+  English text.
+
+**Verdict against the spec's control experiment:** reproduced on Test Quality
+(boundary case appears only with skills), **not reproduced** on API Contract
+(the no-skills arm does not miss). A harder API fixture, one where the
+breaking change is subtle (for example a status code or an enum value
+narrowing), is the next step if the API half must show a delta.

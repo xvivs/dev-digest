@@ -49,6 +49,9 @@ Grew the suite from 7 flows to 10 and ran it for real: `08-findings-popover-seve
 ### 2026-09-28 — e2e session
 Renamed `e2e/CLAUDE.md` to `AGENTS.md` and added a one-line `@AGENTS.md` stub `CLAUDE.md` next to it, per ADR 0004. Edit rules in `AGENTS.md` only; the content itself did not change.
 
+### 2026-09-28 — e2e session (SPEC-02 Skills)
+Added read-only `11-skills.flow.json`. Ran all 11 flows against a hand-built isolated stack (fresh DB, API :3401, web :3400) because `./scripts/e2e.sh` dies on pnpm's IGNORED_BUILDS preflight here; 11/11 green. Starting that second `next dev` in the same `client/` broke the :3300 dev web (known root INSIGHTS entry), fixed by restarting it.
+
 ## Open Questions
 
 - **Conflict to resolve at cleanup: the "What Doesn't Work" entry above claims agent-browser has no hover command and that case separates the tally pill from the filter button. Both halves are now disproven** — `agent-browser --help` (0.27.0) documents `hover`, `focus`, `is visible|enabled|checked` and `get count|attr`, and `find text` turns out to be case-insensitive. The hover popover is covered end to end by `e2e/specs/08-findings-popover-severity.flow.json`, and negative checks are expressible as `get count "<sel>"` + `assert.stdoutIncludes`. The entry is left in place because this journal is append-only; a human should retire it during cleanup rather than have two entries disagree. _(2026-09-20)_

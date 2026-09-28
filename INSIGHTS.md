@@ -61,6 +61,9 @@ Built the `engineering-insights` skill (`~/.claude/skills/engineering-insights/S
 ### 2026-09-28 — repo-wide session
 Moved agent instructions from six `CLAUDE.md` files to `AGENTS.md` (via `git mv`) so Cursor and Antigravity read the same rules, and left a `@AGENTS.md` stub `CLAUDE.md` in each directory after a scratch-repo test showed the bare fallback loading in 5 of 6 runs. Recorded the decision as ADR 0004 and repointed live references in `docs/**/README.md` and the `engineering-insights` skill. Not verified in Cursor or Antigravity; nothing committed.
 
+### 2026-09-28 — cross-package session (SPEC-02 Skills)
+Wrote SPEC-02 and ADR 0012, froze the contracts and the reviewer-core/client-hook interfaces myself, then ran seven workstreams in parallel worktrees and merged them in waves, fixing four integration mismatches on the way. Two harness surprises: agent worktrees were sometimes created from a stale base (`f68330e`) and had to fast-forward, and the shared dev DB belongs to another migration line, so all runtime checks ran on `devdigest_l02`. The control experiment reproduced on Test Quality and not on API Contract (`specs/02-skills-rubric.md` § Results).
+
 ## Open Questions
 
 - **The shared `devdigest-postgres` container has drifted from this branch's migration files.** It carries 17 applied migrations against 11 local `.sql` files, and `agent_runs.cost_usd` already exists there (added by another branch) while `cost_source` does not — so `pnpm db:migrate` fails with "column already exists". Integration tests are unaffected: `*.it.test.ts` spins up a clean Postgres via testcontainers and applies only this branch's migrations. Open: whether each worktree should get its own database instead of sharing one. _(2026-09-19)_

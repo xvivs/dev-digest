@@ -203,6 +203,9 @@ Audited `client/src` through four lenses (frontend-architecture, react-best-prac
 ### 2026-09-28 — client session (plan execution)
 Executed all 6 waves of `client/specs/frontend-audit/README.md` with 8 Opus subagents on disjoint file sets (phase A: lib, @devdigest/ui, app boundaries; phase B: five screens), then integrated. Result: tsc 0, vitest 60 files / 360 tests (from 19 / 102), `next build` green, every page.tsx a thin Server Component with metadata, ADRs 0007–0011 added. Not done: e2e and browser checks (Docker daemon down), D2 schema wiring (blocked by `.js` imports in vendor/shared), react-markdown chunk loaded on every route (measured, not fixed).
 
+### 2026-09-28 — client session (SPEC-02 Skills)
+Shipped `/skills` (list, Config/Preview, placeholder tabs, trust modal), the agent Skills tab with coalesced autosave, `.md`/`.zip` import on fflate, and skills tokens in the trace. Browser checks caught three bugs the tests missed (translucent vet modal, "1 agents", slug title wrapping), and review caught two more (name link bypassing the dirty guard, stale draft after vetting). Known gap: sidebar/breadcrumb links are not dirty-guarded.
+
 ## Open Questions
 
 - **Conflict: does a `NextIntlClientProvider` missing a namespace throw or only log?** — the Recurring Errors entry dated 2026-09-19 says a single-namespace provider "throws on the first missing message", the Tool & Library entry dated 2026-09-28 observed only a logged `MISSING_MESSAGE` with a passing test (`client/src/test/smoke.test.tsx`). Possibly both true (missing key vs missing namespace, or a custom `onError`); needs a human to reconcile. _(2026-09-28)_
