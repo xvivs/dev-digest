@@ -13,12 +13,15 @@ import type { Skill } from "@devdigest/shared";
 import { useSkill, useSkillVersions } from "@/lib/hooks";
 import { LocalTime } from "@/components/local-time";
 import { RestoreVersionModal } from "./_components/RestoreVersionModal";
-import { SKELETON_ROWS, SKELETON_ROW_HEIGHT } from "./constants";
+import { DIFF_SKELETON_HEIGHT, SKELETON_ROWS, SKELETON_ROW_HEIGHT } from "./constants";
 import { buildVersionRows, type VersionRow } from "./helpers";
 import { s } from "./styles";
 
 // Loaded on first "Diff" click: keeps jsdiff out of the editor's first load.
-const VersionDiff = dynamic(() => import("./_components/VersionDiff").then((m) => m.VersionDiff), { ssr: false });
+const VersionDiff = dynamic(() => import("./_components/VersionDiff").then((m) => m.VersionDiff), {
+  ssr: false,
+  loading: () => <Skeleton height={DIFF_SKELETON_HEIGHT} />,
+});
 
 export function VersionsTab({ skill, onEditVersion }: { skill: Skill; onEditVersion: (version: number) => void }) {
   const t = useTranslations("skills");

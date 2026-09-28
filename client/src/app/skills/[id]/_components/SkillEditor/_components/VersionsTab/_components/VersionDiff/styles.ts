@@ -32,7 +32,7 @@ export const s = {
     padding: "6px 8px",
     borderBottom: "1px solid var(--border)",
   } satisfies CSSProperties,
-  td: { padding: "6px 8px", borderBottom: "1px solid var(--border)", verticalAlign: "top", wordBreak: "break-word" } satisfies CSSProperties,
+  td: { textAlign: "left", padding: "6px 8px", borderBottom: "1px solid var(--border)", verticalAlign: "top", wordBreak: "break-word" } satisfies CSSProperties,
   tdOld: { color: "var(--crit)" } satisfies CSSProperties,
   tdNew: { color: "var(--ok)" } satisfies CSSProperties,
   bodyHead: { display: "flex", alignItems: "baseline", gap: 10 } satisfies CSSProperties,

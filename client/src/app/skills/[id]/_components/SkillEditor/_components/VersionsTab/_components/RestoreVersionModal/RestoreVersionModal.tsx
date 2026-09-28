@@ -112,7 +112,9 @@ export function RestoreVersionModal({
                 : t("versions.restoreModal.failed", { message: restore.error.message })}
             </span>
             {stale && (
-              <Button kind="secondary" size="sm" icon="RefreshCw" onClick={reload}>
+              // Restore just disabled itself, which would drop focus to <body>;
+              // hand it to the one action that can move on.
+              <Button kind="secondary" size="sm" icon="RefreshCw" onClick={reload} autoFocus>
                 {t("versions.restoreModal.reload")}
               </Button>
             )}

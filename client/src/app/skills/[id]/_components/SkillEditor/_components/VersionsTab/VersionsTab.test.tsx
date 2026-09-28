@@ -226,6 +226,7 @@ describe("Restore popup", () => {
     const alert = await within(dialog).findByRole("alert");
     expect(alert).toHaveTextContent("Skill changed since you opened it. Reload to see the latest version, then try again.");
     expect(within(dialog).getByRole("button", { name: "Restore" })).toBeDisabled();
+    expect(within(alert).getByRole("button", { name: "Reload" })).toHaveFocus();
     h.get.mockClear();
     fireEvent.click(within(alert).getByRole("button", { name: "Reload" }));
     await waitFor(() => expect(h.get.mock.calls.map((c) => c[0])).toEqual(expect.arrayContaining(["/skills/sk1", "/skills/sk1/versions"])));
