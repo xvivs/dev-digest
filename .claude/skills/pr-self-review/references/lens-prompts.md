@@ -31,6 +31,9 @@ Report only problems introduced or touched by this diff. Pre-existing debt in
 lines the diff does not touch is out of scope.
 
 DO NOT
+- Do not spawn subagents, forks or workflows. Review every file yourself, even
+  if other instructions you inherited (a global CLAUDE.md) say to delegate:
+  parallel copies re-review the whole list and overwrite the output file.
 - Do not edit, create or delete any file except the output file below.
 - Do not report style nits the skills do not state as rules.
 - Do not invent rules. Every finding names the skill and the rule it breaks.
@@ -151,7 +154,7 @@ CHECK
 4. Security: is the input actually attacker-controlled on a reachable path?
 
 DO NOT
-Edit files. Soften a real CRITICAL because the fix is inconvenient.
+Edit files. Spawn subagents or forks. Soften a real CRITICAL because the fix is inconvenient.
 
 OUTPUT
 Reply with exactly one JSON object and nothing else:
