@@ -182,6 +182,10 @@ export class ReviewRepository {
     return runRepo.saveRunTrace(this.db, runId, trace);
   }
 
+  saveRunSkills(runId: string, rows: runRepo.RunSkillRow[]): Promise<void> {
+    return runRepo.saveRunSkills(this.db, runId, rows);
+  }
+
   getRunTrace(runId: string): Promise<RunTrace | undefined> {
     return runRepo.getRunTrace(this.db, runId);
   }

@@ -120,6 +120,13 @@
       "when": 1790638128016,
       "tag": "0016_skill_versions_backfill",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1790638786654,
+      "tag": "0017_elite_rogue",
+      "breakpoints": true
     }
   ]
 }

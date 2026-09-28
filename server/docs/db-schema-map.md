@@ -39,6 +39,7 @@ grepping for `t.<table>` / `schema.<table>`.
 | `users` | 4 | seeded system user |
 | `prCommits` | 4 | commits behind a PR |
 | `runTraces` | 3 | whole run log as one jsonb document |
+| `runSkills` | 4 | skills each run injected (relational copy of `skills_used`), feeds skill Stats |
 | `workspaceMembers` | 1 | membership |
 
 ## Wired but unfed — a read path exists, nothing writes yet
