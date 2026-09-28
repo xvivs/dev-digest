@@ -76,16 +76,17 @@ const routes: Record<string, unknown> = {
   "/agents": [{ id: "a1", name: "Security", model: "gpt-4.1", enabled: true }],
 };
 
+const get = vi.fn(async (path: string) => {
+  if (!(path in routes)) throw new Error(`unmocked GET ${path}`);
+  return routes[path];
+});
 const post = vi.fn(async (_path: string, _body?: unknown) => ({ runs: [{ run_id: "run-2" }] }));
 vi.mock("@/lib/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api")>();
   return {
     ...actual,
     api: {
-      get: vi.fn(async (path: string) => {
-        if (!(path in routes)) throw new Error(`unmocked GET ${path}`);
-        return routes[path];
-      }),
+      get: (path: string) => get(path),
       post: (path: string, body?: unknown) => post(path, body),
       put: vi.fn(),
       patch: vi.fn(),
@@ -98,6 +99,7 @@ import { PrDetailView } from "./PrDetailView";
 
 afterEach(() => {
   cleanup();
+  get.mockClear();
   search = new URLSearchParams("tab=findings");
   repoNotFound = false;
   replace.mockReset();
@@ -110,12 +112,8 @@ function renderView() {
   });
 }
 
-/** How many invalidations targeted `[key, "pr-uuid"]`. */
-const keyCalls = (calls: ReadonlyArray<ReadonlyArray<unknown>>, key: string) =>
-  calls.filter(([filters]) => {
-    const k = (filters as { queryKey?: readonly unknown[] } | undefined)?.queryKey;
-    return k?.[0] === key && k?.[1] === "pr-uuid";
-  }).length;
+/** How many times the network saw `GET <path>` so far. */
+const gets = (path: string) => get.mock.calls.filter(([p]) => p === path).length;
 
 describe("PrDetailView", () => {
   it("renders the PR header and the tab from ?tab= once the hooks resolve", async () => {
@@ -128,18 +126,24 @@ describe("PrDetailView", () => {
 
   it("starting a review switches to the runs tab and refetches each run query exactly once", async () => {
     search = new URLSearchParams("tab=overview");
-    const { queryClient } = renderView();
+    renderView();
     expect(await screen.findByText("Adds a token bucket.")).toBeInTheDocument();
-    const invalidate = vi.spyOn(queryClient, "invalidateQueries");
+    await waitFor(() => expect(gets("/pulls/pr-uuid/runs/active")).toBeGreaterThan(0));
+    const before = {
+      active: gets("/pulls/pr-uuid/runs/active"),
+      runs: gets("/pulls/pr-uuid/runs"),
+      reviews: gets("/pulls/pr-uuid/reviews"),
+    };
 
     fireEvent.click(screen.getByRole("button", { name: /Run Review/ }));
     fireEvent.click(await screen.findByRole("menuitem", { name: /Run all enabled agents/ }));
 
     expect(replace).toHaveBeenCalledWith("/repos/repo-1/pulls/482?tab=findings");
     await waitFor(() => expect(post).toHaveBeenCalledWith("/pulls/pr-uuid/review", { all: true }));
-    await waitFor(() => expect(keyCalls(invalidate.mock.calls, "pr-active-runs")).toBe(1));
-    expect(keyCalls(invalidate.mock.calls, "pr-runs")).toBe(1);
-    expect(keyCalls(invalidate.mock.calls, "reviews")).toBe(1);
+    // What the user pays for: one network refetch per run query, not two.
+    await waitFor(() => expect(gets("/pulls/pr-uuid/runs/active")).toBe(before.active + 1));
+    await waitFor(() => expect(gets("/pulls/pr-uuid/runs")).toBe(before.runs + 1));
+    await waitFor(() => expect(gets("/pulls/pr-uuid/reviews")).toBe(before.reviews + 1));
   });
 
   it("shows the stale-repo empty state instead of fetching the PR", () => {

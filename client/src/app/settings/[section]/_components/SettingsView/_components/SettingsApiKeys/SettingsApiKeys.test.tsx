@@ -35,7 +35,7 @@ describe("SettingsApiKeys", () => {
     renderKeys();
 
     const [toggle] = screen.getAllByRole("button", { name: "Show key" });
-    const input = document.querySelectorAll("input")[0]!;
+    const input = screen.getByLabelText(settingsMessages.apiKeys.openaiLabel);
     expect(toggle).toHaveAttribute("type", "button");
     expect(toggle).toHaveAttribute("aria-pressed", "false");
     expect(input).toHaveAttribute("type", "password");

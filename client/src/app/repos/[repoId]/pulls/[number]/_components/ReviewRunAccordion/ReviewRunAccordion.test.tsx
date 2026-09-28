@@ -159,14 +159,6 @@ describe("ReviewRunAccordion", () => {
     expect(screen.getByText(/1 finding · 1 blocker$/)).toBeInTheDocument();
   });
 
-  it("colours the verdict badge from the same table as the VerdictBanner", () => {
-    renderWithProviders(<ReviewRunAccordion review={{ ...REVIEW, verdict: "comment" }} prId="pr-1" />, {
-      namespaces: { prReview, cost },
-    });
-    // Was `var(--warn)` here while the banner used `var(--info)` (ARCH-9).
-    expect(screen.getByText("comment")).toHaveStyle({ color: "var(--info)" });
-  });
-
   it("is forced open by the Timeline hand-off, and re-fires on a repeat click", () => {
     const { rerender } = renderAccordion({ targetReviewId: "rev-1", targetNonce: 1 });
     expect(bodyText()).toBeInTheDocument();

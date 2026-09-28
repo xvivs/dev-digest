@@ -1,7 +1,7 @@
 import React from "react";
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { render, screen, cleanup, fireEvent } from "@testing-library/react";
-import { RowAction } from "./RowAction";
+import { RowAction, rowActionColor } from "./RowAction";
 
 afterEach(cleanup);
 
@@ -26,31 +26,20 @@ describe("RowAction", () => {
     expect(onRow).not.toHaveBeenCalled();
   });
 
-  it("tone=danger hovers to --crit, neutral to --text-primary; colour only, no fill", () => {
-    render(
-      <>
-        <RowAction icon="Trash" label="danger" tone="danger" onClick={() => {}} />
-        <RowAction icon="ExternalLink" label="neutral" onClick={() => {}} />
-      </>,
-    );
-    const danger = screen.getByRole("button", { name: "danger" });
-    const neutral = screen.getByRole("button", { name: "neutral" });
-    expect(danger.style.color).toBe("var(--text-secondary)");
-
-    // React 19 synthesises enter/leave from mouseover/mouseout (INSIGHTS).
-    fireEvent.mouseOver(danger);
-    fireEvent.mouseOver(neutral);
-
-    expect(danger.style.color).toBe("var(--crit)");
-    expect(neutral.style.color).toBe("var(--text-primary)");
-    expect(danger.style.background).toBe("none");
-  });
-
   it("busy disables the action", () => {
     const onClick = vi.fn();
     render(<RowAction icon="Trash" label="Delete" busy onClick={onClick} />);
     const btn = screen.getByRole("button", { name: "Delete" });
     expect(btn).toBeDisabled();
     expect(btn).toHaveAttribute("aria-busy", "true");
+  });
+});
+
+describe("rowActionColor", () => {
+  it("rests on --text-secondary; hover goes --crit for danger, --text-primary for neutral", () => {
+    expect(rowActionColor("danger", false)).toBe("var(--text-secondary)");
+    expect(rowActionColor("neutral", false)).toBe("var(--text-secondary)");
+    expect(rowActionColor("danger", true)).toBe("var(--crit)");
+    expect(rowActionColor("neutral", true)).toBe("var(--text-primary)");
   });
 });

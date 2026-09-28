@@ -133,7 +133,7 @@ describe("useDialogFocus — autoFocus opener", () => {
       );
     }
     render(<App />);
-    const opener = screen.getByText("opener");
+    const opener = screen.getByRole("button", { name: "opener" });
     opener.focus();
     fireEvent.click(opener);
     expect(document.activeElement).toBe(screen.getByLabelText("inner"));

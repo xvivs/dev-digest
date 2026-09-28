@@ -1,7 +1,7 @@
 import React from "react";
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { render, screen, cleanup, fireEvent } from "@testing-library/react";
-import { Chip } from "./Chip";
+import { Chip, chipColors } from "./Chip";
 
 afterEach(cleanup);
 
@@ -42,14 +42,25 @@ describe("Chip", () => {
     expect(onClick).not.toHaveBeenCalled();
   });
 
-  it("activeColor replaces the accent on the active state", () => {
-    render(
-      <Chip active activeColor="var(--warn)">
-        Warning
-      </Chip>,
-    );
-    const chip = screen.getByRole("button", { name: "Warning" });
-    expect(chip.style.color).toBe("var(--warn)");
-    expect(chip.style.border).toContain("var(--warn)");
+});
+
+describe("chipColors", () => {
+  const base = { active: false, disabled: false, hot: false };
+  it("idle, hover and disabled use the neutral tokens", () => {
+    expect(chipColors(base)).toEqual({ border: "var(--border)", background: "transparent", fg: "var(--text-secondary)" });
+    expect(chipColors({ ...base, hot: true })).toMatchObject({ background: "var(--bg-hover)", fg: "var(--text-primary)" });
+    expect(chipColors({ ...base, disabled: true }).fg).toBe("var(--text-muted)");
+  });
+  it("active uses the accent unless activeColor replaces it", () => {
+    expect(chipColors({ ...base, active: true })).toEqual({
+      border: "var(--accent)",
+      background: "var(--accent-bg)",
+      fg: "var(--accent-text)",
+    });
+    expect(chipColors({ ...base, active: true, activeColor: "var(--warn)" })).toEqual({
+      border: "var(--warn)",
+      background: "var(--bg-hover)",
+      fg: "var(--warn)",
+    });
   });
 });

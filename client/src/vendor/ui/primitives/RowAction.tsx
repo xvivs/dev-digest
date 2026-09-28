@@ -15,6 +15,12 @@ import { Icon, type IconName } from "../icons";
  *
  * `label` is required — it is the only accessible name an icon-only control has.
  */
+/** Glyph colour for a tone and hover state. Hover changes colour only, never the fill. */
+export function rowActionColor(tone: "neutral" | "danger", hot: boolean): string {
+  if (!hot) return "var(--text-secondary)";
+  return tone === "danger" ? "var(--crit)" : "var(--text-primary)";
+}
+
 export function RowAction({
   icon,
   label,
@@ -68,7 +74,7 @@ export function RowAction({
         borderRadius: 5,
         border: "none",
         background: "none",
-        color: hot ? (tone === "danger" ? "var(--crit)" : "var(--text-primary)") : "var(--text-secondary)",
+        color: rowActionColor(tone, hot),
         cursor: off ? "not-allowed" : "pointer",
         opacity: disabled && !busy ? 0.5 : 1,
         flexShrink: 0,

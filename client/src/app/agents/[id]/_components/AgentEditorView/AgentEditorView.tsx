@@ -12,7 +12,7 @@ import { useAgents, useAgent, useUpdateAgent } from "@/lib/hooks";
 import { ApiError } from "@/lib/api";
 import { AGENTS_HREF } from "@/app/agents/constants";
 import { agentEditorHref } from "@/app/agents/helpers";
-import { AgentCard } from "@/app/agents/_components/AgentCard";
+import { AgentCard } from "@/components/agent-card";
 import { AgentEditor } from "../AgentEditor";
 import {
   ADD_MENU_WIDTH,

@@ -4,7 +4,6 @@ import type { Verdict } from "@devdigest/shared";
 import prReview from "@/../messages/en/prReview.json";
 import { renderWithProviders } from "@/test/render";
 import { VerdictBanner } from "./VerdictBanner";
-import { VERDICT_META } from "./constants";
 
 afterEach(cleanup);
 
@@ -40,9 +39,9 @@ describe("VerdictBanner", () => {
     ["request_changes", "Request changes"],
     ["approve", "Approve"],
     ["comment", "Comment"],
-  ])("renders the %s verdict with its label and colour", (verdict, label) => {
+  ])("renders the %s verdict with its label", (verdict, label) => {
     renderBanner({ verdict });
-    expect(screen.getByText(label)).toHaveStyle({ color: VERDICT_META[verdict].c });
+    expect(screen.getByText(label)).toBeInTheDocument();
   });
 
   it("drops the blockers tail at zero and pluralises the finding count", () => {

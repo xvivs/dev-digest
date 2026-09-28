@@ -60,6 +60,8 @@ function KeyRow({
             onChange={setVal}
             mono
             type={reveal ? "text" : "password"}
+            // FormField's <label> is not wired to the input (no htmlFor), so name it directly.
+            aria-label={label}
             placeholder={t("apiKeys.placeholder")}
             suffix={
               <button

@@ -1,5 +1,6 @@
 /* AgentCard — model chip, skills count, enabled toggle. Stats are an A5 mount;
-   we render the provider/model + skill count here.
+   we render the provider/model + skill count here. Shared leaf: rendered by
+   the /agents list and the /agents/[id] editor's side list.
 
    The whole card opens the agent: a stretched <Link> covers it. The toggle and
    the delete action sit ABOVE that link as siblings, never inside it — a button

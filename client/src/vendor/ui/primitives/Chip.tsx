@@ -8,6 +8,36 @@ import { Icon, type IconName } from "../icons";
  * `active` unless `aria-pressed` is given explicitly. Leave `active` undefined
  * for a plain action chip, which then carries no pressed state at all.
  */
+/** Chip state → colour tokens. Pure, so the state table is unit-tested without the DOM. */
+export function chipColors({
+  active,
+  activeColor,
+  disabled,
+  hot,
+}: {
+  active: boolean;
+  activeColor?: string;
+  disabled: boolean;
+  hot: boolean;
+}): { border: string; background: string; fg: string } {
+  const border = active ? (activeColor ?? "var(--accent)") : "var(--border)";
+  const background = active
+    ? activeColor
+      ? "var(--bg-hover)"
+      : "var(--accent-bg)"
+    : hot
+      ? "var(--bg-hover)"
+      : "transparent";
+  const fg = disabled
+    ? "var(--text-muted)"
+    : active
+      ? (activeColor ?? "var(--accent-text)")
+      : hot
+        ? "var(--text-primary)"
+        : "var(--text-secondary)";
+  return { border, background, fg };
+}
+
 export function Chip({
   children,
   active,
@@ -40,21 +70,7 @@ export function Chip({
   const [h, setH] = React.useState(false);
   const hot = h && !disabled;
   const pressed = ariaPressed ?? active;
-  const border = active ? (activeColor ?? "var(--accent)") : "var(--border)";
-  const background = active
-    ? activeColor
-      ? "var(--bg-hover)"
-      : "var(--accent-bg)"
-    : hot
-      ? "var(--bg-hover)"
-      : "transparent";
-  const fg = disabled
-    ? "var(--text-muted)"
-    : active
-      ? (activeColor ?? "var(--accent-text)")
-      : hot
-        ? "var(--text-primary)"
-        : "var(--text-secondary)";
+  const { border, background, fg } = chipColors({ active: !!active, activeColor, disabled: !!disabled, hot });
   return (
     <button
       type="button"
