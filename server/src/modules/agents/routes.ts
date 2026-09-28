@@ -25,7 +25,7 @@ const VersionParams = z.object({
  *   GET    /agents/:id/versions     → config history (newest first)
  *   GET    /agents/:id/versions/:version → one config snapshot
  *   GET    /agents/:id/skills       → linked skills (ordered)
- *   POST   /agents/:id/skills       → set/reorder linked skills OR link one
+ *   PUT    /agents/:id/skills       → replace the whole linked-skills set (SPEC-02)
  *   GET    /agents/:id/models       → dynamic model list for the agent's provider
  *   GET    /providers/:id/models    → dynamic model list for a provider (editor)
  */
@@ -56,15 +56,25 @@ const UpdateAgentBody = z.object({
   enabled: z.boolean().optional(),
 });
 
-/** Either set the whole ordered set (`skill_ids`) or link one (`skill_id`). */
-const SetSkillsBody = z
+/** `PUT /agents/:id/skills` body: the WHOLE ordered set (order = array index,
+ *  no duplicate skill_id — SPEC-02). */
+const SetSkillLinksBody = z
   .object({
-    skill_ids: z.array(z.string().uuid()).optional(),
-    skill_id: z.string().uuid().optional(),
-    order: z.number().int().optional(),
+    links: z.array(z.object({ skill_id: z.string().uuid(), enabled: z.boolean() })),
   })
-  .refine((b) => b.skill_ids !== undefined || b.skill_id !== undefined, {
-    message: 'Provide skill_ids (set/reorder) or skill_id (link one)',
+  .strict()
+  .superRefine((body, ctx) => {
+    const seen = new Set<string>();
+    body.links.forEach((link, i) => {
+      if (seen.has(link.skill_id)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Duplicate skill_id: ${link.skill_id}`,
+          path: ['links', i, 'skill_id'],
+        });
+      }
+      seen.add(link.skill_id);
+    });
   });
 
 export default async function agentsRoutes(appBase: FastifyInstance) {
@@ -149,16 +159,12 @@ export default async function agentsRoutes(appBase: FastifyInstance) {
     return service.skillLinks(req.params.id);
   });
 
-  app.post(
+  app.put(
     '/agents/:id/skills',
-    { schema: { params: IdParams, body: SetSkillsBody } },
+    { schema: { params: IdParams, body: SetSkillLinksBody } },
     async (req) => {
       const { workspaceId } = await getContext(app.container, req);
-      const body = req.body;
-      const links =
-        body.skill_ids !== undefined
-          ? await service.setSkills(workspaceId, req.params.id, body.skill_ids)
-          : await service.linkSkill(workspaceId, req.params.id, body.skill_id!, body.order);
+      const links = await service.setSkillLinks(workspaceId, req.params.id, req.body.links);
       if (!links) throw new NotFoundError('Agent not found');
       return links;
     },

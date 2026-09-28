@@ -1,8 +1,13 @@
-import { and, asc, desc, eq } from 'drizzle-orm';
+import { and, asc, count, desc, eq, inArray } from 'drizzle-orm';
 import type { Db } from '../../db/client.js';
 import * as t from '../../db/schema.js';
 import type { CiFailOn, Provider, ReviewStrategy } from '@devdigest/shared';
-import { DEFAULT_AGENT_DESCRIPTION, INITIAL_AGENT_VERSION } from './constants.js';
+import { NotFoundError, AppError } from '../../platform/errors.js';
+import {
+  AGENT_SKILLS_BODY_BUDGET_BYTES,
+  DEFAULT_AGENT_DESCRIPTION,
+  INITIAL_AGENT_VERSION,
+} from './constants.js';
 import { isConfigChange } from './helpers.js';
 
 /**
@@ -52,8 +57,27 @@ export interface LinkedSkillRow {
 export class AgentsRepository {
   constructor(private db: Db) {}
 
-  async list(workspaceId: string): Promise<AgentRow[]> {
-    return this.db.select().from(t.agents).where(eq(t.agents.workspaceId, workspaceId));
+  /** One aggregate query (LEFT JOIN + GROUP BY) — no N+1 for `skill_count`. */
+  async list(workspaceId: string): Promise<(AgentRow & { skillCount: number })[]> {
+    const rows = await this.db
+      .select({ agent: t.agents, skillCount: count(t.agentSkills.agentId) })
+      .from(t.agents)
+      .leftJoin(
+        t.agentSkills,
+        and(eq(t.agentSkills.agentId, t.agents.id), eq(t.agentSkills.enabled, true)),
+      )
+      .where(eq(t.agents.workspaceId, workspaceId))
+      .groupBy(t.agents.id);
+    return rows.map((r) => ({ ...r.agent, skillCount: Number(r.skillCount) }));
+  }
+
+  /** Count of ENABLED skill links for one agent (SPEC-02 `skill_count`). */
+  async skillCountFor(agentId: string): Promise<number> {
+    const [row] = await this.db
+      .select({ n: count(t.agentSkills.agentId) })
+      .from(t.agentSkills)
+      .where(and(eq(t.agentSkills.agentId, agentId), eq(t.agentSkills.enabled, true)));
+    return Number(row?.n ?? 0);
   }
 
   async listEnabled(workspaceId: string): Promise<AgentRow[]> {
@@ -147,7 +171,7 @@ export class AgentsRepository {
   }
 
   private async snapshotVersion(row: AgentRow, version: number): Promise<void> {
-    const skills = await this.skillIdsForAgent(row.id);
+    const links = await this.linkedSkills(row.id);
     await this.db
       .insert(t.agentVersions)
       .values({
@@ -161,7 +185,13 @@ export class AgentsRepository {
           strategy: row.strategy,
           ci_fail_on: row.ciFailOn,
           repo_intel: row.repoIntel,
-          skills,
+          skills: links.map((l) => l.skill.id),
+          // SPEC-02: full link state at snapshot time (AgentVersionConfig.skill_links).
+          skill_links: links.map((l) => ({
+            skill_id: l.skill.id,
+            enabled: l.enabled,
+            order: l.order,
+          })),
         },
       })
       .onConflictDoNothing();
@@ -200,38 +230,62 @@ export class AgentsRepository {
     return rows.map((r) => ({ skill: r.skill, order: r.order, enabled: r.enabled }));
   }
 
-  async skillIdsForAgent(agentId: string): Promise<string[]> {
-    const links = await this.linkedSkills(agentId);
-    return links.map((l) => l.skill.id);
-  }
-
-  /** Link a skill to an agent at a given order (idempotent: upserts order). */
-  async linkSkill(agentId: string, skillId: string, order: number): Promise<void> {
-    await this.db
-      .insert(t.agentSkills)
-      .values({ agentId, skillId, order })
-      .onConflictDoUpdate({
-        target: [t.agentSkills.agentId, t.agentSkills.skillId],
-        set: { order },
-      });
-  }
-
-  async unlinkSkill(agentId: string, skillId: string): Promise<void> {
-    await this.db
-      .delete(t.agentSkills)
-      .where(and(eq(t.agentSkills.agentId, agentId), eq(t.agentSkills.skillId, skillId)));
-  }
-
   /**
-   * Replace the full set of linked skills for an agent with `skillIds`, assigning
-   * order = index. Used by the "Skills" editor tab (attach/reorder). Skills not in
-   * the list are unlinked.
+   * Replace the full set of linked skills for an agent (SPEC-02 `PUT
+   * /agents/:id/skills`), atomically:
+   *   1. every `skill_id` must exist in this workspace, else 404 (cross-tenant
+   *      guard — AC-31) — checked and thrown BEFORE any write.
+   *   2. the enabled-skills body budget must not be exceeded, else 422.
+   *   3. delete + insert the whole link set (order = array index).
+   * All three steps run in ONE transaction: a budget/tenancy failure leaves
+   * the existing links untouched (no partial write).
    */
-  async setSkills(agentId: string, skillIds: string[]): Promise<void> {
-    await this.db.delete(t.agentSkills).where(eq(t.agentSkills.agentId, agentId));
-    if (skillIds.length === 0) return;
-    await this.db
-      .insert(t.agentSkills)
-      .values(skillIds.map((skillId, i) => ({ agentId, skillId, order: i })));
+  async setSkillLinks(
+    workspaceId: string,
+    agentId: string,
+    links: { skillId: string; enabled: boolean }[],
+  ): Promise<LinkedSkillRow[]> {
+    return this.db.transaction(async (tx) => {
+      const skillIds = links.map((l) => l.skillId);
+      if (skillIds.length > 0) {
+        const rows = await tx
+          .select({ id: t.skills.id, enabled: t.skills.enabled, body: t.skills.body })
+          .from(t.skills)
+          .where(and(eq(t.skills.workspaceId, workspaceId), inArray(t.skills.id, skillIds)));
+        if (rows.length !== new Set(skillIds).size) {
+          throw new NotFoundError('One or more skills were not found in this workspace');
+        }
+        const byId = new Map(rows.map((r) => [r.id, r]));
+        const budgetBytes = links.reduce((sum, l) => {
+          if (!l.enabled) return sum;
+          const skill = byId.get(l.skillId);
+          if (!skill || !skill.enabled) return sum;
+          return sum + Buffer.byteLength(skill.body, 'utf8');
+        }, 0);
+        if (budgetBytes > AGENT_SKILLS_BODY_BUDGET_BYTES) {
+          throw new AppError(
+            'agent_skills_budget_exceeded',
+            `Enabled skills total ${budgetBytes} bytes, exceeding the ${AGENT_SKILLS_BODY_BUDGET_BYTES}-byte budget`,
+            422,
+            { budget_bytes: budgetBytes, limit_bytes: AGENT_SKILLS_BODY_BUDGET_BYTES },
+          );
+        }
+      }
+
+      await tx.delete(t.agentSkills).where(eq(t.agentSkills.agentId, agentId));
+      if (links.length > 0) {
+        await tx
+          .insert(t.agentSkills)
+          .values(links.map((l, i) => ({ agentId, skillId: l.skillId, order: i, enabled: l.enabled })));
+      }
+
+      const rows = await tx
+        .select({ skill: t.skills, order: t.agentSkills.order, enabled: t.agentSkills.enabled })
+        .from(t.agentSkills)
+        .innerJoin(t.skills, eq(t.agentSkills.skillId, t.skills.id))
+        .where(eq(t.agentSkills.agentId, agentId))
+        .orderBy(asc(t.agentSkills.order));
+      return rows.map((r) => ({ skill: r.skill, order: r.order, enabled: r.enabled }));
+    });
   }
 }
