@@ -78,6 +78,11 @@ installedPlugins · digests         L08
   creates an empty file, the DML goes in it (e.g. `0016_skill_versions_backfill.sql`
   snapshots each skill's current state). Write it idempotent (`ON CONFLICT DO
   NOTHING`, `WHERE … IS NULL`) and cover it with an `*.it.test.ts`.
+- A backfill over a table that grows with usage (e.g. `run_traces`) is a
+  batched script instead, so it never holds one long migration transaction:
+  `pnpm db:backfill:run-skills [--after=<run_id>] [--batch=<n>]` copies
+  `skills_used` into `run_skills`, logs a resume cursor per batch and is safe
+  to re-run.
 - `pnpm db:seed` is idempotent and **required**, not optional: `LocalNoAuthProvider`
   resolves the seeded system user and default workspace by name and throws
   without them. The seed also creates the demo repo, PR #482, and three built-in
