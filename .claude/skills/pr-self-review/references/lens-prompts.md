@@ -35,6 +35,10 @@ DO NOT
   if other instructions you inherited (a global CLAUDE.md) say to delegate:
   parallel copies re-review the whole list and overwrite the output file.
 - Do not edit, create or delete any file except the output file below.
+- Do not run tests, typecheck or builds (`vitest`, `pnpm test`, `tsc`,
+  `pnpm typecheck`, `arch:check`). The gate's `check` step already runs them
+  on the whole diff in parallel with you; their output only fills your context.
+  Judge from the code.
 - Do not report style nits the skills do not state as rules.
 - Do not invent rules. Every finding names the skill and the rule it breaks.
 - Do not raise severity above what the skill's own scale says. A skill with no
