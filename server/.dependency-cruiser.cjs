@@ -177,6 +177,11 @@ module.exports = {
   ],
   options: {
     doNotFollow: { path: 'node_modules' },
+    // Keep node_modules paths as imported, not as resolved. Without this the
+    // baseline depends on the pnpm linker: isolated resolves to
+    // node_modules/.pnpm/<pkg>@<ver>/…, hoisted (CI, .npmrc) to node_modules/<pkg>/…,
+    // and a baseline made on one layout fails the gate on the other.
+    preserveSymlinks: true,
     exclude: { path: '^src/vendor/' },
     tsConfig: { fileName: 'tsconfig.json' },
     tsPreCompilationDeps: true,

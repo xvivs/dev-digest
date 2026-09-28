@@ -142,7 +142,7 @@
   {
     "type": "dependency",
     "from": "src/modules/polling/routes.ts",
-    "to": "node_modules/.pnpm/drizzle-orm@0.38.4_postgres@3.4.9/node_modules/drizzle-orm/index.cjs",
+    "to": "node_modules/drizzle-orm/index.cjs",
     "unresolvedTo": "drizzle-orm",
     "dependencyTypes": [
       "npm",
@@ -170,7 +170,7 @@
   {
     "type": "dependency",
     "from": "src/modules/pulls/routes.ts",
-    "to": "node_modules/.pnpm/drizzle-orm@0.38.4_postgres@3.4.9/node_modules/drizzle-orm/index.cjs",
+    "to": "node_modules/drizzle-orm/index.cjs",
     "unresolvedTo": "drizzle-orm",
     "dependencyTypes": [
       "npm",
@@ -198,7 +198,7 @@
   {
     "type": "dependency",
     "from": "src/modules/settings/routes.ts",
-    "to": "node_modules/.pnpm/drizzle-orm@0.38.4_postgres@3.4.9/node_modules/drizzle-orm/index.cjs",
+    "to": "node_modules/drizzle-orm/index.cjs",
     "unresolvedTo": "drizzle-orm",
     "dependencyTypes": [
       "npm",
@@ -226,7 +226,7 @@
   {
     "type": "dependency",
     "from": "src/modules/workspace/routes.ts",
-    "to": "node_modules/.pnpm/drizzle-orm@0.38.4_postgres@3.4.9/node_modules/drizzle-orm/index.cjs",
+    "to": "node_modules/drizzle-orm/index.cjs",
     "unresolvedTo": "drizzle-orm",
     "dependencyTypes": [
       "npm",

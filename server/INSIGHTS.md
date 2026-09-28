@@ -53,6 +53,8 @@ lives in the engineering-insights skill).
 
 - **Changing an exported TypeScript shape can leave `tsc --noEmit -p tsconfig.json` green while `server/test/**` breaks: the server tsconfig includes only `src/**/*.ts` (`server/tsconfig.json:28`), and vitest strips types without checking them** — changing `PromptParts.skills` from `string[]` to `SkillInput[]` broke `test/prompt-structured.test.ts` and `test/prompt-callers.test.ts` with no type error, only failing assertions (`### undefined`). After any contract change, run the full `vitest run`, or grep `test/` for the old shape; typecheck alone proves nothing about `test/`. `reviewer-core/tsconfig.json:28` has the same `src/**` include. _(2026-09-28)_
 
+- **`arch:check` green locally but CI fails with `presentation-no-db: src/modules/*/routes.ts → node_modules/drizzle-orm/index.cjs` on already-baselined routes** — `.dependency-cruiser-known-violations.json` stores the *resolved* `to` path, so a baseline made on a pnpm `isolated` install (`node_modules/.pnpm/drizzle-orm@0.38.4_postgres@3.4.9/…`, check `nodeLinker` in `node_modules/.modules.yaml`; worktree installs can ignore `server/.npmrc` `node-linker=hoisted`) never matches CI's hoisted `node_modules/drizzle-orm/…`. Fixed with `preserveSymlinks: true` in `server/.dependency-cruiser.cjs:184` so paths are layout-independent; after any rule/option change regenerate with `pnpm arch:baseline`. _(2026-09-29)_
+
 ## Session Notes
 
 ### 2026-09-19 — Cost Badge (server) session
