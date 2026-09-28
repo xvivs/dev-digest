@@ -10,15 +10,31 @@
  *   PUT    /skills/:id         → partial update (D8)
  *   DELETE /skills/:id         → hard delete (links cascade)
  *   POST   /skills/:id/vet     → ADR 0012 vetting
+ *   GET    /skills/:id/versions              → snapshots, newest first (ADR 0016)
+ *   GET    /skills/:id/versions/:version     → one snapshot with body
+ *   POST   /skills/:id/versions/:version/restore → guarded, append-only restore
  */
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
-import { SkillType, type Skill as SkillDto } from '@devdigest/shared';
+import {
+  RestoreSkillVersionBody,
+  SkillChangeNote,
+  SkillType,
+  type RestoreSkillVersionResult,
+  type Skill as SkillDto,
+  type SkillVersion as SkillVersionDto,
+  type SkillVersionSummary as SkillVersionSummaryDto,
+} from '@devdigest/shared';
 import { getContext } from '../_shared/context.js';
 import { IdParams } from '../_shared/schemas.js';
 import { NotFoundError } from '../../platform/errors.js';
-import { containsInvisibleChars, type Skill } from './domain.js';
+import {
+  containsInvisibleChars,
+  type Skill,
+  type SkillVersionSnapshot,
+  type SkillVersionSummary,
+} from './domain.js';
 import { SKILL_BODY_MAX, SKILL_DESCRIPTION_MAX, SKILL_NAME_PATTERN } from './constants.js';
 import { buildSkillsService } from './wiring.js';
 
@@ -52,12 +68,18 @@ const CreateSkillBody = z
   .strict();
 
 /** CreateSkillBody minus `source` (not updatable) plus `enabled` (not
- *  creatable), all optional. `source` is omitted BEFORE `.partial()` so its
- *  `.default('manual')` never leaks into an update. */
+ *  creatable) and `change_note` (ADR 0016), all optional. `source` is omitted
+ *  BEFORE `.partial()` so its `.default('manual')` never leaks into an update. */
 const UpdateSkillBody = CreateSkillBody.omit({ source: true })
   .partial()
-  .extend({ enabled: z.boolean().optional() })
+  .extend({ enabled: z.boolean().optional(), change_note: SkillChangeNote.optional() })
   .strict();
+
+/** Same shape as `/agents/:id/versions/:version`: non-numeric → 422. */
+const VersionParams = z.object({
+  id: z.string().uuid(),
+  version: z.coerce.number().int().positive(),
+});
 
 /** Public DTO (snake_case, ISO dates) — matches the frozen `Skill` contract. */
 function toDto(s: Skill): SkillDto {
@@ -74,6 +96,23 @@ function toDto(s: Skill): SkillDto {
     needs_vetting: s.needsVetting,
     updated_at: s.updatedAt.toISOString(),
   };
+}
+
+function toVersionSummaryDto(v: SkillVersionSummary): SkillVersionSummaryDto {
+  return {
+    skill_id: v.skillId,
+    version: v.version,
+    name: v.name,
+    description: v.description,
+    type: v.type,
+    change_note: v.changeNote,
+    created_at: v.createdAt.toISOString(),
+  };
+}
+
+function toVersionDto(v: SkillVersionSnapshot): SkillVersionDto {
+  const { body, ...summary } = v;
+  return { ...toVersionSummaryDto(summary), body };
 }
 
 function toListDto(s: Skill & { agentCount: number }): SkillDto & { agent_count: number } {
@@ -116,7 +155,11 @@ export default async function skillsRoutes(appBase: FastifyInstance) {
     { schema: { params: IdParams, body: UpdateSkillBody } },
     async (req) => {
       const { workspaceId } = await getContext(app.container, req);
-      const skill = await service.update(workspaceId, req.params.id, req.body);
+      const { change_note: changeNote, ...patch } = req.body;
+      const skill = await service.update(workspaceId, req.params.id, {
+        ...patch,
+        ...(changeNote !== undefined ? { changeNote } : {}),
+      });
       if (!skill) throw new NotFoundError('Skill not found');
       return toDto(skill);
     },
@@ -138,4 +181,34 @@ export default async function skillsRoutes(appBase: FastifyInstance) {
     if (!skill) throw new NotFoundError('Skill not found');
     return toDto(skill);
   });
+
+  app.get('/skills/:id/versions', { schema: { params: IdParams } }, async (req) => {
+    const { workspaceId } = await getContext(app.container, req);
+    const versions = await service.listVersions(workspaceId, req.params.id);
+    if (!versions) throw new NotFoundError('Skill not found');
+    return versions.map(toVersionSummaryDto);
+  });
+
+  app.get('/skills/:id/versions/:version', { schema: { params: VersionParams } }, async (req) => {
+    const { workspaceId } = await getContext(app.container, req);
+    const version = await service.getVersion(workspaceId, req.params.id, req.params.version);
+    if (!version) throw new NotFoundError('Skill version not found');
+    return toVersionDto(version);
+  });
+
+  app.post(
+    '/skills/:id/versions/:version/restore',
+    { schema: { params: VersionParams, body: RestoreSkillVersionBody } },
+    async (req): Promise<RestoreSkillVersionResult> => {
+      const { workspaceId } = await getContext(app.container, req);
+      const result = await service.restore(
+        workspaceId,
+        req.params.id,
+        req.params.version,
+        req.body.expected_version,
+      );
+      if (!result) throw new NotFoundError('Skill not found');
+      return { skill: toDto(result.skill), restored: result.restored };
+    },
+  );
 }

@@ -8,8 +8,13 @@
  * skill that still needs vetting is refused.
  */
 import type { SkillSource, SkillType } from '@devdigest/shared';
-import { AppError } from '../../platform/errors.js';
-import { INVISIBLE_CHARS_PATTERN } from './constants.js';
+import { AppError, ValidationError } from '../../platform/errors.js';
+import {
+  INVISIBLE_CHARS_PATTERN,
+  SKILL_BODY_MAX,
+  SKILL_DESCRIPTION_MAX,
+  SKILL_NAME_PATTERN,
+} from './constants.js';
 
 /** What the service reads and writes. Not a Drizzle row, not an HTTP DTO. */
 export interface Skill {
@@ -53,6 +58,96 @@ export interface SkillPatch {
   type?: SkillType;
   body?: string;
   enabled?: boolean;
+  /** ADR 0016: free-text "what changed", stored on the new snapshot only. */
+  changeNote?: string;
+}
+
+/**
+ * ADR 0016: one append-only `skill_versions` row = the state of every
+ * versioned field at `version`. `name`/`description`/`type` are null on
+ * snapshots written before the all-field migration (only the body was kept).
+ */
+export interface SkillVersionSnapshot {
+  skillId: string;
+  version: number;
+  name: string | null;
+  description: string | null;
+  type: SkillType | null;
+  body: string;
+  changeNote: string | null;
+  createdAt: Date;
+}
+
+/** `GET /skills/:id/versions` row: the snapshot without its body. */
+export type SkillVersionSummary = Omit<SkillVersionSnapshot, 'body'>;
+
+/** The versioned content fields (ADR 0016). `enabled` is deliberately absent. */
+export type SkillContent = Pick<Skill, 'name' | 'description' | 'type' | 'body'>;
+
+/**
+ * ADR 0016: a change to any of name/description/type/body bumps the version
+ * and writes a snapshot; toggling `enabled` never does. Returns the fields
+ * of `patch` that actually differ from `current`.
+ */
+export function changedContent(
+  current: SkillContent,
+  patch: Partial<SkillContent>,
+): Partial<SkillContent> {
+  const out: Partial<SkillContent> = {};
+  if (patch.name !== undefined && patch.name !== current.name) out.name = patch.name;
+  if (patch.description !== undefined && patch.description !== current.description) {
+    out.description = patch.description;
+  }
+  if (patch.type !== undefined && patch.type !== current.type) out.type = patch.type;
+  if (patch.body !== undefined && patch.body !== current.body) out.body = patch.body;
+  return out;
+}
+
+/**
+ * ADR 0016: the content a restore of `snapshot` would write. A legacy snapshot
+ * (null metadata) restores its body only and keeps the current metadata.
+ */
+export function restoreTarget(snapshot: SkillVersionSnapshot): Partial<SkillContent> {
+  return {
+    ...(snapshot.name !== null ? { name: snapshot.name } : {}),
+    ...(snapshot.description !== null ? { description: snapshot.description } : {}),
+    ...(snapshot.type !== null ? { type: snapshot.type } : {}),
+    body: snapshot.body,
+  };
+}
+
+/** Default note on a version created by `POST …/versions/:v/restore`. */
+export function restoreChangeNote(version: number): string {
+  return `Restored from v${version}`;
+}
+
+/** Empty / whitespace-only notes are stored as null. */
+export function normalizeChangeNote(note: string | undefined): string | null {
+  const trimmed = note?.trim();
+  return trimmed ? trimmed : null;
+}
+
+/**
+ * ADR 0012 input limits apply to a restore as to a PUT: a snapshot written
+ * under looser rules (or tampered with in the DB) must not come back in.
+ * Throws a 422 `validation_error` naming the offending field.
+ */
+export function assertRestorableContent(content: Partial<SkillContent>): void {
+  const fail = (field: string, reason: string): never => {
+    throw new ValidationError(`Snapshot ${field} cannot be restored: ${reason}`, { field });
+  };
+  if (content.name !== undefined && !SKILL_NAME_PATTERN.test(content.name)) {
+    fail('name', 'not a lowercase slug');
+  }
+  if (content.description !== undefined && content.description.length > SKILL_DESCRIPTION_MAX) {
+    fail('description', `longer than ${SKILL_DESCRIPTION_MAX} chars`);
+  }
+  if (content.body !== undefined) {
+    if (content.body.length < 1 || content.body.length > SKILL_BODY_MAX) {
+      fail('body', `must be 1..${SKILL_BODY_MAX} chars`);
+    }
+    if (containsInvisibleChars(content.body)) fail('body', 'contains disallowed invisible characters');
+  }
 }
 
 export function containsInvisibleChars(body: string): boolean {
@@ -76,6 +171,24 @@ export class SkillVetStaleError extends AppError {
       409,
       { expected_version: expected, current_version: actual },
     );
+  }
+}
+
+/** ADR 0016: the skill moved past the version the client restored from. */
+export class SkillVersionStaleError extends AppError {
+  constructor(expected: number, actual: number) {
+    super(
+      'skill_version_stale',
+      'The skill changed since you opened its history. Reload and try again.',
+      409,
+      { expected_version: expected, current_version: actual },
+    );
+  }
+}
+
+export class SkillVersionNotFoundError extends AppError {
+  constructor(version: number) {
+    super('not_found', `Skill version ${version} not found`, 404, { version });
   }
 }
 

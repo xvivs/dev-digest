@@ -8,15 +8,25 @@
  * module import; see `modules-no-cross-import` in `.dependency-cruiser.cjs`).
  */
 import { createHash } from 'node:crypto';
-import { and, asc, count, eq, ilike, inArray, or, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, ilike, inArray, or, sql } from 'drizzle-orm';
 import type { Db } from '../../db/client.js';
 import * as t from '../../db/schema.js';
-import { SkillNameTakenError, SkillVetStaleError, type NewSkill, type Skill, type SkillListItem } from './domain.js';
+import {
+  SkillNameTakenError,
+  SkillVersionStaleError,
+  SkillVetStaleError,
+  type NewSkill,
+  type Skill,
+  type SkillListItem,
+  type SkillVersionSnapshot,
+  type SkillVersionSummary,
+} from './domain.js';
 import type { SkillStore, SkillWritePatch } from './ports.js';
 
 /** A Drizzle transaction handle — structurally a `Db` for queries. */
 type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
 type SkillRow = typeof t.skills.$inferSelect;
+type SkillVersionRow = typeof t.skillVersions.$inferSelect;
 
 /** One effective skill resolved for a run (SPEC-02 D1 / AC-25/27). */
 export interface EffectiveSkill {
@@ -61,6 +71,32 @@ function toSkill(row: SkillRow): Skill {
   };
 }
 
+function toSnapshot(row: SkillVersionRow): SkillVersionSnapshot {
+  return {
+    skillId: row.skillId,
+    version: row.version,
+    name: row.name,
+    description: row.description,
+    type: row.type,
+    body: row.body,
+    changeNote: row.changeNote,
+    createdAt: row.createdAt,
+  };
+}
+
+/** Snapshot row for the skill's CURRENT state (ADR 0016: every field). */
+function snapshotOf(row: SkillRow, changeNote: string | null) {
+  return {
+    skillId: row.id,
+    version: row.version,
+    body: row.body,
+    name: row.name,
+    description: row.description,
+    type: row.type,
+    changeNote,
+  };
+}
+
 export class SkillsRepository implements SkillStore {
   constructor(private readonly db: Db | Tx) {}
 
@@ -98,30 +134,87 @@ export class SkillsRepository implements SkillStore {
     return row ? toSkill(row) : undefined;
   }
 
+  /** ADR 0016: the skill row and its v1 snapshot land together (a savepoint
+   *  when `this.db` is already a transaction). */
   async insert(input: NewSkill): Promise<Skill> {
     try {
-      const [row] = await this.db
-        .insert(t.skills)
-        .values({
-          workspaceId: input.workspaceId,
-          name: input.name,
-          description: input.description,
-          type: input.type,
-          source: input.source,
-          body: input.body,
-          enabled: input.enabled,
-          needsVetting: input.needsVetting,
-        })
-        .returning();
-      if (!row) throw new Error('insert into skills returned no row');
-      return toSkill(row);
+      return await this.db.transaction(async (tx) => {
+        const [row] = await tx
+          .insert(t.skills)
+          .values({
+            workspaceId: input.workspaceId,
+            name: input.name,
+            description: input.description,
+            type: input.type,
+            source: input.source,
+            body: input.body,
+            enabled: input.enabled,
+            needsVetting: input.needsVetting,
+          })
+          .returning();
+        if (!row) throw new Error('insert into skills returned no row');
+        await tx.insert(t.skillVersions).values(snapshotOf(row, null));
+        return toSkill(row);
+      });
     } catch (err) {
       if (isUniqueViolation(err, SKILLS_NAME_UQ)) throw new SkillNameTakenError(input.name);
       throw err;
     }
   }
 
-  async update(workspaceId: string, id: string, patch: SkillWritePatch): Promise<Skill | undefined> {
+  update(workspaceId: string, id: string, patch: SkillWritePatch): Promise<Skill | undefined> {
+    return this.write(workspaceId, id, patch);
+  }
+
+  /**
+   * Same write as `update`, guarded by `version` like `vet`: a concurrent edit
+   * moves the version, the guard misses, and the caller gets a 409 instead of
+   * a restore silently overwriting that edit.
+   */
+  async restore(
+    workspaceId: string,
+    id: string,
+    expectedVersion: number,
+    patch: SkillWritePatch,
+  ): Promise<Skill | undefined> {
+    const row = await this.write(workspaceId, id, { ...patch, bumpVersion: true }, expectedVersion);
+    if (row) return row;
+    const existing = await this.findById(workspaceId, id);
+    if (!existing) return undefined;
+    throw new SkillVersionStaleError(expectedVersion, existing.version);
+  }
+
+  async listVersions(skillId: string): Promise<SkillVersionSummary[]> {
+    return this.db
+      .select({
+        skillId: t.skillVersions.skillId,
+        version: t.skillVersions.version,
+        name: t.skillVersions.name,
+        description: t.skillVersions.description,
+        type: t.skillVersions.type,
+        changeNote: t.skillVersions.changeNote,
+        createdAt: t.skillVersions.createdAt,
+      })
+      .from(t.skillVersions)
+      .where(eq(t.skillVersions.skillId, skillId))
+      .orderBy(desc(t.skillVersions.version));
+  }
+
+  async findVersion(skillId: string, version: number): Promise<SkillVersionSnapshot | undefined> {
+    const [row] = await this.db
+      .select()
+      .from(t.skillVersions)
+      .where(and(eq(t.skillVersions.skillId, skillId), eq(t.skillVersions.version, version)));
+    return row ? toSnapshot(row) : undefined;
+  }
+
+  /** One UPDATE (optionally version-guarded) + the snapshot of the new state. */
+  private async write(
+    workspaceId: string,
+    id: string,
+    patch: SkillWritePatch,
+    expectedVersion?: number,
+  ): Promise<Skill | undefined> {
     try {
       const [row] = await this.db
         .update(t.skills)
@@ -136,20 +229,22 @@ export class SkillsRepository implements SkillStore {
           ...(patch.bumpVersion ? { version: sql`${t.skills.version} + 1` } : {}),
           updatedAt: new Date(),
         })
-        .where(and(eq(t.skills.workspaceId, workspaceId), eq(t.skills.id, id)))
+        .where(
+          and(
+            eq(t.skills.workspaceId, workspaceId),
+            eq(t.skills.id, id),
+            ...(expectedVersion !== undefined ? [eq(t.skills.version, expectedVersion)] : []),
+          ),
+        )
         .returning();
       if (!row) return undefined;
 
-      // AC-9: the version bump and its skill_versions snapshot are written in
-      // the SAME db call chain as the row update — both run inside whatever
-      // transaction `this.db` is bound to (the service opens one via
-      // `transaction()` below before calling update()).
+      // AC-9 / ADR 0016: the version bump and its all-field snapshot are
+      // written in the SAME db call chain as the row update — both run inside
+      // whatever transaction `this.db` is bound to (the service opens one via
+      // `transaction()` below). Snapshot = the state AT the new version.
       if (patch.bumpVersion) {
-        await this.db.insert(t.skillVersions).values({
-          skillId: row.id,
-          version: row.version,
-          body: row.body,
-        });
+        await this.db.insert(t.skillVersions).values(snapshotOf(row, patch.changeNote ?? null));
       }
       return toSkill(row);
     } catch (err) {
@@ -162,7 +257,8 @@ export class SkillsRepository implements SkillStore {
 
   /**
    * Vet the body the person actually reviewed: one atomic UPDATE guarded by
-   * `version` (which bumps on every body edit), with the hash computed by
+   * `version` (which bumps on every content edit, ADR 0016 — so a rename
+   * during review is stale too), with the hash computed by
    * Postgres from the row being updated. A concurrent body edit makes the
    * guard miss → SkillVetStaleError, never a vetted unseen body.
    */
