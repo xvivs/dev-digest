@@ -1,7 +1,7 @@
 {
   "card": {
     "noDescription": "No description",
-    "skillCount": "{count} skills",
+    "skillCount": "{count, plural, one {# skill} other {# skills}}",
     "enabledToggle": "Enable {name}",
     "delete": "Delete agent",
     "deleteConfirm": "Delete agent \"{name}\"? This cannot be undone."

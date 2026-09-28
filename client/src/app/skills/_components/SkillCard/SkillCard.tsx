@@ -50,48 +50,70 @@ export function SkillCard({
     update.mutate({ id: skill.id, patch: { enabled: next } });
   };
 
+  // The vet modal renders as a SIBLING of the card: a disabled card is dimmed
+  // with `opacity`, which would otherwise make the whole modal translucent,
+  // and clicks inside it would bubble into the card's navigate handler.
   return (
-    <div
-      style={s.card(!!active, skill.enabled, !!href)}
-      onClick={(e) => {
-        // The link, toggle and vet modal handle their own clicks.
-        if (!href || (e.target as Element).closest("a, button, input, [role='switch']")) return;
-        guard.confirmNavigation(() => router.push(href));
-      }}
-    >
-      <div style={s.headerRow}>
-        {href ? (
-          <Link href={href} aria-current={active ? "page" : undefined} className="mono" style={s.nameLink}>
-            {skill.name}
-          </Link>
-        ) : (
-          <span className="mono" style={s.name}>
-            {skill.name}
-          </span>
-        )}
-        <Toggle
-          on={skill.enabled}
-          onChange={onToggle}
-          size={TOGGLE_SIZE}
-          label={t("card.enabledToggle", { name: skill.name })}
-        />
+    <>
+      <div
+        style={s.card(!!active, skill.enabled, !!href)}
+        onClick={(e) => {
+          // The link, toggle and vet modal handle their own clicks.
+          if (
+            !href ||
+            (e.target as Element).closest("a, button, input, [role='switch']")
+          )
+            return;
+          guard.confirmNavigation(() => router.push(href));
+        }}
+      >
+        <div style={s.headerRow}>
+          {href ? (
+            <Link
+              href={href}
+              aria-current={active ? "page" : undefined}
+              className="mono"
+              style={s.nameLink}
+            >
+              {skill.name}
+            </Link>
+          ) : (
+            <span className="mono" style={s.name}>
+              {skill.name}
+            </span>
+          )}
+          <Toggle
+            on={skill.enabled}
+            onChange={onToggle}
+            size={TOGGLE_SIZE}
+            label={t("card.enabledToggle", { name: skill.name })}
+          />
+        </div>
+        <div style={s.description}>
+          {skill.description || t("card.noDescription")}
+        </div>
+        <div style={s.metaRow}>
+          <Badge color="var(--text-secondary)">{t(`type.${skill.type}`)}</Badge>
+          <span style={s.sourceLabel}>{t(`source.${skill.source}`)}</span>
+          <Badge color="var(--text-secondary)" icon="Users">
+            {t("card.agentCount", { count: skill.agent_count })}
+          </Badge>
+          {skill.needs_vetting && (
+            <span title={t("card.vettingTitle")}>
+              <Badge
+                color="var(--warn)"
+                bg="var(--warn-bg)"
+                icon="AlertTriangle"
+              >
+                {t("card.needsVetting")}
+              </Badge>
+            </span>
+          )}
+        </div>
       </div>
-      <div style={s.description}>{skill.description || t("card.noDescription")}</div>
-      <div style={s.metaRow}>
-        <Badge color="var(--text-secondary)">{t(`type.${skill.type}`)}</Badge>
-        <span style={s.sourceLabel}>{t(`source.${skill.source}`)}</span>
-        <Badge color="var(--text-secondary)" icon="Users">
-          {t("card.agentCount", { count: skill.agent_count })}
-        </Badge>
-        {skill.needs_vetting && (
-          <span title={t("card.vettingTitle")}>
-            <Badge color="var(--warn)" bg="var(--warn-bg)" icon="AlertTriangle">
-              {t("card.needsVetting")}
-            </Badge>
-          </span>
-        )}
-      </div>
-      {vetting && <VetSkillModal skill={skill} onClose={() => setVetting(false)} />}
-    </div>
+      {vetting && (
+        <VetSkillModal skill={skill} onClose={() => setVetting(false)} />
+      )}
+    </>
   );
 }

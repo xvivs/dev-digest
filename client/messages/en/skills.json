@@ -24,7 +24,7 @@
   },
   "card": {
     "noDescription": "No description",
-    "agentCount": "{count} agents",
+    "agentCount": "{count, plural, one {# agent} other {# agents}}",
     "enabledToggle": "Enable {name}",
     "needsVetting": "needs vetting",
     "vettingTitle": "Untrusted source — review and trust before enabling"
