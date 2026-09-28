@@ -13,6 +13,7 @@
  *   GET    /skills/:id/versions              → snapshots, newest first (ADR 0016)
  *   GET    /skills/:id/versions/:version     → one snapshot with body
  *   POST   /skills/:id/versions/:version/restore → guarded, append-only restore
+ *   GET    /skills/:id/stats?window=7d|30d|90d  → Usage + Cost (plan Phase 2)
  */
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
@@ -20,6 +21,9 @@ import { z } from 'zod';
 import {
   RestoreSkillVersionBody,
   SkillChangeNote,
+  SkillStatsQuery,
+  type SkillListItem as SkillListItemDto,
+  type SkillStats as SkillStatsDto,
   SkillType,
   type RestoreSkillVersionResult,
   type Skill as SkillDto,
@@ -32,11 +36,13 @@ import { NotFoundError } from '../../platform/errors.js';
 import {
   containsInvisibleChars,
   type Skill,
+  type SkillListItem,
+  type SkillStatsSummary,
   type SkillVersionSnapshot,
   type SkillVersionSummary,
 } from './domain.js';
 import { SKILL_BODY_MAX, SKILL_DESCRIPTION_MAX, SKILL_NAME_PATTERN } from './constants.js';
-import { buildSkillsService } from './wiring.js';
+import { buildSkillStatsService, buildSkillsService } from './wiring.js';
 
 const INVISIBLE_CHARS_MESSAGE =
   'Body contains disallowed invisible/bidi-control characters (Unicode tags, bidi overrides, zero-width, BOM)';
@@ -115,13 +121,50 @@ function toVersionDto(v: SkillVersionSnapshot): SkillVersionDto {
   return { ...toVersionSummaryDto(summary), body };
 }
 
-function toListDto(s: Skill & { agentCount: number }): SkillDto & { agent_count: number } {
-  return { ...toDto(s), agent_count: s.agentCount };
+function toListDto(s: SkillListItem): SkillListItemDto {
+  return {
+    ...toDto(s),
+    agent_count: s.agentCount,
+    runs_30d: s.runs30d,
+    latest_verdict: s.latestVerdict
+      ? {
+          verdict: s.latestVerdict.verdict,
+          carrier_name: s.latestVerdict.carrierName,
+          stale: s.latestVerdict.stale,
+        }
+      : null,
+  };
+}
+
+function toStatsDto(s: SkillStatsSummary): SkillStatsDto {
+  return {
+    skill_id: s.skillId,
+    window: s.window,
+    usage: {
+      runs: s.usage.runs,
+      agents: s.usage.agents.map((a) => ({
+        agent_id: a.agentId,
+        agent_name: a.agentName,
+        status: a.status,
+        runs: a.runs,
+      })),
+    },
+    cost: { tokens: s.cost.tokens, cost_usd: s.cost.costUsd, cost_source: s.cost.costSource },
+    by_version: s.byVersion.map((v) => ({
+      version: v.version,
+      runs: v.runs,
+      tokens: v.tokens,
+      cost_usd: v.costUsd,
+      cost_source: v.costSource,
+    })),
+    impact: s.impact,
+  };
 }
 
 export default async function skillsRoutes(appBase: FastifyInstance) {
   const app = appBase.withTypeProvider<ZodTypeProvider>();
   const service = buildSkillsService(app.container);
+  const statsService = buildSkillStatsService(app.container);
 
   app.get('/skills', { schema: { querystring: z.object({ q: z.string().max(200).optional() }) } }, async (req) => {
     const { workspaceId } = await getContext(app.container, req);
@@ -209,6 +252,19 @@ export default async function skillsRoutes(appBase: FastifyInstance) {
       );
       if (!result) throw new NotFoundError('Skill not found');
       return { skill: toDto(result.skill), restored: result.restored };
+    },
+  );
+
+  // `window` outside the enum is a 422 validation_error (zod on the route,
+  // like every other input); a missing one defaults to 30d.
+  app.get(
+    '/skills/:id/stats',
+    { schema: { params: IdParams, querystring: SkillStatsQuery } },
+    async (req): Promise<SkillStatsDto> => {
+      const { workspaceId } = await getContext(app.container, req);
+      const stats = await statsService.stats(workspaceId, req.params.id, req.query.window);
+      if (!stats) throw new NotFoundError('Skill not found');
+      return toStatsDto(stats);
     },
   );
 }

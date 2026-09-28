@@ -9,7 +9,7 @@
  * the enable gate) rather than re-testing SQL.
  */
 import { describe, it, expect } from 'vitest';
-import { SkillsService } from './service.js';
+import { SkillStatsService, SkillsService } from './service.js';
 import {
   SkillNameTakenError,
   SkillNotVettedError,
@@ -20,7 +20,7 @@ import {
   type SkillVersionSnapshot,
 } from './domain.js';
 import { ValidationError } from '../../platform/errors.js';
-import type { SkillStore, SkillWritePatch } from './ports.js';
+import type { SkillStatsReader, SkillStore, SkillWritePatch } from './ports.js';
 
 class InMemorySkillStore implements SkillStore {
   rows: Skill[] = [];
@@ -30,7 +30,7 @@ class InMemorySkillStore implements SkillStore {
   async list(workspaceId: string) {
     return this.rows
       .filter((r) => r.workspaceId === workspaceId)
-      .map((r) => ({ ...r, agentCount: 0 }));
+      .map((r) => ({ ...r, agentCount: 0, runs30d: 0, latestVerdict: null }));
   }
 
   async findById(workspaceId: string, id: string) {
@@ -363,5 +363,52 @@ describe('SkillsService — versions + restore (ADR 0016)', () => {
     await service.vet(WS, created.id, 2);
     const result = await service.restore(WS, created.id, 1, 2);
     expect(result?.skill).toMatchObject({ version: 3, name: 'branch-coverage-gate', needsVetting: false });
+  });
+});
+
+describe('SkillStatsService (plan Phase 2)', () => {
+  const skill: Skill = {
+    id: 's1',
+    workspaceId: 'ws',
+    name: 'stats-skill',
+    description: '',
+    type: 'rubric',
+    source: 'manual',
+    body: 'b',
+    enabled: true,
+    version: 2,
+    evidenceFiles: null,
+    needsVetting: false,
+    vettedBodyHash: null,
+    createdAt: new Date(0),
+    updatedAt: new Date(0),
+  };
+
+  function readerWith(calls: number[]): SkillStatsReader {
+    return {
+      findById: async (ws, id) => (ws === 'ws' && id === 's1' ? skill : undefined),
+      listLinkedAgents: async () => [{ agentId: 'a1', agentName: 'alpha', status: 'effective' }],
+      runAggregates: async (_ws, _id, days) => {
+        calls.push(days);
+        return [{ agentId: 'a1', version: 2, model: 'm', runs: 4, tokens: 40 }];
+      },
+    };
+  }
+
+  it('maps the window to days and summarizes the reads', async () => {
+    const days: number[] = [];
+    const service = new SkillStatsService(readerWith(days), () => 0.5);
+    for (const w of ['7d', '30d', '90d'] as const) {
+      const s = await service.stats('ws', 's1', w);
+      expect(s).toMatchObject({ window: w, usage: { runs: 4 }, cost: { costUsd: 0.5, costSource: 'estimated' } });
+    }
+    expect(days).toEqual([7, 30, 90]);
+  });
+
+  it('undefined for a skill outside the workspace, without reading runs', async () => {
+    const days: number[] = [];
+    const service = new SkillStatsService(readerWith(days), () => 0);
+    expect(await service.stats('other-ws', 's1', '30d')).toBeUndefined();
+    expect(days).toEqual([]);
   });
 });

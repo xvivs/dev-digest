@@ -4,8 +4,15 @@
  * this; tests skip it and pass a fake store to the service directly.
  */
 import type { Container } from '../../platform/container.js';
-import { SkillsService } from './service.js';
+import { SkillStatsService, SkillsService } from './service.js';
 
 export function buildSkillsService(container: Container): SkillsService {
   return new SkillsService(container.skillsRepo);
+}
+
+/** Cost footprint priced with the live price book (static table fallback). */
+export function buildSkillStatsService(container: Container): SkillStatsService {
+  return new SkillStatsService(container.skillsRepo, (model, tokensIn, tokensOut) =>
+    container.priceBook.estimate(model, tokensIn, tokensOut),
+  );
 }

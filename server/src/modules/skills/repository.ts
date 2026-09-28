@@ -14,16 +14,21 @@ import * as t from '../../db/schema.js';
 import {
   isEffectiveSkill,
   promptHashInput,
+  skillUsageStatus,
   SkillNameTakenError,
   SkillVersionStaleError,
   SkillVetStaleError,
   type NewSkill,
   type Skill,
+  type LinkedAgentUsage,
+  type SkillLatestVerdict,
   type SkillListItem,
+  type SkillRunAggregate,
   type SkillVersionSnapshot,
   type SkillVersionSummary,
 } from './domain.js';
-import type { SkillStore, SkillWritePatch } from './ports.js';
+import type { SkillStatsReader, SkillStore, SkillWritePatch } from './ports.js';
+import { COMPLETED_RUN_STATUS, LIST_RUNS_WINDOW_DAYS } from './constants.js';
 
 /** A Drizzle transaction handle — structurally a `Db` for queries. */
 type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
@@ -102,11 +107,16 @@ function snapshotOf(row: SkillRow, changeNote: string | null) {
   };
 }
 
-export class SkillsRepository implements SkillStore {
+export class SkillsRepository implements SkillStore, SkillStatsReader {
   constructor(private readonly db: Db | Tx) {}
 
-  /** One query (LEFT JOIN + GROUP BY), no N+1 — `agent_count` is every agent
-   *  linking the skill, regardless of the link's own enabled state.
+  /** ONE query, no N+1 (plan Phase 2): `agent_count` is every agent linking
+   *  the skill, regardless of the link's own enabled state; `runs_30d` counts
+   *  completed runs that injected it (a grouped `run_skills ⋈ agent_runs`
+   *  derived table, LEFT JOINed once); and
+   *  `latest_verdict` is the slot Phase 3 fills from `eval_suites` with a
+   *  LEFT JOIN LATERAL on the latest done Full suite. Until those tables
+   *  exist it is a typed NULL, so the row shape already matches.
    *  `q` is a linear `ILIKE '%q%'` scan over name/description within ONE
    *  workspace (a handful of skills), so no trigram index; add `pg_trgm` +
    *  GIN (`gin_trgm_ops`) if a workspace ever holds thousands. */
@@ -120,15 +130,46 @@ export class SkillsRepository implements SkillStore {
           )
         : eq(t.skills.workspaceId, workspaceId);
 
+    // Completed runs per skill over the window, aggregated ONCE for the
+    // workspace (one pass over the window's runs), not re-counted per skill.
+    const runs30d = this.db
+      .select({
+        skillId: t.runSkills.skillId,
+        runs: sql<number>`count(*)::int`.as('runs'),
+      })
+      .from(t.runSkills)
+      .innerJoin(t.agentRuns, eq(t.agentRuns.id, t.runSkills.runId))
+      .where(
+        and(
+          eq(t.agentRuns.workspaceId, workspaceId),
+          eq(t.agentRuns.status, COMPLETED_RUN_STATUS),
+          sql`${t.agentRuns.ranAt} >= now() - make_interval(days => ${LIST_RUNS_WINDOW_DAYS})`,
+        ),
+      )
+      .groupBy(t.runSkills.skillId)
+      .as('runs_30d');
+
     const rows = await this.db
-      .select({ skill: t.skills, agentCount: count(t.agentSkills.agentId) })
+      .select({
+        skill: t.skills,
+        agentCount: count(t.agentSkills.agentId),
+        // One row per skill in `runs_30d`, so max() just lifts it past GROUP BY.
+        runs30d: sql<number>`coalesce(max(${runs30d.runs}), 0)::int`,
+        latestVerdict: sql<SkillLatestVerdict | null>`NULL::jsonb`,
+      })
       .from(t.skills)
       .leftJoin(t.agentSkills, eq(t.agentSkills.skillId, t.skills.id))
+      .leftJoin(runs30d, eq(runs30d.skillId, t.skills.id))
       .where(where)
       .groupBy(t.skills.id)
       .orderBy(asc(t.skills.name));
 
-    return rows.map((r) => ({ ...toSkill(r.skill), agentCount: Number(r.agentCount) }));
+    return rows.map((r) => ({
+      ...toSkill(r.skill),
+      agentCount: Number(r.agentCount),
+      runs30d: Number(r.runs30d),
+      latestVerdict: r.latestVerdict ?? null,
+    }));
   }
 
   async findById(workspaceId: string, id: string): Promise<Skill | undefined> {
@@ -304,6 +345,46 @@ export class SkillsRepository implements SkillStore {
    */
   transaction<T>(work: (store: SkillStore) => Promise<T>): Promise<T> {
     return this.db.transaction((tx) => work(new SkillsRepository(tx)));
+  }
+
+  // ---- stats (plan Phase 2)
+
+  async listLinkedAgents(skill: Skill): Promise<LinkedAgentUsage[]> {
+    const rows = await this.db
+      .select({ agentId: t.agents.id, agentName: t.agents.name, linkEnabled: t.agentSkills.enabled })
+      .from(t.agentSkills)
+      .innerJoin(t.agents, eq(t.agents.id, t.agentSkills.agentId))
+      .where(and(eq(t.agentSkills.skillId, skill.id), eq(t.agents.workspaceId, skill.workspaceId)))
+      .orderBy(asc(t.agents.name));
+    const bodySha256 = sha256Hex(skill.body);
+    return rows.map((r) => ({
+      agentId: r.agentId,
+      agentName: r.agentName,
+      status: skillUsageStatus(r.linkEnabled, skill, bodySha256),
+    }));
+  }
+
+  async runAggregates(workspaceId: string, skillId: string, days: number): Promise<SkillRunAggregate[]> {
+    const rows = await this.db
+      .select({
+        agentId: t.agentRuns.agentId,
+        version: t.runSkills.skillVersion,
+        model: t.agentRuns.model,
+        runs: sql<number>`count(*)::int`,
+        tokens: sql<number>`coalesce(sum(${t.runSkills.tokens}), 0)::int`,
+      })
+      .from(t.runSkills)
+      .innerJoin(t.agentRuns, eq(t.agentRuns.id, t.runSkills.runId))
+      .where(
+        and(
+          eq(t.runSkills.skillId, skillId),
+          eq(t.agentRuns.workspaceId, workspaceId),
+          eq(t.agentRuns.status, COMPLETED_RUN_STATUS),
+          sql`${t.agentRuns.ranAt} >= now() - make_interval(days => ${days})`,
+        ),
+      )
+      .groupBy(t.agentRuns.agentId, t.runSkills.skillVersion, t.agentRuns.model);
+    return rows.map((r) => ({ ...r, runs: Number(r.runs), tokens: Number(r.tokens) }));
   }
 
   // ---- cross-cutting: resolved for reviews/run-executor via container.skillsRepo

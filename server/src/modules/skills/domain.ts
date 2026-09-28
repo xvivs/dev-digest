@@ -9,6 +9,7 @@
  */
 import type {
   CostSource,
+  ImpactVerdict,
   SkillAgentUsageStatus,
   SkillSource,
   SkillStatsWindow,
@@ -40,9 +41,20 @@ export interface Skill {
   updatedAt: Date;
 }
 
-/** A skill plus how many agents link it (`GET /skills` row). */
+/** Latest Full-suite verdict for the skill card (ADR 0017). Phase 3 fills it. */
+export interface SkillLatestVerdict {
+  verdict: ImpactVerdict;
+  carrierName: string;
+  stale: boolean;
+}
+
+/** A skill plus how many agents link it, its completed runs over the last
+ *  30 days and its latest Full eval verdict (`GET /skills` row). */
 export interface SkillListItem extends Skill {
   agentCount: number;
+  runs30d: number;
+  /** null = no evals. Always null until the Phase 3 eval tables exist. */
+  latestVerdict: SkillLatestVerdict | null;
 }
 
 export interface NewSkill {

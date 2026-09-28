@@ -5,7 +5,7 @@
  * enable gate) and the transaction boundary for `update` (AC-9); the route
  * maps the returned domain object to the HTTP DTO.
  */
-import type { SkillSource, SkillType } from '@devdigest/shared';
+import type { SkillSource, SkillStatsWindow, SkillType } from '@devdigest/shared';
 import {
   applyImportPolicy,
   assertEnableAllowed,
@@ -17,13 +17,17 @@ import {
   restoreTarget,
   SkillVersionNotFoundError,
   SkillVersionStaleError,
+  summarizeSkillStats,
+  type PriceEstimator,
   type Skill,
   type SkillListItem,
   type SkillPatch,
+  type SkillStatsSummary,
   type SkillVersionSnapshot,
   type SkillVersionSummary,
 } from './domain.js';
-import type { SkillStore } from './ports.js';
+import type { SkillStatsReader, SkillStore } from './ports.js';
+import { STATS_WINDOW_DAYS } from './constants.js';
 
 export interface CreateSkillInput {
   name: string;
@@ -164,5 +168,32 @@ export class SkillsService {
   /** Hard delete (D9): `agent_skills` links cascade; old traces keep their snapshot. */
   delete(workspaceId: string, id: string): Promise<boolean> {
     return this.store.deleteById(workspaceId, id);
+  }
+}
+
+/**
+ * Stats tab = Usage + Cost (plan Phase 2). Read-only: two reads through the
+ * port (linked agents + ONE run aggregate), then pure `summarizeSkillStats`.
+ * Separate from `SkillsService` so its unit test fakes only these reads.
+ */
+export class SkillStatsService {
+  constructor(
+    private readonly reader: SkillStatsReader,
+    private readonly estimate: PriceEstimator,
+  ) {}
+
+  /** undefined when the skill isn't in this workspace (route → 404). */
+  async stats(
+    workspaceId: string,
+    id: string,
+    window: SkillStatsWindow,
+  ): Promise<SkillStatsSummary | undefined> {
+    const skill = await this.reader.findById(workspaceId, id);
+    if (!skill) return undefined;
+    const [agents, aggregates] = await Promise.all([
+      this.reader.listLinkedAgents(skill),
+      this.reader.runAggregates(workspaceId, id, STATS_WINDOW_DAYS[window]),
+    ]);
+    return summarizeSkillStats({ skillId: id, window, agents, aggregates, estimate: this.estimate });
   }
 }
