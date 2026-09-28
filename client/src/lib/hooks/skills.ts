@@ -3,6 +3,7 @@
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
+import type { MutationHookOptions } from "../query-client";
 import type { Skill, SkillListItem, SkillType } from "@devdigest/shared";
 
 export function useSkills(q?: string) {
@@ -31,9 +32,11 @@ export interface CreateSkillInput {
   source?: "manual" | "imported";
 }
 
-export function useCreateSkill() {
+/** `options.meta` opts into ADR 0011's local error surface (import drawer). */
+export function useCreateSkill(options?: MutationHookOptions) {
   const qc = useQueryClient();
   return useMutation({
+    meta: options?.meta,
     mutationFn: (input: CreateSkillInput) => api.post<Skill>("/skills", input),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["skills"] }),
   });

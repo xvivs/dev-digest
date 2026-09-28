@@ -120,6 +120,13 @@ export function SkillEditorView({ id }: { id: string }) {
                   v{skill.version}
                 </Badge>
                 {!skill.enabled && <Badge color="var(--text-muted)">{t("detail.disabled")}</Badge>}
+                {skill.needs_vetting && (
+                  <span title={t("card.vettingTitle")}>
+                    <Badge color="var(--warn)" bg="var(--warn-bg)" icon="AlertTriangle">
+                      {t("card.needsVetting")}
+                    </Badge>
+                  </span>
+                )}
                 <div style={s.editorActions}>
                   <Button kind="secondary" size="sm" icon="FlaskConical" disabled title={t("detail.runOnEvalsHint")}>
                     {t("detail.runOnEvals")}

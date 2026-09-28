@@ -47,7 +47,8 @@ export function ImportSkillDrawer({ onClose }: { onClose: () => void }) {
   const tShell = useTranslations("shell");
   const router = useRouter();
   const toast = useToast();
-  const create = useCreateSkill();
+  // 409/422 render inline next to the field, so skip the global toast (ADR 0011).
+  const create = useCreateSkill({ meta: { errorSurface: "local" } });
 
   const [phase, setPhase] = React.useState<Phase>("pick");
   const [reading, setReading] = React.useState(false);
