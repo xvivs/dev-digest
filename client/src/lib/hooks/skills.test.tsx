@@ -3,7 +3,7 @@ import React from "react";
 import { renderHook, waitFor, cleanup, act } from "@testing-library/react";
 import { QueryClientProvider, type QueryClient } from "@tanstack/react-query";
 import type { Skill } from "@devdigest/shared";
-import { RestoreSkillVersionResult, SkillVersion, SkillVersionSummary } from "@devdigest/shared/contracts/skill-impact";
+import { RestoreSkillVersionResult, SkillStats, SkillVersion, SkillVersionSummary } from "@devdigest/shared/contracts/skill-impact";
 import { createTestQueryClient } from "@/test/render";
 
 const get = vi.fn();
@@ -17,7 +17,7 @@ vi.mock("../api", () => ({
   },
 }));
 
-import { useRestoreSkillVersion, useSkillVersion, useSkillVersions, useUpdateSkill } from "./skills";
+import { useRestoreSkillVersion, useSkillStats, useSkillVersion, useSkillVersions, useUpdateSkill } from "./skills";
 
 const SKILL: Skill = {
   id: "sk1",
@@ -123,5 +123,39 @@ describe("useUpdateSkill", () => {
     expect(put).toHaveBeenCalledWith("/skills/sk1", { body: "x", change_note: "why" });
     const keys = spy.mock.calls.map((c) => c[0]?.queryKey);
     expect(keys).toEqual(expect.arrayContaining([["skills"], ["agent-skills"], ["skill-versions", "sk1"]]));
+  });
+});
+
+describe("useSkillStats", () => {
+  it("GETs the window's stats with the SkillStats schema, keyed under ['skill-stats', id]", async () => {
+    get.mockResolvedValue({ window: "7d" });
+    const qc = createTestQueryClient();
+    const { result } = renderHook(() => useSkillStats("sk1", "7d"), { wrapper: wrapperFor(qc) });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(get).toHaveBeenCalledWith("/skills/sk1/stats?window=7d", SkillStats);
+    // Restore invalidates the ['skill-stats', id] prefix; every window sits under it.
+    expect(qc.getQueryData(["skill-stats", "sk1", "7d"])).toEqual({ window: "7d" });
+  });
+
+  it("keeps the previous window's numbers on screen while the next window loads", async () => {
+    let resolve90: (v: unknown) => void = () => {};
+    get.mockImplementation((path: string) =>
+      path.endsWith("90d") ? new Promise((r) => (resolve90 = r)) : Promise.resolve({ window: "30d" }),
+    );
+    const { result, rerender } = renderHook(({ w }: { w: "30d" | "90d" }) => useSkillStats("sk1", w), {
+      wrapper: wrapperFor(createTestQueryClient()),
+      initialProps: { w: "30d" },
+    });
+    await waitFor(() => expect(result.current.data).toEqual({ window: "30d" }));
+    rerender({ w: "90d" });
+    expect(result.current.data).toEqual({ window: "30d" });
+    expect(result.current.isPlaceholderData).toBe(true);
+    await act(async () => resolve90({ window: "90d" }));
+    await waitFor(() => expect(result.current.data).toEqual({ window: "90d" }));
+  });
+
+  it("does not fetch without an id", () => {
+    renderHook(() => useSkillStats(null, "30d"), { wrapper: wrapperFor(createTestQueryClient()) });
+    expect(get).not.toHaveBeenCalled();
   });
 });

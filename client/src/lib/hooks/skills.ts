@@ -1,7 +1,7 @@
 /* hooks/skills.ts — React Query hooks for the Skills page (SPEC-02). */
 "use client";
 
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
 import type { MutationHookOptions } from "../query-client";
 import type { Skill, SkillListItem, SkillType } from "@devdigest/shared";
@@ -10,6 +10,8 @@ import type { Skill, SkillListItem, SkillType } from "@devdigest/shared";
 // barrel; `next.config.mjs` maps its `.js` specifiers back to `.ts`.
 import {
   RestoreSkillVersionResult,
+  SkillStats,
+  type SkillStatsWindow,
   SkillVersion,
   SkillVersionSummary,
   type UpdateSkillBody,
@@ -25,7 +27,9 @@ export const skillKeys = {
   detail: (id: string) => ["skill", id] as const,
   versions: (id: string) => ["skill-versions", id] as const,
   version: (id: string, version: number) => ["skill-version", id, version] as const,
+  /** Prefix of every window's stats: invalidating it refreshes all of them. */
   stats: (id: string) => ["skill-stats", id] as const,
+  statsWindow: (id: string, window: SkillStatsWindow) => ["skill-stats", id, window] as const,
   agentSkills: ["agent-skills"] as const,
 };
 
@@ -102,6 +106,20 @@ export function useSkillVersion(id: string | null | undefined, version: number |
     staleTime: IMMUTABLE_STALE_TIME,
     // A missing snapshot is an expected answer, not a blip worth retrying.
     retry: false,
+  });
+}
+
+/**
+ * `GET /skills/:id/stats?window=` — usage, cost and impact (Phase 2).
+ * `placeholderData` keeps the previous window's numbers on screen while the
+ * next window loads, so the 7d/30d/90d switcher does not flash a skeleton.
+ */
+export function useSkillStats(id: string | null | undefined, window: SkillStatsWindow) {
+  return useQuery({
+    queryKey: skillKeys.statsWindow(id ?? "", window),
+    queryFn: () => api.get<SkillStats>(`/skills/${id}/stats?window=${window}`, SkillStats),
+    enabled: !!id,
+    placeholderData: keepPreviousData,
   });
 }
 
