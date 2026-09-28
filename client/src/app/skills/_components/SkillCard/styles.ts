@@ -42,5 +42,7 @@ export const s = {
     overflow: "hidden",
   } satisfies CSSProperties,
   metaRow: { display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 } satisfies CSSProperties,
+  /** The "N agents · M runs · verdict" line. */
+  stats: { display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-muted)" } satisfies CSSProperties,
   sourceLabel: { fontSize: 12, color: "var(--text-muted)" } satisfies CSSProperties,
 } as const;

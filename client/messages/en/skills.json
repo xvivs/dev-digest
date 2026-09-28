@@ -27,7 +27,13 @@
     "agentCount": "{count, plural, one {# agent} other {# agents}}",
     "enabledToggle": "Enable {name}",
     "needsVetting": "needs vetting",
-    "vettingTitle": "Untrusted source — review and trust before enabling"
+    "vettingTitle": "Untrusted source — review and trust before enabling",
+    "runs": "{count, plural, one {# run} other {# runs}}",
+    "runsTitle": "Completed runs that used this skill in the last 30 days",
+    "noEvals": "no evals",
+    "noEvalsTitle": "No full eval has run on this skill yet",
+    "verdictTitle": "Latest full eval on {carrier}",
+    "statsLabel": "Usage and impact"
   },
   "type": {
     "rubric": "rubric",
@@ -108,8 +114,14 @@
     "cancel": "Cancel"
   },
   "placeholder": {
-    "evals": { "title": "Evals", "body": "Comes with the evals lesson." },
-    "stats": { "title": "Stats", "body": "Comes with the stats lesson." }
+    "evals": {
+      "title": "Evals",
+      "body": "Comes with the evals lesson."
+    },
+    "stats": {
+      "title": "Stats",
+      "body": "Comes with the stats lesson."
+    }
   },
   "versions": {
     "title": "Versions",
@@ -231,5 +243,14 @@
     "importing": "Importing…",
     "import": "Import skill",
     "success": "Imported \"{name}\". It stays disabled until you review and trust it."
+  },
+  "verdict": {
+    "helps": "Helps",
+    "neutral": "Neutral",
+    "hurts": "Hurts",
+    "indicative": "Indicative",
+    "unknown": "Unknown",
+    "stale": "stale",
+    "staleTitle": "The skill or its carrier agent changed since this eval ran"
   }
 }

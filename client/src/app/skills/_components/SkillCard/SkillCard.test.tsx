@@ -58,6 +58,30 @@ describe("SkillCard", () => {
     expect(screen.getByText("2 agents")).toBeInTheDocument();
   });
 
+  it("summarises usage and impact: N agents · M runs · no evals", () => {
+    renderCard(<SkillCard skill={{ ...SKILL, runs_30d: 142, latest_verdict: null }} />);
+    const stats = screen.getByRole("group", { name: "Usage and impact" });
+    expect(stats).toHaveTextContent("2 agents·142 runs·no evals");
+    expect(screen.getByText("142 runs")).toHaveAttribute("title", "Completed runs that used this skill in the last 30 days");
+  });
+
+  it("shows the latest full verdict, its carrier and a stale marker", () => {
+    renderCard(
+      <SkillCard
+        skill={{ ...SKILL, runs_30d: 1, latest_verdict: { verdict: "helps", carrier_name: "Strict reviewer", stale: true } }}
+      />,
+    );
+    expect(screen.getByText("1 run")).toBeInTheDocument();
+    expect(screen.getByText("Helps").closest("[title]")).toHaveAttribute("title", "Latest full eval on Strict reviewer");
+    expect(screen.getByText("stale")).toBeInTheDocument();
+    expect(screen.queryByText("no evals")).not.toBeInTheDocument();
+  });
+
+  it("leaves runs and verdict out when an older server does not send them", () => {
+    renderCard(<SkillCard skill={SKILL} />);
+    expect(screen.getByRole("group", { name: "Usage and impact" })).toHaveTextContent(/^2 agents$/);
+  });
+
   it("falls back to a translated placeholder when description is empty", () => {
     renderCard(<SkillCard skill={{ ...SKILL, description: "" }} />);
     expect(screen.getByText("No description")).toBeInTheDocument();
