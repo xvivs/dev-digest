@@ -11,6 +11,7 @@ export function AutoTriggerStatus({
 }) {
   return (
     <button
+      type="button"
       title="Settings → Automatic Reviews"
       style={{
         display: "inline-flex",

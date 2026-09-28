@@ -41,6 +41,7 @@ export function MonoLink({
 
   return (
     <button
+      type="button"
       className="mono"
       onClick={onClick}
       onMouseEnter={() => setH(true)}

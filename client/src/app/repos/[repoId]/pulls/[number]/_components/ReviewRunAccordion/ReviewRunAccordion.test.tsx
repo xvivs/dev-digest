@@ -11,20 +11,25 @@
  * is synchronous here — the same DOM contract a plain `{open && …}` had.
  */
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { render, screen, cleanup, fireEvent } from "@testing-library/react";
-import { NextIntlClientProvider } from "next-intl";
+import { screen, cleanup, fireEvent } from "@testing-library/react";
 import type { ReviewRecord } from "@devdigest/shared";
-import prReview from "../../../../../../../../messages/en/prReview.json";
-import cost from "../../../../../../../../messages/en/cost.json";
+import prReview from "@/../messages/en/prReview.json";
+import cost from "@/../messages/en/cost.json";
+import { renderWithProviders } from "@/test/render";
 
-vi.mock("../../../../../../../lib/hooks/reviews", () => ({
-  useDeleteReview: () => ({ mutate: vi.fn(), isPending: false }),
+const deleteReview = vi.fn();
+vi.mock("@/lib/hooks/reviews", () => ({
+  useDeleteReview: () => ({ mutate: deleteReview, isPending: false }),
   useFindingAction: () => ({ mutate: vi.fn(), isPending: false }),
 }));
 
-import { ReviewRunAccordion } from "./ReviewRunAccordion";
+import { ReviewRunAccordion, type ReviewRunAccordionProps } from "./ReviewRunAccordion";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+  deleteReview.mockReset();
+});
 
 const REVIEW: ReviewRecord = {
   id: "rev-1",
@@ -58,16 +63,16 @@ const REVIEW: ReviewRecord = {
   ],
 };
 
-function renderAccordion(props: Partial<React.ComponentProps<typeof ReviewRunAccordion>> = {}) {
-  return render(
-    <NextIntlClientProvider locale="en" messages={{ prReview, cost }}>
-      <ReviewRunAccordion review={REVIEW} prId="pr-1" {...props} />
-    </NextIntlClientProvider>,
-  );
+const accordion = (props: Partial<ReviewRunAccordionProps> = {}) => (
+  <ReviewRunAccordion review={REVIEW} prId="pr-1" {...props} />
+);
+
+function renderAccordion(props: Partial<ReviewRunAccordionProps> = {}) {
+  return renderWithProviders(accordion(props), { namespaces: { prReview, cost } });
 }
 
-/** The header is the whole toggle — located by the role it advertises. */
-const header = () => screen.getAllByRole("button", { name: /Security Reviewer/ })[0]!;
+/** The header toggle — a native button, located by the accessible name it carries. */
+const header = () => screen.getByRole("button", { name: /Security Reviewer/ });
 
 const bodyText = () => screen.queryByText(REVIEW.summary!);
 
@@ -106,10 +111,60 @@ describe("ReviewRunAccordion", () => {
     expect(header()).toHaveAttribute("aria-expanded", "false");
   });
 
-  it("opens from the keyboard", () => {
+  // Was a keyDown(Enter) test against a `role="button"` div with a hand-written
+  // key handler. The header is now a native <button>, whose Enter/Space
+  // activation the browser provides (jsdom does not synthesise it), so the
+  // contract to pin is "it is a real, focusable button".
+  it("is reachable and operable from the keyboard: a native, focusable button", () => {
     renderAccordion();
-    fireEvent.keyDown(header(), { key: "Enter" });
-    expect(bodyText()).toBeInTheDocument();
+    const trigger = header();
+    expect(trigger.tagName).toBe("BUTTON");
+    trigger.focus();
+    expect(trigger).toHaveFocus();
+  });
+
+  it("keeps the delete action out of the toggle, and confirms before deleting", () => {
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    renderAccordion();
+
+    const del = screen.getByRole("button", { name: "Delete this review run" });
+    expect(header()).not.toContainElement(del);
+
+    fireEvent.click(del);
+    expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining("Security Reviewer"));
+    expect(deleteReview).toHaveBeenCalledWith("rev-1");
+    // The click did not bubble into the toggle.
+    expect(bodyText()).not.toBeInTheDocument();
+  });
+
+  it("does not delete when the confirm is dismissed", () => {
+    vi.spyOn(window, "confirm").mockReturnValue(false);
+    renderAccordion();
+    fireEvent.click(screen.getByRole("button", { name: "Delete this review run" }));
+    expect(deleteReview).not.toHaveBeenCalled();
+  });
+
+  it("shows the server's blocker count for the run when one is given", () => {
+    // The finding is CRITICAL (1 by the client rule); the run row says 3.
+    renderAccordion({ runBlockers: 3 });
+    expect(screen.getByText(/1 finding · 3 blockers/)).toBeInTheDocument();
+  });
+
+  it("falls back to the client blocker rule without a run row — dismissed findings still count", () => {
+    const dismissed: ReviewRecord = {
+      ...REVIEW,
+      findings: REVIEW.findings.map((f) => ({ ...f, dismissed_at: "2026-09-21T00:00:00.000Z" })),
+    };
+    renderWithProviders(<ReviewRunAccordion review={dismissed} prId="pr-1" />, { namespaces: { prReview, cost } });
+    expect(screen.getByText(/1 finding · 1 blocker$/)).toBeInTheDocument();
+  });
+
+  it("colours the verdict badge from the same table as the VerdictBanner", () => {
+    renderWithProviders(<ReviewRunAccordion review={{ ...REVIEW, verdict: "comment" }} prId="pr-1" />, {
+      namespaces: { prReview, cost },
+    });
+    // Was `var(--warn)` here while the banner used `var(--info)` (ARCH-9).
+    expect(screen.getByText("comment")).toHaveStyle({ color: "var(--info)" });
   });
 
   it("is forced open by the Timeline hand-off, and re-fires on a repeat click", () => {
@@ -121,11 +176,7 @@ describe("ReviewRunAccordion", () => {
     fireEvent.click(header());
     expect(bodyText()).not.toBeInTheDocument();
 
-    rerender(
-      <NextIntlClientProvider locale="en" messages={{ prReview, cost }}>
-        <ReviewRunAccordion review={REVIEW} prId="pr-1" targetReviewId="rev-1" targetNonce={2} />
-      </NextIntlClientProvider>,
-    );
+    rerender(accordion({ targetReviewId: "rev-1", targetNonce: 2 }));
     expect(bodyText()).toBeInTheDocument();
   });
 

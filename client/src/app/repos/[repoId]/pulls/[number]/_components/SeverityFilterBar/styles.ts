@@ -26,36 +26,5 @@ export const s = {
     gap: 6,
     flexWrap: "wrap",
   } satisfies CSSProperties,
-  /**
-   * Visually a `Chip` from `@devdigest/ui`, re-implemented locally because that
-   * primitive supports neither `disabled` nor `aria-pressed` and `vendor/ui` is
-   * do-not-touch. Active state borrows the severity's own colour instead of the
-   * generic accent so the selected filter reads as "this severity".
-   */
-  chip: (o: {
-    active: boolean;
-    disabled: boolean;
-    hovered: boolean;
-    color: string;
-  }): CSSProperties => ({
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 8,
-    padding: "5px 12px",
-    borderRadius: 6,
-    fontSize: 13,
-    fontWeight: 500,
-    transition: "all .12s",
-    border: `1px solid ${o.active ? o.color : "var(--border)"}`,
-    background: o.active || (o.hovered && !o.disabled) ? "var(--bg-hover)" : "transparent",
-    color: o.disabled
-      ? "var(--text-muted)"
-      : o.active
-        ? o.color
-        : o.hovered
-          ? "var(--text-primary)"
-          : "var(--text-secondary)",
-    cursor: o.disabled ? "not-allowed" : "pointer",
-    opacity: o.disabled ? 0.45 : 1,
-  }),
+  count: (color: string): CSSProperties => ({ color }),
 } as const;

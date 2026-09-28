@@ -4,12 +4,14 @@
    The tally only lists non-zero levels (a "0 CRITICAL" pill is noise), but the
    filter row always shows all three so the control set doesn't reflow as
    findings are accepted/dismissed — a level with nothing behind it is disabled
-   instead of disappearing. */
+   instead of disappearing. Each filter is a `Chip` toggle: `active` drives
+   `aria-pressed`, and `activeColor` paints the selected level in its own
+   severity colour instead of the generic accent. */
 "use client";
 
 import React from "react";
 import { useTranslations } from "next-intl";
-import { SEV } from "@devdigest/ui";
+import { Chip, SEV } from "@devdigest/ui";
 import type { Severity, SeverityCounts } from "@devdigest/shared";
 import { SEVERITY_LEVELS } from "./constants";
 import { s } from "./styles";
@@ -26,8 +28,6 @@ export function SeverityFilterBar({
   onChange: (next: Severity | null) => void;
 }) {
   const t = useTranslations("prReview");
-  // One hovered key for the whole row — cheaper than a state hook per chip.
-  const [hovered, setHovered] = React.useState<Severity | null>(null);
 
   const tallied = SEVERITY_LEVELS.filter((level) => counts[level.key] > 0);
 
@@ -42,7 +42,7 @@ export function SeverityFilterBar({
                   ·
                 </span>
               )}
-              <span style={{ color: SEV[level.severity].c }}>
+              <span style={s.count(SEV[level.severity].c)}>
                 {t(`panel.counts.${level.key}`, { count: counts[level.key] })}
               </span>
             </React.Fragment>
@@ -55,26 +55,16 @@ export function SeverityFilterBar({
           const count = counts[level.key];
           const active = value === level.severity;
           return (
-            <button
+            <Chip
               key={level.severity}
-              type="button"
+              active={active}
+              activeColor={SEV[level.severity].c}
               disabled={count === 0}
-              aria-pressed={active}
               title={active ? t("panel.filter.clear") : undefined}
               onClick={() => onChange(active ? null : level.severity)}
-              onMouseEnter={() => setHovered(level.severity)}
-              onMouseLeave={() =>
-                setHovered((h) => (h === level.severity ? null : h))
-              }
-              style={s.chip({
-                active,
-                disabled: count === 0,
-                hovered: hovered === level.severity,
-                color: SEV[level.severity].c,
-              })}
             >
               {t(`panel.filter.${level.key}`)}
-            </button>
+            </Chip>
           );
         })}
       </div>

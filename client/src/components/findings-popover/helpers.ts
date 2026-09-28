@@ -4,7 +4,10 @@
  * testable without a layout engine — jsdom has none.
  */
 import type { FindingRecord } from "@devdigest/shared";
-import { SEVERITY_RANK } from "./constants";
+import { SEVERITY_RANK } from "@devdigest/ui";
+
+/** Rank for a severity the design system does not know (the DB column is text): last. */
+const UNKNOWN_RANK = Number.MAX_SAFE_INTEGER;
 
 export type Placement = "top" | "bottom";
 
@@ -49,12 +52,14 @@ export function clampToViewport(a: {
 }
 
 /**
- * Worst findings first. `sort` is stable in every engine we target, so findings
- * of equal severity keep the order the API returned them in.
+ * Worst findings first, in the design system's `SEVERITY_ORDER`. `sort` is
+ * stable in every engine we target, so findings of equal severity keep the
+ * order the API returned them in. Not `compareSeverity`: that one has no
+ * fallback for an out-of-union value and would return NaN.
  */
 export function sortBySeverity(findings: readonly FindingRecord[]): FindingRecord[] {
   return [...findings].sort(
-    (x, y) => (SEVERITY_RANK[x.severity] ?? 99) - (SEVERITY_RANK[y.severity] ?? 99),
+    (x, y) => (SEVERITY_RANK[x.severity] ?? UNKNOWN_RANK) - (SEVERITY_RANK[y.severity] ?? UNKNOWN_RANK),
   );
 }
 

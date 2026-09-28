@@ -1,0 +1,56 @@
+import type { CSSProperties } from "react";
+
+/** Co-located styles for RouteError (CSSProperties over CSS vars — ADR 0003). */
+export const s = {
+  root: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    textAlign: "center",
+    gap: 10,
+    padding: "80px 24px",
+    minHeight: "60vh",
+  } satisfies CSSProperties,
+  badge: {
+    width: 44,
+    height: 44,
+    borderRadius: 10,
+    display: "grid",
+    placeItems: "center",
+    background: "var(--crit-bg)",
+    color: "var(--crit)",
+    marginBottom: 5,
+  } satisfies CSSProperties,
+  title: { fontSize: 16, fontWeight: 700, color: "var(--text-primary)" } satisfies CSSProperties,
+  body: {
+    fontSize: 14,
+    color: "var(--text-secondary)",
+    maxWidth: 420,
+    lineHeight: 1.5,
+  } satisfies CSSProperties,
+  message: {
+    fontFamily: "var(--font-mono)",
+    fontSize: 12.5,
+    color: "var(--text-secondary)",
+    background: "var(--bg-elevated)",
+    border: "1px solid var(--border)",
+    borderRadius: 6,
+    padding: "8px 12px",
+    maxWidth: 520,
+    overflowWrap: "anywhere",
+    whiteSpace: "pre-wrap",
+  } satisfies CSSProperties,
+  digest: { fontSize: 12, color: "var(--text-muted)" } satisfies CSSProperties,
+  actions: { display: "flex", gap: 10, marginTop: 12 } satisfies CSSProperties,
+  homeLink: {
+    display: "inline-flex",
+    alignItems: "center",
+    padding: "7px 13px",
+    fontSize: 13,
+    fontWeight: 500,
+    borderRadius: 6,
+    color: "var(--text-secondary)",
+    textDecoration: "none",
+  } satisfies CSSProperties,
+} as const;

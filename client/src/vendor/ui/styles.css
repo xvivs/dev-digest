@@ -21,6 +21,7 @@
   --accent-hover: #2f6fd6;
   --accent-bg: rgba(59, 130, 246, 0.12);
   --accent-text: #93bbfc;
+  --on-accent: #ffffff;
 
   --crit: #ef4444;
   --crit-bg: rgba(239, 68, 68, 0.12);
@@ -60,6 +61,7 @@
   --accent-hover: #1d4fd0;
   --accent-bg: rgba(37, 99, 235, 0.08);
   --accent-text: #1d4fd0;
+  --on-accent: #ffffff;
 
   --crit: #dc2626;
   --crit-bg: rgba(220, 38, 38, 0.08);

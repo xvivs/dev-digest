@@ -23,6 +23,10 @@ import {
   SectionLabel,
   Card,
   Collapse,
+  Disclosure,
+  DisclosureChevron,
+  RowAction,
+  SEV,
   EmptyState,
   ErrorState,
   Skeleton,
@@ -66,6 +70,7 @@ export function Gallery() {
   const [drawer, setDrawer] = React.useState(false);
   const [modal, setModal] = React.useState(false);
   const [collapsed, setCollapsed] = React.useState(true);
+  const [pressed, setPressed] = React.useState(false);
 
   return (
     <div style={s.gallery}>
@@ -110,13 +115,19 @@ export function Gallery() {
         <Chip icon="Plus" count={4}>
           Add
         </Chip>
+        <Chip active={pressed} onClick={() => setPressed((p) => !p)} activeColor={SEV.WARNING.c}>
+          Toggle (aria-pressed)
+        </Chip>
+        <Chip disabled>Disabled</Chip>
+        <RowAction icon="Trash" label="Delete run" tone="danger" onClick={() => {}} />
+        <RowAction icon="ExternalLink" label="Open trace" onClick={() => {}} />
         <Avatar name="Ada Lovelace" />
         <Avatar name="you" size={28} />
         <ConfidenceNum value={0.91} />
         <ConfidenceNum value={0.6} />
         <MonoLink>src/config.ts:12</MonoLink>
         <Kbd>⌘K</Kbd>
-        <Toggle on={toggle} onChange={setToggle} />
+        <Toggle on={toggle} onChange={setToggle} label="Example toggle" />
       </Group>
 
       <Group title="Collapse (animated disclosure)">
@@ -156,6 +167,31 @@ export function Gallery() {
               so no height is ever measured. It unmounts once the exit animation finishes.
             </div>
           </Collapse>
+        </div>
+      </Group>
+
+      <Group title="Disclosure (button header + Collapse)">
+        <div style={s.fullWidth}>
+          <Disclosure
+            style={s.disclosure}
+            headerStyle={s.disclosureHeader}
+            defaultOpen
+            header={(open) => (
+              <>
+                <Icon.Cpu size={15} style={s.mutedIcon} />
+                <span style={s.disclosureTitle}>Security agent</span>
+                <span style={s.disclosureMeta}>3 findings</span>
+                <span style={s.disclosureSpacer} />
+                <DisclosureChevron open={open} />
+              </>
+            )}
+            actions={<RowAction icon="Trash" label="Delete this review run" tone="danger" onClick={() => {}} />}
+          >
+            <div style={s.disclosureBody}>
+              The header is a native button (Enter and Space work for free); the trash sits beside it,
+              not inside it.
+            </div>
+          </Disclosure>
         </div>
       </Group>
 
@@ -232,6 +268,7 @@ export function Gallery() {
             { label: "Run all", icon: "Play" },
             { divider: true },
             { label: "Configure…", icon: "Settings", muted: true },
+            { label: "acme/payments-api", icon: "GitBranch", onRemove: () => {}, removeLabel: "Remove acme/payments-api" },
           ]}
         />
         <Button kind="ghost" onClick={() => setDrawer(true)}>

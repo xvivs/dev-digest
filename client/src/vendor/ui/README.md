@@ -25,9 +25,10 @@ components live as flat files at the root.
 
 | Layer | Folder | What's in it |
 |-------|--------|--------------|
-| **Tokens** | `primitives/tokens.ts` | `Severity`/`Category` unions, the `SEV` & `CAT` maps (color + icon + label), `ButtonProps` |
-| **Primitives** | `primitives/` | `Button`, `IconBtn`, `Badge`/`SeverityBadge`/`CategoryTag`, `Chip`, `Avatar`, `ConfidenceNum`, `MonoLink`, `ProgressBar`/`PercentProgress`, `CircularScore`, `Toggle`, `Kbd`, `SectionLabel`, `Card`, `EmptyState`, `Skeleton`, `ErrorState`, `Markdown` |
+| **Tokens** | `primitives/tokens.ts` | `Severity`/`Category` (typed from `@devdigest/shared`, ADR 0008), the `SEV` & `CAT` maps (color + icon + label), `SEVERITY_ORDER`/`SEVERITY_RANK`/`compareSeverity`, `ButtonProps` |
+| **Primitives** | `primitives/` | `Button`, `IconBtn`, `Badge`/`SeverityBadge`/`CategoryTag`, `Chip`, `Avatar`, `ConfidenceNum`, `MonoLink`, `ProgressBar`/`PercentProgress`, `CircularScore`, `Toggle`, `Kbd`, `SectionLabel`, `Card`, `Collapse`, `Disclosure`/`DisclosureChevron`, `RowAction`, `EmptyState`, `Skeleton`, `ErrorState`, `Markdown` |
 | **Kit** | `kit/` | `Drawer`, `Modal`, `Tabs`, `Dropdown`, `FormField`, `TextInput`, `SelectInput`, `SearchableSelect`, `Textarea`, `Checkbox` |
+| **Hooks** | `hooks/` | `useDialogFocus` (focus in, Tab trap, Escape, focus restore; ADR 0009) |
 | **Charts** | `charts/` | `Sparkline`, `LineChart`, `Donut`, `BarRow`, `MetricCard` (Recharts + lightweight inline SVG) |
 | **Shell** | `shell/` | `AppFrame`, `Sidebar`, `Topbar`, `NavItem`, `RepoSwitcher` — the app frame |
 | **Command palette** | `command-palette/` | `CommandPalette` (Cmd+K), `ShortcutsHelp` (`?`) |

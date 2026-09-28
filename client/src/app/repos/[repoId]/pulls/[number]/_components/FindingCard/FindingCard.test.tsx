@@ -1,8 +1,8 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { render, screen, fireEvent, cleanup } from "@testing-library/react";
-import { NextIntlClientProvider } from "next-intl";
+import { screen, fireEvent, cleanup } from "@testing-library/react";
 import type { FindingRecord } from "@devdigest/shared";
-import messages from "../../../../../../../../messages/en/prReview.json";
+import prReview from "@/../messages/en/prReview.json";
+import { renderWithProviders } from "@/test/render";
 import { FindingCard } from "./FindingCard";
 
 afterEach(cleanup);
@@ -26,18 +26,13 @@ const FINDING: FindingRecord = {
   dismissed_at: null,
 };
 
-function renderWithIntl(ui: React.ReactElement) {
-  return render(
-    <NextIntlClientProvider locale="en" messages={{ prReview: messages }}>
-      {ui}
-    </NextIntlClientProvider>,
-  );
-}
+const renderCard = (ui: React.ReactElement) => renderWithProviders(ui, { namespaces: { prReview } });
+const toggle = () => screen.getByRole("button", { name: /Hardcoded Stripe secret key/ });
 
 describe("FindingCard (smoke, both themes)", () => {
   (["dark", "light"] as const).forEach((theme) => {
     it(`renders severity + file:line + rationale in ${theme}`, () => {
-      renderWithIntl(
+      renderCard(
         <div data-theme={theme}>
           <FindingCard f={FINDING} defaultExpanded onAction={() => {}} />
         </div>,
@@ -51,10 +46,44 @@ describe("FindingCard (smoke, both themes)", () => {
 
   it("fires accept/dismiss actions", () => {
     const onAction = vi.fn();
-    renderWithIntl(<FindingCard f={FINDING} defaultExpanded onAction={onAction} />);
-    fireEvent.click(screen.getByText("Accept"));
+    renderCard(<FindingCard f={FINDING} defaultExpanded onAction={onAction} />);
+    fireEvent.click(screen.getByRole("button", { name: "Accept" }));
     expect(onAction).toHaveBeenCalledWith("accept");
-    fireEvent.click(screen.getByText("Reject"));
+    fireEvent.click(screen.getByRole("button", { name: "Reject" }));
     expect(onAction).toHaveBeenCalledWith("dismiss");
+  });
+});
+
+describe("FindingCard disclosure header", () => {
+  it("is a native button wired to the body, so Enter/Space toggle it without a key handler", () => {
+    renderCard(<FindingCard f={FINDING} onAction={() => {}} />);
+    const header = toggle();
+    // A <button type="button"> gets Enter/Space activation from the browser;
+    // jsdom does not synthesise that click, so assert the element contract.
+    expect(header.tagName).toBe("BUTTON");
+    expect(header).toHaveAttribute("type", "button");
+    expect(header).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("button", { name: "Accept" })).not.toBeInTheDocument();
+
+    header.focus();
+    expect(header).toHaveFocus();
+    fireEvent.click(header);
+
+    expect(header).toHaveAttribute("aria-expanded", "true");
+    const accept = screen.getByRole("button", { name: "Accept" });
+    const region = document.getElementById(header.getAttribute("aria-controls")!);
+    expect(region).toContainElement(accept);
+  });
+
+  it("keeps the file link outside the toggle and does not toggle when it is clicked", () => {
+    renderCard(
+      <FindingCard f={FINDING} onAction={() => {}} repoFullName="acme/payments-api" headSha="abc123" />,
+    );
+    const link = screen.getByRole("link", { name: "src/config.ts:11" });
+    expect(link).toHaveAttribute("href", expect.stringContaining("acme/payments-api"));
+    expect(toggle()).not.toContainElement(link);
+
+    fireEvent.click(link);
+    expect(toggle()).toHaveAttribute("aria-expanded", "false");
   });
 });

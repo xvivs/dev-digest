@@ -1,4 +1,5 @@
 import type { CSSProperties } from "react";
+import { BADGE_COLUMN_WIDTH, HEADER_GAP } from "./constants";
 
 /** Co-located styles for FindingCard (extracted from inline styles). */
 export const s = {
@@ -25,14 +26,22 @@ export const s = {
     transition: "opacity .2s, border-color .12s, box-shadow .12s",
     boxShadow: focused ? "0 0 0 1px " + sevColor : "none",
   }),
+  /** Disclosure header row. Wraps so `actions` (the meta row) drops under the
+   *  title; `rowGap: 0` keeps the old 5px title→meta spacing (metaRow.marginTop). */
   header: {
-    display: "flex",
     alignItems: "flex-start",
-    gap: 12,
+    flexWrap: "wrap",
+    gap: HEADER_GAP,
+    rowGap: 0,
     padding: "14px 16px",
-    cursor: "pointer",
   } satisfies CSSProperties,
-  badgeWrap: { paddingTop: 1 } satisfies CSSProperties,
+  // alignSelf: the toggle button centres its children; the old header was top-aligned.
+  badgeWrap: {
+    paddingTop: 1,
+    width: BADGE_COLUMN_WIDTH,
+    flexShrink: 0,
+    alignSelf: "flex-start",
+  } satisfies CSSProperties,
   headerMain: { flex: 1, minWidth: 0 } satisfies CSSProperties,
   titleRow: {
     display: "flex",
@@ -52,19 +61,16 @@ export const s = {
     fontWeight: 600,
     color: "var(--text-muted)",
   } satisfies CSSProperties,
+  /** Rendered in the Disclosure's `actions`: a full-width line indented past the badge. */
   metaRow: {
     display: "flex",
     alignItems: "center",
     gap: 12,
     marginTop: 5,
+    flexBasis: "100%",
+    paddingLeft: BADGE_COLUMN_WIDTH + HEADER_GAP,
   } satisfies CSSProperties,
-  chevron: (expanded: boolean): CSSProperties => ({
-    color: "var(--text-muted)",
-    transform: expanded ? "rotate(180deg)" : "none",
-    transition: "transform .15s",
-    marginTop: 2,
-    flexShrink: 0,
-  }),
+  chevron: { marginTop: 2, alignSelf: "flex-start" } satisfies CSSProperties,
   body: { padding: "14px 16px 16px", borderTop: "1px solid var(--border)" } satisfies CSSProperties,
   trifectaWrap: { marginBottom: 14 } satisfies CSSProperties,
   prose: {

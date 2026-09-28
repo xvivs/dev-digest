@@ -3,9 +3,9 @@
 import React from "react";
 import { useTranslations } from "next-intl";
 import { Button, Icon, FormField, TextInput } from "@devdigest/ui";
-import { useTestConnection, useSecretsStatus } from "../../../../../../../lib/hooks";
-import { ApiError } from "../../../../../../../lib/api";
-import type { ConnTestProvider } from "../../../../../../../lib/types";
+import { useTestConnection, useSecretsStatus } from "@/lib/hooks";
+import { ApiError } from "@/lib/api";
+import type { ConnTestProvider } from "@/lib/types";
 import { SectionTitle } from "../SectionTitle";
 import { KEY_ROWS } from "./constants";
 import { s } from "./styles";
@@ -36,7 +36,9 @@ function KeyRow({
   const t = useTranslations("settings");
   const [val, setVal] = React.useState("");
   const [reveal, setReveal] = React.useState(false);
-  const test = useTestConnection();
+  // The failure is shown inline under the field (next to the key being tested),
+  // so the global mutation toast stays silent — one surface per failure (ADR 0011).
+  const test = useTestConnection({ meta: { errorSurface: "local" } });
   const [res, setRes] = React.useState<{ ok: boolean; message: string } | null>(null);
 
   const run = async () => {
@@ -60,7 +62,15 @@ function KeyRow({
             type={reveal ? "text" : "password"}
             placeholder={t("apiKeys.placeholder")}
             suffix={
-              <Icon.EyeOff size={14} style={s.revealIcon} onClick={() => setReveal((r) => !r)} />
+              <button
+                type="button"
+                aria-label={t("apiKeys.reveal")}
+                aria-pressed={reveal}
+                onClick={() => setReveal((r) => !r)}
+                style={s.revealBtn}
+              >
+                {reveal ? <Icon.EyeOff size={14} aria-hidden="true" /> : <Icon.Eye size={14} aria-hidden="true" />}
+              </button>
             }
           />
         </div>

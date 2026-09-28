@@ -1,10 +1,12 @@
 /* FileCard — one collapsible file in the diff: header (path, +/- stat, comment
-   count) and, when open, its parsed lines plus any outdated comments. */
+   count) and, when open, its parsed lines plus any outdated comments. The
+   header is a Disclosure button (keyboard + aria-expanded); the body mounts
+   only while open. */
 "use client";
 
 import React from "react";
 import { useTranslations } from "next-intl";
-import { Icon } from "@devdigest/ui";
+import { Disclosure, Icon } from "@devdigest/ui";
 import type { PrFile } from "@/lib/types";
 import { AUTO_EXPAND_MAX_LINES } from "../constants";
 import { parsePatch, type Line } from "../helpers";
@@ -31,7 +33,7 @@ function threadsForLine(ln: Line, matched: Map<string, CommentThread[]>): Commen
 }
 
 export function FileCard({ file, commenting }: { file: PrFile; commenting?: DiffCommentApi }) {
-  const t = useTranslations("shell");
+  const t = useTranslations("diffViewer");
   const [open, setOpen] = React.useState(
     (file.additions ?? 0) + (file.deletions ?? 0) <= AUTO_EXPAND_MAX_LINES
   );
@@ -53,44 +55,46 @@ export function FileCard({ file, commenting }: { file: PrFile; commenting?: Diff
     : 0;
 
   return (
-    <div style={s.fileCard}>
-      <div onClick={() => setOpen((o) => !o)} style={s.fileHeader}>
-        <Icon.ChevronRight size={13} style={chevronFor(open)} />
-        <Icon.FileText size={14} style={s.fileIcon} />
-        <span className="mono" style={s.filePath}>
-          {file.path}
-        </span>
-        <span className="mono tnum" style={s.fileStat}>
-          <span style={s.addText}>+{file.additions}</span>{" "}
-          <span style={s.delText}>−{file.deletions}</span>
-        </span>
-        {commentCount > 0 && (
-          <span
-            style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, color: "var(--text-muted)" }}
-          >
-            <Icon.MessageSquare size={12} />
-            {commentCount}
+    <Disclosure
+      open={open}
+      onOpenChange={setOpen}
+      style={s.fileCard}
+      header={
+        <span style={s.fileHeader}>
+          <Icon.ChevronRight size={13} style={chevronFor(open)} aria-hidden="true" />
+          <Icon.FileText size={14} style={s.fileIcon} aria-hidden="true" />
+          <span className="mono" style={s.filePath}>
+            {file.path}
           </span>
-        )}
-      </div>
-      {open && (
-        <div style={s.fileBody}>
-          {lines.length === 0 ? (
-            <div style={s.noDiff}>{t("diffViewer.noDiffText")}</div>
-          ) : (
-            lines.map((ln, i) => (
-              <CodeLine
-                key={i}
-                ln={ln}
-                path={file.path}
-                threads={threadsForLine(ln, matched)}
-                commenting={commenting}
-              />
-            ))
+          <span className="mono tnum" style={s.fileStat}>
+            <span style={s.addText}>+{file.additions}</span>{" "}
+            <span style={s.delText}>−{file.deletions}</span>
+          </span>
+          {commentCount > 0 && (
+            <span style={s.commentCount} title={t("commentCount", { count: commentCount })}>
+              <Icon.MessageSquare size={12} aria-hidden="true" />
+              {commentCount}
+            </span>
           )}
-          {commenting && commenting.showComments && <OutdatedComments threads={outdated} />}
-        </div>
-      )}
-    </div>
+        </span>
+      }
+    >
+      <div style={s.fileBody}>
+        {lines.length === 0 ? (
+          <div style={s.noDiff}>{t("noDiffText")}</div>
+        ) : (
+          lines.map((ln, i) => (
+            <CodeLine
+              key={i}
+              ln={ln}
+              path={file.path}
+              threads={threadsForLine(ln, matched)}
+              commenting={commenting}
+            />
+          ))
+        )}
+        {commenting && commenting.showComments && <OutdatedComments threads={outdated} />}
+      </div>
+    </Disclosure>
   );
 }

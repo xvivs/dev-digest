@@ -7,7 +7,7 @@
 import React from "react";
 import { useTranslations } from "next-intl";
 import type { PrFile } from "@/lib/types";
-import { type DiffCommentApi } from "../comments";
+import type { DiffCommentApi } from "../comments";
 import { s } from "../styles";
 import { FileCard } from "../FileCard";
 
@@ -18,9 +18,9 @@ export function DiffViewer({
   files: PrFile[];
   commenting?: DiffCommentApi;
 }) {
-  const t = useTranslations("shell");
+  const t = useTranslations("diffViewer");
   if (!files || files.length === 0) {
-    return <div style={s.empty}>{t("diffViewer.noChangedFiles")}</div>;
+    return <div style={s.empty}>{t("noChangedFiles")}</div>;
   }
   return (
     <div style={s.list}>

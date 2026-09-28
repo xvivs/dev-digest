@@ -5,3 +5,13 @@ export const TEMPLATES = ["Security", "Performance", "Mentor", "Conformance", "A
 
 /** Card grid template (responsive auto-fill). */
 export const CARD_GRID_COLS = "repeat(auto-fill, minmax(280px, 1fr))";
+
+/** "Add Agent" dropdown width (px). */
+export const ADD_MENU_WIDTH = 220;
+
+/** Search glyph size (px). */
+export const SEARCH_ICON_SIZE = 13;
+
+/** Loading placeholders: how many cards, and each card's height (px). */
+export const SKELETON_CARD_COUNT = 3;
+export const SKELETON_CARD_HEIGHT = 120;

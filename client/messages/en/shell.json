@@ -14,6 +14,10 @@
     "confirm": "Remove {name} from DevDigest?\n\nThis only removes it from DevDigest (and its imported PRs). Nothing is deleted on GitHub, and your local clone on disk is left untouched.",
     "fallbackName": "this repository"
   },
+  "repo": {
+    "synced": "synced",
+    "notSynced": "not synced"
+  },
   "nav": {
     "pulls": "Pull Requests",
     "onboarding-tour": "Onboarding Tour",
@@ -25,21 +29,15 @@
     "memory": "Memory",
     "multi-agent": "Multi-Agent Review",
     "agent-performance": "Agent Performance",
-    "ci-runs": "CI Runs"
+    "ci-runs": "CI Runs",
+    "settings": "Settings"
+  },
+  "ui": {
+    "close": "Close",
+    "remove": "Remove",
+    "removeItem": "Remove {name}"
   },
   "featurePlaceholder": {
     "defaultBody": "This screen is owned by {owner}. The app shell, routing, theming and data layer are wired — {owner} fills in the screen here."
-  },
-  "diffViewer": {
-    "noDiffText": "No diff text available (binary or unfetched patch).",
-    "noChangedFiles": "No changed files.",
-    "commentPlaceholder": "Leave a comment… (⌘/Ctrl+Enter to post)",
-    "post": "Comment",
-    "posting": "Posting…",
-    "cancel": "Cancel",
-    "reply": "Reply",
-    "viewOnGitHub": "View on GitHub",
-    "postedToGitHub": "Posts to GitHub immediately",
-    "outdatedTitle": "{count} comment(s) on older revisions"
   }
 }

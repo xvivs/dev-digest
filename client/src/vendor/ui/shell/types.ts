@@ -34,6 +34,12 @@ export interface ShellContext {
   onRemoveRepo?: (id: string) => void;
   onRefresh?: () => void;
   prCount?: number;
+  /**
+   * Resolves a nav item's `labelKey` (e.g. `useTranslations("shell")`'s `t`).
+   * The design system has no i18n of its own; without this, `NavItemDef.label`
+   * (English) is shown.
+   */
+  translateNav?: (labelKey: `nav.${string}`) => string;
 }
 
 export interface Crumb {

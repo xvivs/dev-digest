@@ -19,4 +19,25 @@ export const s = {
   skeletonStack: { width: 200, display: "flex", flexDirection: "column", gap: 10 } satisfies CSSProperties,
   drawerBody: { color: "var(--text-secondary)" } satisfies CSSProperties,
   modalBody: { padding: 24 } satisfies CSSProperties,
+  fullWidth: { width: "100%" } satisfies CSSProperties,
+  disclosure: {
+    border: "1px solid var(--border)",
+    borderRadius: 10,
+    background: "var(--bg-surface)",
+    overflow: "hidden",
+  } satisfies CSSProperties,
+  disclosureHeader: {
+    gap: 12,
+    padding: "12px 16px",
+    color: "var(--text-primary)",
+  } satisfies CSSProperties,
+  disclosureTitle: { fontWeight: 600, fontSize: 14 } satisfies CSSProperties,
+  disclosureMeta: { fontSize: 12.5, color: "var(--text-muted)" } satisfies CSSProperties,
+  disclosureSpacer: { flex: 1 } satisfies CSSProperties,
+  disclosureBody: {
+    padding: "0 16px 14px",
+    fontSize: 13,
+    color: "var(--text-secondary)",
+  } satisfies CSSProperties,
+  mutedIcon: { color: "var(--text-muted)" } satisfies CSSProperties,
 } as const;

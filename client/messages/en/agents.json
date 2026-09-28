@@ -1,14 +1,19 @@
 {
   "card": {
     "noDescription": "No description",
-    "skillCount": "{count} skills"
+    "skillCount": "{count} skills",
+    "enabledToggle": "Enable {name}",
+    "delete": "Delete agent",
+    "deleteConfirm": "Delete agent \"{name}\"? This cannot be undone."
   },
   "list": {
     "breadcrumbLab": "Skills Lab",
     "breadcrumb": "Agents",
     "title": "Agents",
     "subtitle": "User-created reviewers. Each = provider + model + system prompt + linked skills.",
+    "metaTitle": "Agents",
     "searchPlaceholder": "Search agents…",
+    "searchLabel": "Search agents",
     "addAgent": "Add Agent",
     "createFromScratch": "Create from scratch",
     "loadError": "Could not load agents.",
@@ -35,6 +40,7 @@
     }
   },
   "editor": {
+    "metaTitle": "Agent editor",
     "loadErrorTitle": "Couldn’t load this agent",
     "loadErrorBody": "The agent could not be loaded.",
     "agentFallback": "Agent",

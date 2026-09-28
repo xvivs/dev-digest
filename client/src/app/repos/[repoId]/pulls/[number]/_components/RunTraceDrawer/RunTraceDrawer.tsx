@@ -1,8 +1,8 @@
 /* RunTraceDrawer — A5 Run Trace + Live Log drawer (720px). Ported from
    screen_trace.jsx. Tabs: Trace (Configuration / Stats / Prompt assembly /
    Tool calls / Raw output) and Live log (SSE via useRunEvents → LiveLogStream,
-   which has client-side Filter-input search). Default export so the PR-detail
-   page (A2) can mount it from the run-status area. */
+   which has client-side Filter-input search). Named export; `index.ts` also
+   re-exports it as default for the PR-detail page (A2). */
 "use client";
 
 import React from "react";
@@ -11,7 +11,7 @@ import { Button, Drawer, LiveLogStream, Tabs, type LogLine } from "@devdigest/ui
 import type { FindingRecord } from "@devdigest/shared";
 import { useRunTrace } from "@/lib/hooks/trace";
 import { useRunEvents } from "@/lib/hooks/reviews";
-import { DRAWER_WIDTH, LOG_HEIGHT, TABS } from "./constants";
+import { DRAWER_WIDTH, LOG_HEIGHT, RAW_COPIED_FEEDBACK_MS, TABS } from "./constants";
 import { eventsToLog, traceLog } from "./helpers";
 import { s } from "./styles";
 import { TraceBody } from "./_components/TraceBody";
@@ -33,7 +33,7 @@ export interface RunTraceDrawerProps {
  * over SSE (useRunEvents). The Trace tab loads the persisted single-document
  * RunTrace (useRunTrace) once the run completes (or for historical runs).
  */
-export default function RunTraceDrawer({
+export function RunTraceDrawer({
   runId,
   agentName,
   prNumber,
@@ -42,6 +42,7 @@ export default function RunTraceDrawer({
   onClose,
 }: RunTraceDrawerProps) {
   const t = useTranslations("runs");
+  const tShell = useTranslations("shell");
   const [tab, setTab] = React.useState<string>(running ? "log" : "trace");
   const { events, running: liveRunning } = useRunEvents(running ? [runId] : []);
   // Load the persisted trace once we're not (or no longer) running.
@@ -55,8 +56,15 @@ export default function RunTraceDrawer({
     if (!trace?.raw_output) return;
     void navigator.clipboard?.writeText(trace.raw_output);
     setRawCopied(true);
-    setTimeout(() => setRawCopied(false), 1500);
   };
+  // Timer tied to the state it resets, so closing the drawer cancels it.
+  React.useEffect(() => {
+    if (!rawCopied) return;
+    const id = setTimeout(() => setRawCopied(false), RAW_COPIED_FEEDBACK_MS);
+    return () => clearTimeout(id);
+  }, [rawCopied]);
+
+  const tabs = TABS.map((key) => ({ key, label: t(`drawer.tab.${key}`) }));
 
   const log: LogLine[] = eventsToLog(events);
   // When historical, fall back to the trace's persisted log for the Live-log tab.
@@ -72,6 +80,7 @@ export default function RunTraceDrawer({
       title={t("drawer.title", { agent: agentName ?? trace?.config.agent ?? t("drawer.run") })}
       subtitle={subtitle}
       onClose={onClose}
+      closeLabel={tShell("ui.close")}
       footer={
         <div style={s.footer}>
           <Button
@@ -86,7 +95,7 @@ export default function RunTraceDrawer({
         </div>
       }
     >
-      <Tabs tabs={[...TABS]} value={tab} onChange={setTab} pad="0" />
+      <Tabs tabs={tabs} value={tab} onChange={setTab} pad="0" />
       <div style={s.tabBody}>
         {tab === "trace" ? (
           isLoading && !trace ? (

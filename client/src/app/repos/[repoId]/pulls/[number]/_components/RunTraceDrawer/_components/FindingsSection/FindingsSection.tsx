@@ -4,16 +4,11 @@
 
 import React from "react";
 import { useTranslations } from "next-intl";
-import { Badge } from "@devdigest/ui";
+import { Badge, SEV } from "@devdigest/ui";
 import type { FindingRecord } from "@devdigest/shared";
+import { lineLabel } from "@/components/findings-popover";
 import { s } from "../../styles";
 import { TraceSection } from "../TraceSection";
-
-const SEV_COLOR: Record<string, string> = {
-  CRITICAL: "var(--crit)",
-  WARNING: "var(--warn)",
-  SUGGESTION: "var(--accent)",
-};
 
 export function FindingsSection({ findings }: { findings: FindingRecord[] }) {
   const t = useTranslations("runs");
@@ -26,32 +21,21 @@ export function FindingsSection({ findings }: { findings: FindingRecord[] }) {
       {findings.length === 0 ? (
         <span style={s.noToolCalls}>{t("trace.noFindings")}</span>
       ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        <div style={s.findingList}>
           {findings.map((f) => (
-            <div
-              key={f.id}
-              style={{
-                border: "1px solid var(--border)",
-                borderRadius: 8,
-                padding: "10px 12px",
-                background: "var(--bg-surface)",
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                <Badge color={SEV_COLOR[f.severity] ?? "var(--text-muted)"} bg="transparent">
+            <div key={f.id} style={s.finding}>
+              <div style={s.findingHead}>
+                <Badge color={SEV[f.severity].c} bg="transparent">
                   {f.severity}
                 </Badge>
-                <span style={{ fontSize: 13, fontWeight: 600 }}>{f.title}</span>
+                <span style={s.findingTitle}>{f.title}</span>
               </div>
-              <div className="mono" style={{ fontSize: 11.5, color: "var(--text-muted)", marginBottom: 6 }}>
-                {f.file}:{f.start_line}
-                {f.end_line !== f.start_line ? `-${f.end_line}` : ""}
+              <div className="mono" style={s.findingLocation}>
+                {f.file}:{lineLabel(f)}
               </div>
-              <div style={{ fontSize: 12.5, color: "var(--text-secondary)", lineHeight: 1.5 }}>
-                {f.rationale}
-              </div>
+              <div style={s.findingText}>{f.rationale}</div>
               {f.suggestion && (
-                <div style={{ fontSize: 12.5, color: "var(--text-secondary)", lineHeight: 1.5, marginTop: 6 }}>
+                <div style={s.findingSuggestion}>
                   <strong>{t("trace.suggestedFix")} </strong>
                   {f.suggestion}
                 </div>

@@ -63,13 +63,20 @@ export function Sidebar({ ctx }: { ctx: ShellContext }) {
                 active={ctx.activeKey === it.key}
                 repoId={ctx.repoId}
                 Link={Link}
+                label={ctx.translateNav?.(it.labelKey)}
               />
             ))}
           </div>
         ))}
       </div>
       <div style={{ borderTop: "1px solid var(--border)", paddingTop: 10, marginTop: 2 }}>
-        <NavItem item={SETTINGS_ITEM} active={ctx.activeKey === "settings"} repoId={ctx.repoId} Link={Link} />
+        <NavItem
+          item={SETTINGS_ITEM}
+          active={ctx.activeKey === "settings"}
+          repoId={ctx.repoId}
+          Link={Link}
+          label={ctx.translateNav?.(SETTINGS_ITEM.labelKey)}
+        />
       </div>
     </aside>
   );

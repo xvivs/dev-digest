@@ -14,7 +14,8 @@ import { TraceSection } from "../TraceSection";
 import { ToolCallRow } from "../ToolCallRow";
 import { PromptBlock } from "../PromptBlock";
 import { FindingsSection } from "../FindingsSection";
-import { Row, Stat } from "../atoms";
+import { Row } from "../Row";
+import { Stat } from "../Stat";
 
 export function TraceBody({ trace, findings }: { trace: RunTrace; findings: FindingRecord[] }) {
   const t = useTranslations("runs");
@@ -30,7 +31,7 @@ export function TraceBody({ trace, findings }: { trace: RunTrace; findings: Find
           </Row>
           <Row label={t("trace.config.provider")}>
             <span className="mono" style={s.configProvider}>
-              {trace.config.provider ?? "—"}
+              {trace.config.provider ?? t("trace.empty")}
             </span>
           </Row>
           <Row label={t("trace.config.memoryPulled")}>
@@ -108,7 +109,7 @@ export function TraceBody({ trace, findings }: { trace: RunTrace; findings: Find
 
       <TraceSection icon="Code" title={t("trace.rawOutput")} defaultOpen={false}>
         <pre className="mono" style={s.rawPre}>
-          {trace.raw_output || "—"}
+          {trace.raw_output || t("trace.empty")}
         </pre>
       </TraceSection>
     </>

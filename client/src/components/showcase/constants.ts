@@ -1,8 +1,8 @@
-import type { Severity } from "@devdigest/ui";
+import { SEVERITY_ORDER } from "@devdigest/ui";
 
 /** Constants for the Showcase Gallery (dev-only). */
 
-export const SEVERITIES: Severity[] = ["CRITICAL", "WARNING", "SUGGESTION", "INFO"];
+export const SEVERITIES = SEVERITY_ORDER;
 
 export const CATEGORIES = ["bug", "security", "perf", "style", "test"] as const;
 

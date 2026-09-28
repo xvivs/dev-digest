@@ -1,12 +1,15 @@
 "use client";
 
-import React, { useCallback } from "react";
+import React from "react";
+import { useTranslations } from "next-intl";
 import { Icon, Avatar, Badge, Button, Tabs } from "@devdigest/ui";
-import { RunReviewDropdown } from "../RunReviewDropdown";
-import { s } from "./styles";
 import type { PrDetail } from "@/lib/types";
+import { STATUS_META } from "@/app/repos/[repoId]/pulls/constants";
+import { RunReviewDropdown } from "../RunReviewDropdown";
+import { isSettledPr } from "./helpers";
+import { s } from "./styles";
 
-interface PrDetailHeaderProps {
+export interface PrDetailHeaderProps {
   pr: PrDetail;
   prId: string | null;
   tab: string;
@@ -14,34 +17,14 @@ interface PrDetailHeaderProps {
   /** github.com PR URL; null when the repo's full_name isn't known yet. */
   githubUrl?: string | null;
   onSetTab: (tab: string) => void;
+  /** Fired the moment a review is kicked off (the page switches to the runs tab). */
   onRunStart: () => void;
-  onRunsStarted: () => void;
 }
 
-export function PrDetailHeader({
-  pr,
-  prId,
-  tab,
-  findingsCount,
-  githubUrl,
-  onSetTab,
-  onRunStart,
-  onRunsStarted,
-}: PrDetailHeaderProps) {
-  const handleRunStart = useCallback(() => {
-    onRunStart();
-  }, [onRunStart]);
-
-  const handleRunsStarted = useCallback(() => {
-    onRunsStarted();
-  }, [onRunsStarted]);
-
-  const statusColor =
-    pr.status === "merged"
-      ? "var(--ok)"
-      : pr.status === "closed"
-        ? "var(--stale)"
-        : "var(--warn)";
+export function PrDetailHeader({ pr, prId, tab, findingsCount, githubUrl, onSetTab, onRunStart }: PrDetailHeaderProps) {
+  const t = useTranslations("prReview");
+  const status = STATUS_META[pr.status];
+  const settled = isSettledPr(pr.status);
 
   return (
     <div style={s.root}>
@@ -59,7 +42,7 @@ export function PrDetailHeader({
               {pr.author}
             </span>
             <span style={s.branchChip}>
-              <Icon.GitBranch size={13} style={{ color: "var(--text-muted)" }} />
+              <Icon.GitBranch size={13} style={s.mutedIcon} />
               <span className="mono" style={s.branchMono}>
                 {pr.branch}
               </span>
@@ -69,11 +52,11 @@ export function PrDetailHeader({
               </span>
             </span>
             <span className="mono tnum">
-              <span style={{ color: "var(--code-add-text)" }}>+{pr.additions}</span>{" "}
-              <span style={{ color: "var(--code-del-text)" }}>−{pr.deletions}</span>
+              <span style={s.additions}>+{pr.additions}</span>{" "}
+              <span style={s.deletions}>−{pr.deletions}</span>
             </span>
-            <Badge dot bg="transparent" color={statusColor}>
-              {pr.status}
+            <Badge dot bg="transparent" color={status?.c ?? "var(--text-muted)"}>
+              {status ? t(`list.status.${status.labelKey}`) : pr.status}
             </Badge>
           </div>
         </div>
@@ -83,29 +66,17 @@ export function PrDetailHeader({
             size="sm"
             icon="ExternalLink"
             disabled={!githubUrl}
-            onClick={() =>
-              githubUrl && window.open(githubUrl, "_blank", "noopener,noreferrer")
-            }
+            onClick={() => githubUrl && window.open(githubUrl, "_blank", "noopener,noreferrer")}
           >
-            View on GitHub
+            {t("detail.viewOnGithub")}
           </Button>
-          {prId && (
-            <RunReviewDropdown
-              prId={prId}
-              warnMerged={pr.status === "merged" || pr.status === "closed"}
-              onRunStart={handleRunStart}
-              onRunsStarted={handleRunsStarted}
-            />
-          )}
+          {prId && <RunReviewDropdown prId={prId} warnMerged={settled} onRunStart={onRunStart} />}
         </div>
       </div>
-      {(pr.status === "merged" || pr.status === "closed") && (
+      {settled && (
         <div style={s.staleBanner}>
-          <Icon.AlertTriangle size={13} style={{ color: "var(--warn)", flexShrink: 0 }} />
-          <span>
-            This PR is already {pr.status} — running a review is informational and won't affect the
-            merged code.
-          </span>
+          <Icon.AlertTriangle size={13} style={s.warnIcon} />
+          <span>{t("detail.settledNotice", { status: pr.status })}</span>
         </div>
       )}
       <Tabs
@@ -113,9 +84,9 @@ export function PrDetailHeader({
         onChange={onSetTab}
         pad="0"
         tabs={[
-          { key: "overview", label: "Overview", icon: "FileText" },
-          { key: "findings", label: "Agent runs", icon: "Activity", count: findingsCount || undefined },
-          { key: "diff", label: "Files changed", icon: "Code", count: pr.files_count },
+          { key: "overview", label: t("detail.tabs.overview"), icon: "FileText" },
+          { key: "findings", label: t("detail.tabs.findings"), icon: "Activity", count: findingsCount || undefined },
+          { key: "diff", label: t("detail.tabs.diff"), icon: "Code", count: pr.files_count },
         ]}
       />
     </div>

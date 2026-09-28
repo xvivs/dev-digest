@@ -2,15 +2,26 @@ import type { CSSProperties } from "react";
 
 /** Co-located styles for AgentCard (extracted from inline styles). */
 export const s = {
-  card: (active: boolean, enabled: boolean): CSSProperties => ({
+  card: (active: boolean, enabled: boolean, linked: boolean): CSSProperties => ({
+    position: "relative",
     padding: 14,
     borderRadius: 8,
-    cursor: "pointer",
+    cursor: linked ? "pointer" : "default",
     border: "1px solid " + (active ? "var(--border-strong)" : "var(--border)"),
     background: active ? "var(--bg-hover)" : "var(--bg-elevated)",
     opacity: enabled ? 1 : 0.6,
     marginBottom: 10,
   }),
+  /** Invisible link over the whole card; painted above the static content. */
+  stretchedLink: { position: "absolute", inset: 0, borderRadius: 8, zIndex: 0 } satisfies CSSProperties,
+  /** Toggle + delete: lifted above the stretched link so they receive their own clicks. */
+  controls: {
+    position: "relative",
+    zIndex: 1,
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+  } satisfies CSSProperties,
   headerRow: { display: "flex", alignItems: "center", gap: 10 } satisfies CSSProperties,
   iconBox: {
     width: 26,

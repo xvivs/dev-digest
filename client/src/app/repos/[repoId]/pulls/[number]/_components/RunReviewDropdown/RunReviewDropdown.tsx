@@ -7,9 +7,9 @@ import React from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { Button, Dropdown, type DropdownItemDef } from "@devdigest/ui";
-import { useAgents } from "../../../../../../../lib/hooks/agents";
-import { useRunReview } from "../../../../../../../lib/hooks/reviews";
-import { DROPDOWN_WIDTH } from "./constants";
+import { useAgents, useRunReview } from "@/lib/hooks";
+import { AGENTS_HREF, DROPDOWN_WIDTH } from "./constants";
+import { s } from "./styles";
 
 export function RunReviewDropdown({
   prId,
@@ -55,10 +55,10 @@ export function RunReviewDropdown({
     ? all.map((a) => ({
         label: a.name,
         icon: "Cpu" as const,
-        hint: a.enabled ? a.model : `${a.model} · disabled`,
+        hint: a.enabled ? a.model : t("runReview.disabledHint", { model: a.model }),
         onClick: () => kick({ agentId: a.id }),
       }))
-    : [{ label: "No agents yet — create one", icon: "Plus", muted: true, onClick: () => router.push("/agents") }];
+    : [{ label: t("runReview.noAgents"), icon: "Plus", muted: true, onClick: () => router.push(AGENTS_HREF) }];
 
   const items: DropdownItemDef[] = [
     // Merged/closed PRs can still be reviewed (informational only); lead with a
@@ -78,7 +78,7 @@ export function RunReviewDropdown({
     { divider: true },
     ...agentItems,
     { divider: true },
-    { label: t("runReview.configureAgents"), icon: "Settings", muted: true, onClick: () => router.push("/agents") },
+    { label: t("runReview.configureAgents"), icon: "Settings", muted: true, onClick: () => router.push(AGENTS_HREF) },
   ];
 
   return (
@@ -89,7 +89,7 @@ export function RunReviewDropdown({
       trigger={
         <span
           title={warnMerged ? t("runReview.mergedTooltip") : undefined}
-          style={warnMerged ? { opacity: 0.6 } : undefined}
+          style={warnMerged ? s.dimmedTrigger : undefined}
         >
           <Button kind={kind} size={size} iconRight="ChevronDown" icon="Sparkles" loading={run.isPending}>
             {run.isPending ? t("runReview.running") : t("runReview.runReview")}

@@ -24,6 +24,7 @@ export function Tabs({
         return (
           <button
             key={k}
+            type="button"
             onClick={() => onChange(k)}
             style={{
               display: "flex",

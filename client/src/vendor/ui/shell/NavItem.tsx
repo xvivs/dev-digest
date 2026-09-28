@@ -9,11 +9,14 @@ export function NavItem({
   active,
   repoId,
   Link = DefaultLink,
+  label,
 }: {
   item: NavItemDef;
   active?: boolean;
   repoId?: string | null;
   Link?: LinkLike;
+  /** Translated label; falls back to the English `item.label`. */
+  label?: string;
 }) {
   const I = Icon[item.icon];
   const [h, setH] = React.useState(false);
@@ -51,7 +54,7 @@ export function NavItem({
           />
         )}
         <I size={16} style={{ color: active ? "var(--accent)" : "inherit" }} />
-        <span style={{ flex: 1 }}>{item.label}</span>
+        <span style={{ flex: 1 }}>{label ?? item.label}</span>
         {item.badge && (
           <span
             className="tnum"

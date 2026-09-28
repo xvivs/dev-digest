@@ -5,7 +5,8 @@
 import React from "react";
 import { useTranslations } from "next-intl";
 import { Button } from "@devdigest/ui";
-import { type CommentThread, type DiffCommentApi, cs } from "../comments";
+import type { CommentThread, DiffCommentApi } from "../comments";
+import { cs } from "../styles";
 import { CommentCard } from "../CommentCard";
 import { InlineComposer } from "../InlineComposer";
 
@@ -18,7 +19,7 @@ export function CommentThreadView({
   commenting: DiffCommentApi;
   path: string;
 }) {
-  const t = useTranslations("shell");
+  const t = useTranslations("diffViewer");
   const [replying, setReplying] = React.useState(false);
   return (
     <div style={cs.thread}>
@@ -43,7 +44,7 @@ export function CommentThreadView({
               icon="CornerDownRight"
               onClick={() => setReplying(true)}
             >
-              {t("diffViewer.reply")}
+              {t("reply")}
             </Button>
           </div>
         ))}

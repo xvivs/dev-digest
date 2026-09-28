@@ -4,12 +4,15 @@ import { IconBtn, Avatar, Kbd } from "../primitives";
 import { DefaultLink } from "./DefaultLink";
 import type { ShellContext, Crumb } from "./types";
 
+/** Topbar height (px). Screens that fill the viewport under it subtract this. */
+export const TOPBAR_HEIGHT = 52;
+
 export function Topbar({ ctx, crumb = [] }: { ctx: ShellContext; crumb?: Crumb[] }) {
   const Link = ctx.Link ?? DefaultLink;
   return (
     <header
       style={{
-        height: 52,
+        height: TOPBAR_HEIGHT,
         flexShrink: 0,
         borderBottom: "1px solid var(--border)",
         background: "var(--bg-primary)",
@@ -46,6 +49,7 @@ export function Topbar({ ctx, crumb = [] }: { ctx: ShellContext; crumb?: Crumb[]
         })}
       </div>
       <button
+        type="button"
         onClick={ctx.onOpenCommandPalette}
         style={{
           marginLeft: "auto",

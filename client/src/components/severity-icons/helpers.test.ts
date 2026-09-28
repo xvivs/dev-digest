@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { countBySeverity, presentSeverities, ZERO_COUNTS, SEV_ORDER } from "./helpers";
+import { countBySeverity, presentSeverities, ZERO_COUNTS } from "./helpers";
 
 describe("countBySeverity", () => {
   it("tallies the three known severities into their lowercase wire keys", () => {
@@ -50,7 +50,11 @@ describe("presentSeverities", () => {
   });
 
   it("returns every severity in CRITICAL → WARNING → SUGGESTION order", () => {
-    expect(presentSeverities({ critical: 1, warning: 1, suggestion: 1 })).toEqual([...SEV_ORDER]);
+    expect(presentSeverities({ critical: 1, warning: 1, suggestion: 1 })).toEqual([
+      "CRITICAL",
+      "WARNING",
+      "SUGGESTION",
+    ]);
   });
 
   it("returns an empty list for an all-zero tally", () => {

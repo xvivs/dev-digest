@@ -9,6 +9,11 @@ const optLabel = (o: SelectOption) => (typeof o === "string" ? o : o.label);
  * Searchable single-select — same options API as SelectInput, but with a filter
  * box + keyboard nav, for long lists (e.g. the 300+ OpenRouter models). Filters
  * by value and label; Enter selects, ↑/↓ move, Esc closes.
+ *
+ * The trigger is a real `<button aria-haspopup="listbox">`: Tab reaches it,
+ * Enter/Space/ArrowDown open it. Open, focus sits in the search field, which is
+ * the combobox (`aria-activedescendant` tracks the highlighted option). Closing
+ * with Escape or by picking returns focus to the trigger.
  */
 export function SearchableSelect({
   value,
@@ -17,6 +22,8 @@ export function SearchableSelect({
   placeholder = "Search…",
   mono = true,
   maxHeight = 280,
+  ariaLabel,
+  id,
 }: {
   value: string;
   onChange?: (v: string) => void;
@@ -24,12 +31,19 @@ export function SearchableSelect({
   placeholder?: string;
   mono?: boolean;
   maxHeight?: number;
+  /** Accessible name of the trigger when no `<label htmlFor={id}>` names it. */
+  ariaLabel?: string;
+  /** Id of the trigger button, for an external `<label htmlFor>`. */
+  id?: string;
 }) {
   const [open, setOpen] = React.useState(false);
   const [query, setQuery] = React.useState("");
   const [hi, setHi] = React.useState(0);
   const ref = React.useRef<HTMLDivElement>(null);
   const inputRef = React.useRef<HTMLInputElement>(null);
+  const triggerRef = React.useRef<HTMLButtonElement>(null);
+  const listId = React.useId();
+  const optionId = (i: number) => `${listId}-opt-${i}`;
 
   React.useEffect(() => {
     const h = (e: MouseEvent) => {
@@ -56,9 +70,13 @@ export function SearchableSelect({
   const current = options.find((o) => optValue(o) === value);
   const currentLabel = current ? optLabel(current) : value || placeholder;
 
+  const close = () => {
+    setOpen(false);
+    triggerRef.current?.focus();
+  };
   const pick = (o: SelectOption) => {
     onChange?.(optValue(o));
-    setOpen(false);
+    close();
   };
   const onKey = (e: React.KeyboardEvent) => {
     if (e.key === "ArrowDown") {
@@ -73,22 +91,43 @@ export function SearchableSelect({
       if (o) pick(o);
     } else if (e.key === "Escape") {
       e.preventDefault();
+      close();
+    } else if (e.key === "Tab") {
       setOpen(false);
+    }
+  };
+  const onTriggerKey = (e: React.KeyboardEvent) => {
+    if (!open && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
+      e.preventDefault();
+      setOpen(true);
     }
   };
 
   return (
     <div ref={ref} style={{ position: "relative" }}>
-      <div
+      <button
+        ref={triggerRef}
+        id={id}
+        type="button"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-controls={open ? listId : undefined}
+        aria-label={ariaLabel}
         onClick={() => setOpen((o) => !o)}
+        onKeyDown={onTriggerKey}
         style={{
           display: "flex",
           alignItems: "center",
           gap: 10,
+          width: "100%",
           padding: "10px 12px",
           borderRadius: 7,
           border: "1px solid var(--border-strong)",
           background: "var(--bg-elevated)",
+          color: "inherit",
+          font: "inherit",
+          lineHeight: "inherit",
+          textAlign: "left",
           cursor: "pointer",
         }}
       >
@@ -106,7 +145,7 @@ export function SearchableSelect({
           {currentLabel}
         </span>
         <Icon.ChevronsUpDown size={14} style={{ color: "var(--text-muted)" }} />
-      </div>
+      </button>
       {open && (
         <div
           style={{
@@ -142,6 +181,12 @@ export function SearchableSelect({
               }}
               onKeyDown={onKey}
               placeholder={placeholder}
+              role="combobox"
+              aria-expanded={true}
+              aria-controls={listId}
+              aria-autocomplete="list"
+              aria-activedescendant={filtered[hi] ? optionId(hi) : undefined}
+              aria-label={ariaLabel ?? placeholder}
               className={mono ? "mono" : undefined}
               style={{
                 flex: 1,
@@ -153,7 +198,7 @@ export function SearchableSelect({
               }}
             />
           </div>
-          <div style={{ maxHeight, overflowY: "auto", padding: 6 }}>
+          <div id={listId} role="listbox" aria-label={ariaLabel} style={{ maxHeight, overflowY: "auto", padding: 6 }}>
             {filtered.length === 0 && (
               <div style={{ padding: "8px 10px", fontSize: 13, color: "var(--text-muted)" }}>
                 No matches
@@ -166,7 +211,11 @@ export function SearchableSelect({
               return (
                 <button
                   key={v}
+                  id={optionId(i)}
                   type="button"
+                  role="option"
+                  aria-selected={sel}
+                  tabIndex={-1}
                   onMouseEnter={() => setHi(i)}
                   onClick={() => pick(o)}
                   className={mono ? "mono" : undefined}

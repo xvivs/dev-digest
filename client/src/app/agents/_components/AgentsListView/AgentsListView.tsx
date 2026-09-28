@@ -3,20 +3,19 @@
 "use client";
 
 import React from "react";
-import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { Button, Dropdown, EmptyState, ErrorState, Skeleton, Icon } from "@devdigest/ui";
-import { AppShell } from "../../../../components/app-shell";
-import { useAgents, useUpdateAgent } from "../../../../lib/hooks/agents";
+import { Button, Dropdown, EmptyState, ErrorState, Skeleton, Icon, TextInput } from "@devdigest/ui";
+import { AppShell } from "@/components/app-shell";
+import { useAgents, useUpdateAgent } from "@/lib/hooks";
+import { agentEditorHref } from "../../helpers";
 import { AgentCard } from "../AgentCard";
 import { CreateAgentModal } from "./_components/CreateAgentModal";
-import { TEMPLATES } from "./constants";
+import { ADD_MENU_WIDTH, SEARCH_ICON_SIZE, SKELETON_CARD_COUNT, SKELETON_CARD_HEIGHT, TEMPLATES } from "./constants";
 import { filterAgents } from "./helpers";
 import { s } from "./styles";
 
 export function AgentsListView() {
   const t = useTranslations("agents");
-  const router = useRouter();
   const { data: agents, isLoading, isError, refetch } = useAgents();
   const update = useUpdateAgent();
   const [creating, setCreating] = React.useState(false);
@@ -34,16 +33,17 @@ export function AgentsListView() {
             <p style={s.subtitle}>{t("list.subtitle")}</p>
           </div>
           <div style={s.search}>
-            <Icon.Search size={13} style={s.searchIcon} />
-            <input
+            <TextInput
+              type="search"
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={setSearch}
               placeholder={t("list.searchPlaceholder")}
-              style={s.searchInput}
+              aria-label={t("list.searchLabel")}
+              suffix={<Icon.Search size={SEARCH_ICON_SIZE} style={s.searchIcon} />}
             />
           </div>
           <Dropdown
-            width={220}
+            width={ADD_MENU_WIDTH}
             align="right"
             trigger={
               <Button kind="primary" size="sm" icon="Plus" iconRight="ChevronDown">
@@ -65,9 +65,9 @@ export function AgentsListView() {
 
         {isLoading && (
           <div style={s.grid}>
-            <Skeleton height={120} />
-            <Skeleton height={120} />
-            <Skeleton height={120} />
+            {Array.from({ length: SKELETON_CARD_COUNT }, (_, i) => (
+              <Skeleton key={i} height={SKELETON_CARD_HEIGHT} />
+            ))}
           </div>
         )}
         {isError && <ErrorState body={t("list.loadError")} onRetry={() => refetch()} />}
@@ -86,7 +86,7 @@ export function AgentsListView() {
               <AgentCard
                 key={a.id}
                 ag={a}
-                onClick={() => router.push(`/agents/${a.id}?tab=config`)}
+                href={agentEditorHref(a.id)}
                 onToggle={(enabled) => update.mutate({ id: a.id, patch: { enabled } })}
               />
             ))}

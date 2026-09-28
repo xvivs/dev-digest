@@ -1,5 +1,6 @@
 import type { FindingRecord, Severity } from "@devdigest/shared";
-import { LOW_CONFIDENCE_THRESHOLD, SEVERITY_ORDER } from "./constants";
+import { compareSeverity } from "@devdigest/ui";
+import { LOW_CONFIDENCE_THRESHOLD } from "./constants";
 
 /**
  * The confidence gate + severity sort, i.e. everything the severity filter is
@@ -17,9 +18,7 @@ export function baseFindings(
   const kept = opts.hideLow
     ? findings.filter((f) => f.confidence >= LOW_CONFIDENCE_THRESHOLD)
     : findings;
-  return [...kept].sort(
-    (a, b) => (SEVERITY_ORDER[a.severity] ?? 9) - (SEVERITY_ORDER[b.severity] ?? 9),
-  );
+  return [...kept].sort((a, b) => compareSeverity(a.severity, b.severity));
 }
 
 /** Narrow a `baseFindings` result to one severity. `null` = no filter. */

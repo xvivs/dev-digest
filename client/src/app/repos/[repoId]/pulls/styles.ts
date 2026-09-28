@@ -1,9 +1,10 @@
 import type { CSSProperties } from "react";
-import { GRID } from "./constants";
+import { GRID, SEARCH_BOX_WIDTH } from "./constants";
 
 /** Co-located styles for the PR list page (extracted from inline styles). */
 export const s = {
   row: (hover: boolean): CSSProperties => ({
+    position: "relative",
     display: "grid",
     gridTemplateColumns: GRID,
     alignItems: "center",
@@ -22,7 +23,10 @@ export const s = {
   } satisfies CSSProperties,
   rowIcon: (color: string): CSSProperties => ({ color, flexShrink: 0 }),
   rowTitleWrap: { minWidth: 0 } satisfies CSSProperties,
+  /** The row's link — also its title text. */
   rowTitle: (hover: boolean): CSSProperties => ({
+    display: "block",
+    textDecoration: "none",
     fontSize: 14,
     fontWeight: 550,
     whiteSpace: "nowrap",
@@ -41,6 +45,13 @@ export const s = {
   sizeBadgeBorder: (color: string): CSSProperties => ({ border: `1px solid ${color}` }),
   scoreCell: { display: "flex", alignItems: "center" } satisfies CSSProperties,
   findingsCell: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+  } satisfies CSSProperties,
+  /** A findings cell with chips + popover: sits above the row link so its own clicks win. */
+  findingsCellInteractive: {
+    position: "relative",
     display: "flex",
     alignItems: "center",
     gap: 8,
@@ -65,6 +76,7 @@ export const s = {
     flexWrap: "wrap",
   } satisfies CSSProperties,
   filterChips: { display: "flex", gap: 8 } satisfies CSSProperties,
+  searchBox: { width: SEARCH_BOX_WIDTH } satisfies CSSProperties,
   filterActions: {
     marginLeft: "auto",
     display: "flex",

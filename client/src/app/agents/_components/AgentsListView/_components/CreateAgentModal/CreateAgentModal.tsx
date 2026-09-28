@@ -5,13 +5,16 @@ import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { Button, Modal, FormField, TextInput, SelectInput, Textarea } from "@devdigest/ui";
 import type { Provider } from "@devdigest/shared";
-import { useCreateAgent } from "../../../../../../lib/hooks/agents";
-import { DEFAULT_MODEL, DEFAULT_PROVIDER, MODAL_WIDTH, PROVIDER_OPTIONS } from "./constants";
+import { PROVIDER_OPTIONS } from "@/app/agents/constants";
+import { agentEditorHref } from "@/app/agents/helpers";
+import { useCreateAgent } from "@/lib/hooks";
+import { DEFAULT_MODEL, DEFAULT_PROVIDER, MODAL_WIDTH } from "./constants";
 import { s } from "./styles";
 
 /** Create-agent modal — name/description/provider/model/system-prompt. */
 export function CreateAgentModal({ onClose }: { onClose: () => void }) {
   const t = useTranslations("agents");
+  const tShell = useTranslations("shell");
   const router = useRouter();
   const create = useCreateAgent();
   const [name, setName] = React.useState("");
@@ -29,13 +32,14 @@ export function CreateAgentModal({ onClose }: { onClose: () => void }) {
       system_prompt: systemPrompt,
     });
     onClose();
-    router.push(`/agents/${agent.id}?tab=config`);
+    router.push(agentEditorHref(agent.id));
   };
 
   return (
     <Modal
       width={MODAL_WIDTH}
       title={t("create.title")}
+      closeLabel={tShell("ui.close")}
       subtitle={t("create.subtitle")}
       onClose={onClose}
       footer={

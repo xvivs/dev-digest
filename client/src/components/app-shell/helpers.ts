@@ -1,15 +1,24 @@
 /** Pure helpers for AppShell. */
 
 import type { RepoSummary } from "@devdigest/ui";
-import type { Repo } from "../../lib/types";
+import type { Repo } from "@/lib/types";
 
-/** Map a lib `Repo` to the `RepoSummary` shape the AppFrame shell context expects. */
-export function toShellRepo(r: Repo): RepoSummary {
+/** Whether the poller has synced this repo from GitHub at least once. */
+export function isRepoSynced(r: Pick<Repo, "last_polled_at">): boolean {
+  return Boolean(r.last_polled_at);
+}
+
+/**
+ * Map a lib `Repo` to the `RepoSummary` shape the AppFrame shell context
+ * expects. The sync label is copy, so the caller supplies it (next-intl);
+ * this helper only decides which one applies.
+ */
+export function toShellRepo(r: Repo, syncedLabel: (synced: boolean) => string): RepoSummary {
   return {
     id: r.id,
     full_name: r.full_name,
     default_branch: r.default_branch,
-    syncedLabel: r.last_polled_at ? "synced" : "not synced",
+    syncedLabel: syncedLabel(isRepoSynced(r)),
   };
 }
 
@@ -18,7 +27,7 @@ export function isTextInput(el: EventTarget | null): boolean {
   const node = el as HTMLElement | null;
   return (
     !!node &&
-    (node.tagName === "INPUT" || node.tagName === "TEXTAREA" || node.isContentEditable)
+    (node.tagName === "INPUT" || node.tagName === "TEXTAREA" || node.isContentEditable === true)
   );
 }
 

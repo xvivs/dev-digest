@@ -5,7 +5,16 @@ export const s = {
   wrap: { maxWidth: 640 } satisfies CSSProperties,
   keyRow: { display: "flex", gap: 10, alignItems: "center" } satisfies CSSProperties,
   keyInput: { flex: 1 } satisfies CSSProperties,
-  revealIcon: { color: "var(--text-muted)", cursor: "pointer" } satisfies CSSProperties,
+  /** Bare icon button inside the input's suffix slot — no chrome, just the glyph. */
+  revealBtn: {
+    display: "inline-flex",
+    alignItems: "center",
+    padding: 0,
+    border: "none",
+    background: "none",
+    color: "var(--text-muted)",
+    cursor: "pointer",
+  } satisfies CSSProperties,
   result: (ok: boolean): CSSProperties => ({
     display: "inline-flex",
     alignItems: "center",

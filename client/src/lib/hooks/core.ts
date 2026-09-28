@@ -6,6 +6,7 @@
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
+import type { MutationHookOptions } from "../query-client";
 import type {
   Settings,
   SettingsUpdate,
@@ -35,9 +36,10 @@ export function useUpdateSettings() {
   });
 }
 
-export function useTestConnection() {
+export function useTestConnection(options?: MutationHookOptions) {
   const qc = useQueryClient();
   return useMutation({
+    meta: options?.meta,
     mutationFn: (input: ConnTestProvider | { provider: ConnTestProvider; key?: string }) => {
       const body = typeof input === "string" ? { provider: input } : input;
       return api.post<ConnTestResult>("/settings/test-connection", body);
@@ -71,9 +73,10 @@ export function useRepos() {
   });
 }
 
-export function useAddRepo() {
+export function useAddRepo(options?: MutationHookOptions) {
   const qc = useQueryClient();
   return useMutation({
+    meta: options?.meta,
     mutationFn: (url: string) => api.post<Repo>("/repos", { url }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["repos"] }),
   });

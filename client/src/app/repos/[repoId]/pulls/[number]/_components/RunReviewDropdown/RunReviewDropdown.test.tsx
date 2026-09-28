@@ -1,33 +1,88 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { render, screen, cleanup } from "@testing-library/react";
-import { NextIntlClientProvider } from "next-intl";
-import messages from "../../../../../../../../messages/en/prReview.json";
+import { screen, cleanup, fireEvent, waitFor } from "@testing-library/react";
+import prReview from "@/../messages/en/prReview.json";
+import { renderWithProviders } from "@/test/render";
 
+const push = vi.fn();
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
+  useRouter: () => ({ push, replace: vi.fn() }),
 }));
-vi.mock("../../../../../../../lib/hooks/agents", () => ({
-  useAgents: () => ({ data: [{ id: "a1", name: "Security", model: "gpt-4.1", enabled: true }] }),
+
+type Agent = { id: string; name: string; model: string; enabled: boolean };
+let agents: Agent[] = [];
+vi.mock("@/lib/hooks/agents", () => ({
+  useAgents: () => ({ data: agents }),
 }));
-vi.mock("../../../../../../../lib/hooks/reviews", () => ({
-  useRunReview: () => ({ mutateAsync: vi.fn(), isPending: false }),
+
+const mutateAsync = vi.fn();
+vi.mock("@/lib/hooks/reviews", () => ({
+  useRunReview: () => ({ mutateAsync, isPending: false }),
 }));
 
 import { RunReviewDropdown } from "./RunReviewDropdown";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  agents = [];
+  push.mockReset();
+  mutateAsync.mockReset();
+});
 
-function renderWithIntl(ui: React.ReactElement) {
-  return render(
-    <NextIntlClientProvider locale="en" messages={{ prReview: messages }}>
-      {ui}
-    </NextIntlClientProvider>,
-  );
-}
+const renderDropdown = (ui: React.ReactElement) => renderWithProviders(ui, { namespaces: { prReview } });
 
-describe("RunReviewDropdown (smoke)", () => {
+const openMenu = () => fireEvent.click(screen.getByRole("button", { name: /Run Review/ }));
+
+describe("RunReviewDropdown", () => {
   it("renders the trigger label", () => {
-    renderWithIntl(<RunReviewDropdown prId="pr1" />);
+    renderDropdown(<RunReviewDropdown prId="pr1" />);
     expect(screen.getByText("Run Review")).toBeInTheDocument();
+  });
+
+  it("lists every agent, marking disabled ones, and runs the one picked", async () => {
+    agents = [
+      { id: "a1", name: "Security", model: "gpt-4.1", enabled: true },
+      { id: "a2", name: "Style", model: "haiku", enabled: false },
+    ];
+    mutateAsync.mockResolvedValue({ runs: [{ run_id: "run-9" }] });
+    const onRunStart = vi.fn();
+    const onRunsStarted = vi.fn();
+    const onRunSettled = vi.fn();
+    renderDropdown(
+      <RunReviewDropdown prId="pr1" onRunStart={onRunStart} onRunsStarted={onRunsStarted} onRunSettled={onRunSettled} />,
+    );
+
+    openMenu();
+    expect(screen.getByRole("menuitem", { name: /Run all enabled agents/ })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /Security gpt-4\.1/ })).toBeInTheDocument();
+    expect(screen.getByText("haiku · disabled")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("menuitem", { name: /Style/ }));
+    expect(onRunStart).toHaveBeenCalledTimes(1);
+    expect(mutateAsync).toHaveBeenCalledWith({ prId: "pr1", agentId: "a2" });
+    await waitFor(() => expect(onRunsStarted).toHaveBeenCalledWith(["run-9"]));
+    expect(onRunSettled).toHaveBeenCalledTimes(1);
+  });
+
+  it("'Run all' asks for every enabled agent", () => {
+    agents = [{ id: "a1", name: "Security", model: "gpt-4.1", enabled: true }];
+    mutateAsync.mockResolvedValue({ runs: [] });
+    renderDropdown(<RunReviewDropdown prId="pr1" />);
+    openMenu();
+    fireEvent.click(screen.getByRole("menuitem", { name: /Run all enabled agents/ }));
+    expect(mutateAsync).toHaveBeenCalledWith({ prId: "pr1", all: true });
+  });
+
+  it("with no agents, offers to create one and routes to /agents", () => {
+    renderDropdown(<RunReviewDropdown prId="pr1" />);
+    openMenu();
+    fireEvent.click(screen.getByRole("menuitem", { name: /No agents yet — create one/ }));
+    expect(push).toHaveBeenCalledWith("/agents");
+    expect(mutateAsync).not.toHaveBeenCalled();
+  });
+
+  it("warns first on a merged/closed PR", () => {
+    renderDropdown(<RunReviewDropdown prId="pr1" warnMerged />);
+    openMenu();
+    expect(screen.getByText("Already merged — review is informational")).toBeInTheDocument();
   });
 });

@@ -2,17 +2,25 @@
 import React from "react";
 import { Kbd } from "../primitives";
 import { SHORTCUTS } from "../nav";
+import { useDialogFocus } from "../hooks";
 
 export function ShortcutsHelp({ open, onClose }: { open: boolean; onClose: () => void }) {
+  // Escape closes, focus stays inside and goes back to the opener on close.
+  const dialogRef = useDialogFocus<HTMLDivElement>({ open, onClose });
+  const titleId = React.useId();
   if (!open) return null;
   const groups = Array.from(new Set(SHORTCUTS.map((s) => s.group)));
   return (
     <div style={{ position: "fixed", inset: 0, display: "grid", placeItems: "center", zIndex: 60, padding: 28 }}>
       <div onClick={onClose} style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.5)" }} />
       <div
+        ref={dialogRef}
         role="dialog"
-        aria-label="Keyboard shortcuts"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        tabIndex={-1}
         style={{
+          outline: "none",
           position: "relative",
           width: 520,
           maxWidth: "100%",
@@ -24,7 +32,9 @@ export function ShortcutsHelp({ open, onClose }: { open: boolean; onClose: () =>
           animation: "ddpop .14s ease",
         }}
       >
-        <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 18 }}>Keyboard shortcuts</div>
+        <h2 id={titleId} style={{ fontSize: 16, fontWeight: 700, marginBottom: 18 }}>
+          Keyboard shortcuts
+        </h2>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "18px 24px" }}>
           {groups.map((g) => (
             <div key={g}>

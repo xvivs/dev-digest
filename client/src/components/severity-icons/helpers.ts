@@ -14,12 +14,10 @@
  * tokens come from the UI package.
  */
 import type { Severity, SeverityCounts } from "@devdigest/shared";
+import { SEVERITY_ORDER } from "@devdigest/ui";
 
 /** Empty tally. Treat as immutable — copy it (`{ ...ZERO_COUNTS }`) before writing. */
 export const ZERO_COUNTS: SeverityCounts = { critical: 0, warning: 0, suggestion: 0 };
-
-/** Render/sort order everywhere findings are shown: worst first. */
-export const SEV_ORDER: readonly Severity[] = ["CRITICAL", "WARNING", "SUGGESTION"];
 
 export const SEV_KEY: Record<Severity, keyof SeverityCounts> = {
   CRITICAL: "critical",
@@ -55,7 +53,10 @@ export function countBySeverity(fs: { severity: string }[]): SeverityCounts {
   return counts;
 }
 
+/** The design system's `SEVERITY_ORDER` minus its UI-only `INFO`: worst first. */
+const FINDING_SEVERITY_ORDER: readonly Severity[] = SEVERITY_ORDER.filter(isSeverity);
+
 /** The severities with at least one finding, worst first. */
 export function presentSeverities(c: SeverityCounts): Severity[] {
-  return SEV_ORDER.filter((sev) => c[SEV_KEY[sev]] > 0);
+  return FINDING_SEVERITY_ORDER.filter((sev) => c[SEV_KEY[sev]] > 0);
 }

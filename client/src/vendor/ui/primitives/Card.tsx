@@ -17,6 +17,20 @@ export function Card({
   return (
     <div
       onClick={onClick}
+      // A clickable card must be reachable and operable by keyboard too.
+      role={onClick ? "button" : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onKeyDown={
+        onClick
+          ? (e) => {
+              if (e.target !== e.currentTarget) return;
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onClick();
+              }
+            }
+          : undefined
+      }
       onMouseEnter={() => hover && setH(true)}
       onMouseLeave={() => hover && setH(false)}
       style={{

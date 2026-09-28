@@ -1,1 +1,1 @@
-export { ReviewRunAccordion, default } from "./ReviewRunAccordion";
+export { ReviewRunAccordion, type ReviewRunAccordionProps } from "./ReviewRunAccordion";

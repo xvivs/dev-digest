@@ -17,5 +17,37 @@
     "title": "No repo selected",
     "body": "This repository isn't in your workspace — it may have been removed, or the link is stale. Add a repo or pick another from the switcher to get started.",
     "cta": "Add repository"
+  },
+  "boundaries": {
+    "error": {
+      "title": "Something went wrong",
+      "body": "This screen hit an unexpected error. Try again, or go back to the start.",
+      "retry": "Try again",
+      "home": "Go home",
+      "digest": "Error ID: {digest}"
+    },
+    "notFound": {
+      "title": "Page not found",
+      "body": "This page doesn't exist, or the link is stale.",
+      "cta": "Go home"
+    }
+  },
+  "home": {
+    "crumb": "DevDigest",
+    "title": "Welcome to DevDigest",
+    "subtitle": "Local-first AI PR review",
+    "empty": {
+      "title": "No repositories yet",
+      "body": "Add a repository to start reviewing pull requests. Set your API keys once in Settings → API Keys.",
+      "cta": "Add repository"
+    },
+    "redirecting": "Taking you to your repository…",
+    "open": "Open {name}"
+  },
+  "errors": {
+    "generic": "Something went wrong"
+  },
+  "toast": {
+    "dismiss": "Dismiss"
   }
 }

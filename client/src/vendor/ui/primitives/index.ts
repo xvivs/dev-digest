@@ -1,5 +1,5 @@
 export type { Severity, Category, ButtonProps } from "./tokens";
-export { SEV, CAT } from "./tokens";
+export { SEV, CAT, SEVERITY_ORDER, SEVERITY_RANK, compareSeverity } from "./tokens";
 export { Button } from "./Button";
 export { IconBtn } from "./IconBtn";
 export { Badge, SeverityBadge, CategoryTag } from "./Badge";
@@ -14,6 +14,8 @@ export { Kbd } from "./Kbd";
 export { SectionLabel } from "./SectionLabel";
 export { Card } from "./Card";
 export { Collapse } from "./Collapse";
+export { Disclosure, DisclosureChevron, type DisclosureProps } from "./Disclosure";
+export { RowAction } from "./RowAction";
 export { EmptyState } from "./EmptyState";
 export { Skeleton } from "./Skeleton";
 export { ErrorState } from "./ErrorState";

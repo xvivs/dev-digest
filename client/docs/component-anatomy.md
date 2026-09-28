@@ -43,6 +43,12 @@ sibling's internals.
 Nesting is allowed and used: a large feature keeps its own `_components/`
 subfolder for its parts.
 
+A nested route may import its ancestor route's `_components/` through the
+barrel: `/agents/[id]` renders `AgentCard` from `app/agents/_components/`. A
+sibling or cousin route may not; that is the signal to promote the component to
+`src/components/`. An ancestor never imports from a descendant. See
+`docs/adr/0010-nested-route-components.md`.
+
 ## Data access
 
 **`src/lib/api.ts` is the only place that calls `fetch`.** `apiFetch<T>`:
