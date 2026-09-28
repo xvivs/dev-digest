@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
-import { screen, cleanup, fireEvent } from "@testing-library/react";
+import { screen, cleanup, fireEvent, act } from "@testing-library/react";
 import type { Skill } from "@devdigest/shared";
 import { renderWithProviders } from "@/test/render";
 import { ToastProvider } from "@/lib/toast";
@@ -13,6 +13,12 @@ const h = vi.hoisted(() => ({
   deleteMutate: vi.fn(),
   vetMutateAsync: vi.fn().mockResolvedValue(undefined),
   pushMock: vi.fn(),
+  versionQuery: { data: undefined, isLoading: false, isError: false } as {
+    data: unknown;
+    isLoading: boolean;
+    isError: boolean;
+  },
+  versionArgs: [] as unknown[],
 }));
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: h.pushMock }) }));
@@ -26,6 +32,10 @@ vi.mock("@/lib/hooks", () => ({
   }),
   useDeleteSkill: () => ({ mutate: h.deleteMutate, isPending: false }),
   useVetSkill: () => ({ mutateAsync: h.vetMutateAsync, isPending: false }),
+  useSkillVersion: (...args: unknown[]) => {
+    h.versionArgs = args;
+    return h.versionQuery;
+  },
 }));
 
 import { ConfigTab } from "./ConfigTab";
@@ -42,10 +52,10 @@ const SKILL: Skill = {
   needs_vetting: false,
 };
 
-function renderTab(skill: Skill = SKILL) {
+function renderTab(skill: Skill = SKILL, props: { fromVersion?: number | null; onDraftSaved?: () => void } = {}) {
   return renderWithProviders(
     <ToastProvider>
-      <ConfigTab skill={skill} />
+      <ConfigTab skill={skill} {...props} />
     </ToastProvider>,
     { namespaces: { skills: messages, shell: shellMessages, common } },
   );
@@ -57,6 +67,8 @@ beforeEach(() => {
   h.deleteMutate.mockReset();
   h.vetMutateAsync.mockReset().mockResolvedValue(undefined);
   h.pushMock.mockReset();
+  h.versionQuery = { data: undefined, isLoading: false, isError: false };
+  h.versionArgs = [];
 });
 afterEach(cleanup);
 
@@ -134,5 +146,96 @@ describe("ConfigTab", () => {
     expect(dialog).toHaveTextContent('Delete skill "branch-coverage-gate"? This cannot be undone.');
     fireEvent.click(screen.getAllByRole("button", { name: "Delete skill" })[1]!);
     expect(h.deleteMutate).toHaveBeenCalledWith("sk1", expect.anything());
+  });
+
+  it("does not fetch a snapshot without fromVersion", () => {
+    renderTab();
+    expect(h.versionArgs).toEqual(["sk1", null]);
+  });
+
+  it("sends the What changed note with the save", () => {
+    renderTab();
+    fireEvent.change(screen.getByDisplayValue("# Rule"), { target: { value: "# Rule v2" } });
+    fireEvent.change(screen.getByLabelText("What changed"), { target: { value: "stricter" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(h.updateMutate).toHaveBeenCalledWith(
+      { id: "sk1", patch: expect.objectContaining({ body: "# Rule v2", change_note: "stricter" }) },
+      expect.anything(),
+    );
+  });
+
+  describe("draft from a version (restore Edit)", () => {
+    const CURRENT: Skill = { ...SKILL, version: 4, body: "# Rule v4", description: "Now" };
+    const V2 = {
+      skill_id: "sk1",
+      version: 2,
+      name: "old-gate",
+      description: "Then",
+      type: "security" as const,
+      change_note: null,
+      created_at: "2026-09-29T10:00:00.000Z",
+      body: "# Rule v2",
+    };
+
+    it("shows a placeholder while the snapshot loads", () => {
+      h.versionQuery = { data: undefined, isLoading: true, isError: false };
+      renderTab(CURRENT, { fromVersion: 2 });
+      expect(h.versionArgs).toEqual(["sk1", 2]);
+      expect(screen.queryByRole("button", { name: "Save" })).not.toBeInTheDocument();
+    });
+
+    it("seeds every versioned field from vN as an unsaved draft with a default note", () => {
+      h.versionQuery = { data: V2, isLoading: false, isError: false };
+      renderTab(CURRENT, { fromVersion: 2 });
+      expect(screen.getByText(/^Draft from v2\./)).toHaveAttribute("role", "status");
+      expect(screen.getByDisplayValue("# Rule v2")).toBeInTheDocument();
+      expect(screen.getByDisplayValue("old-gate")).toBeInTheDocument();
+      expect(screen.getByDisplayValue("Then")).toBeInTheDocument();
+      expect(screen.getByText("unsaved")).toBeInTheDocument();
+      expect(screen.getByLabelText("What changed")).toHaveValue("Restored from v2 (edited)");
+      expect(h.updateMutate).not.toHaveBeenCalled(); // nothing written until Save
+    });
+
+    it("Save is the normal PUT with the default note, and reports the draft as saved", () => {
+      h.versionQuery = { data: V2, isLoading: false, isError: false };
+      const onDraftSaved = vi.fn();
+      renderTab(CURRENT, { fromVersion: 2, onDraftSaved });
+      fireEvent.click(screen.getByRole("button", { name: "Save" }));
+      expect(h.updateMutate).toHaveBeenCalledWith(
+        {
+          id: "sk1",
+          patch: {
+            name: "old-gate",
+            description: "Then",
+            type: "security",
+            body: "# Rule v2",
+            enabled: true,
+            change_note: "Restored from v2 (edited)",
+          },
+        },
+        expect.anything(),
+      );
+      const { onSuccess } = h.updateMutate.mock.calls[0]![1] as { onSuccess: (d: Skill) => void };
+      act(() => onSuccess({ ...CURRENT, version: 5 }));
+      expect(onDraftSaved).toHaveBeenCalledOnce();
+      expect(screen.queryByText(/Draft from v2/)).not.toBeInTheDocument();
+      expect(screen.getByLabelText("What changed")).toHaveValue("");
+    });
+
+    it("keeps saved metadata when a legacy snapshot stored only the body", () => {
+      h.versionQuery = { data: { ...V2, name: null, description: null, type: null }, isLoading: false, isError: false };
+      renderTab(CURRENT, { fromVersion: 2 });
+      expect(screen.getByDisplayValue("branch-coverage-gate")).toBeInTheDocument();
+      expect(screen.getByDisplayValue("Now")).toBeInTheDocument();
+      expect(screen.getByDisplayValue("# Rule v2")).toBeInTheDocument();
+    });
+
+    it("falls back to the saved skill when vN body is unavailable", () => {
+      h.versionQuery = { data: undefined, isLoading: false, isError: true };
+      renderTab(CURRENT, { fromVersion: 2 });
+      expect(screen.getByText(/^v2 body unavailable/)).toHaveAttribute("role", "status");
+      expect(screen.getByDisplayValue("# Rule v4")).toBeInTheDocument();
+      expect(screen.queryByText("unsaved")).not.toBeInTheDocument();
+    });
   });
 });
