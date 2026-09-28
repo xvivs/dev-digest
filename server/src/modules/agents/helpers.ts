@@ -8,8 +8,13 @@ import type { AgentRow, AgentVersionRow } from './repository.js';
  * implementations.
  */
 
-/** Map a persisted agent row to the public `Agent` DTO. */
-export function toAgentDto(row: AgentRow): Agent {
+/**
+ * Map a persisted agent row to the public `Agent` DTO. `skillCount` (SPEC-02)
+ * is the number of ENABLED skill links — computed by the caller (a single
+ * aggregate query for a list, `skillCountFor` for one agent) so this stays a
+ * pure row→DTO mapper with no query of its own.
+ */
+export function toAgentDto(row: AgentRow, skillCount?: number): Agent {
   return {
     id: row.id,
     name: row.name,
@@ -23,6 +28,7 @@ export function toAgentDto(row: AgentRow): Agent {
     strategy: row.strategy as ReviewStrategy,
     ci_fail_on: row.ciFailOn as CiFailOn,
     repo_intel: row.repoIntel,
+    skill_count: skillCount ?? null,
   };
 }
 

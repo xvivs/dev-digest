@@ -1,6 +1,6 @@
 import type { Container } from '../../platform/container.js';
 import type { Provider, Review, RunTrace, UnifiedDiff } from '@devdigest/shared';
-import { reviewPullRequest, countBlockers } from '@devdigest/reviewer-core';
+import { reviewPullRequest, countBlockers, estimateTokens, type SkillInput } from '@devdigest/reviewer-core';
 import { RunLogger } from '../../platform/run-logger.js';
 import * as schema from '../../db/schema.js';
 import type { AgentRow } from '../../db/rows.js';
@@ -35,6 +35,21 @@ export type RunOutcome = {
 };
 
 /**
+ * One skill resolved as effective for a run (SPEC-02 D1). Structurally
+ * identical to `skills/repository.ts`'s `EffectiveSkill` — declared locally
+ * rather than imported, because a module never imports another module's
+ * files (`modules-no-cross-import`); `container.skillsRepo` is the only
+ * cross-module seam, per `AGENTS.md`.
+ */
+interface ResolvedSkill {
+  id: string;
+  name: string;
+  version: number;
+  body: string;
+  sha256: string;
+}
+
+/**
  * Owns the background execution of queued agent runs (extracted from
  * ReviewService; behaviour unchanged). Loads the diff + intent once, then
  * map-reduces each agent, streaming events over the runBus and persisting each
@@ -45,6 +60,7 @@ export class ReviewRunExecutor {
     private container: Container,
     private repo: ReviewRepository,
     private agents: Container['agentsRepo'],
+    private skills: Container['skillsRepo'],
   ) {}
 
   /**
@@ -69,10 +85,13 @@ export class ReviewRunExecutor {
       { prId: pull.id },
     );
 
-    // Pre-work failure (e.g. diff load) fails EVERY queued run. The error was
-    // already emitted via runLog (fanned out → in each run's buffer); here we
-    // mark the rows failed and persist the buffered log so it survives a reload.
-    const failAll = async (msg: string) => {
+    // Pre-work failure (e.g. skill resolution or diff load) fails EVERY queued
+    // run. The error was already emitted via runLog (fanned out → in each
+    // run's buffer); here we mark the rows failed and persist the buffered
+    // log so it survives a reload. `skillsByAgent` is threaded through even on
+    // a diff-load failure (skill resolution ran first and may have already
+    // succeeded) so the failure trace still carries `skills_used`.
+    const failAll = async (msg: string, skillsByAgent: Map<string, ResolvedSkill[]>) => {
       for (const { runId, agent } of jobs) {
         await this.repo
           .completeAgentRun(runId, {
@@ -86,11 +105,30 @@ export class ReviewRunExecutor {
           })
           .catch(() => undefined);
         await this.repo
-          .saveRunTrace(runId, this.traceFromBuffer(runId, pull, agent, '0/0 passed'))
+          .saveRunTrace(
+            runId,
+            this.traceFromBuffer(runId, pull, agent, '0/0 passed', 0, skillsByAgent.get(agent.id)),
+          )
           .catch(() => undefined);
         this.container.runBus.complete(runId);
       }
     };
+
+    // Resolved next to the diff load (shared pre-work): every queued agent's
+    // effective skills (SPEC-02 D1), ordered. A resolution failure fails every
+    // queued run, same as a diff-load failure.
+    let skillsByAgent: Map<string, ResolvedSkill[]> = new Map();
+    try {
+      skillsByAgent = await runLog.step(
+        'Resolving agent skills',
+        () => this.skills.resolveEffectiveSkills(jobs.map((j) => j.agent.id)),
+        { kind: 'tool' },
+      );
+    } catch (err) {
+      runLog.error(`Failed to resolve agent skills: ${(err as Error).message}`);
+      await failAll(`Failed to resolve agent skills: ${(err as Error).message}`, skillsByAgent);
+      return;
+    }
 
     let diff: UnifiedDiff;
     try {
@@ -99,7 +137,7 @@ export class ReviewRunExecutor {
       });
     } catch (err) {
       runLog.error(`Failed to load PR diff: ${(err as Error).message}`);
-      await failAll(`Failed to load PR diff: ${(err as Error).message}`);
+      await failAll(`Failed to load PR diff: ${(err as Error).message}`, skillsByAgent);
       return;
     }
     runLog.info(`Diff ready — ${diff.files.length} changed file(s); starting ${jobs.length} agent run(s)`);
@@ -111,7 +149,16 @@ export class ReviewRunExecutor {
         `review: agent "${agent.name}" started (${agent.provider}/${agent.model})`,
       );
       try {
-        const outcome = await this.runOneAgent(workspaceId, pull, repo, diff, agent, runId, runLog);
+        const outcome = await this.runOneAgent(
+          workspaceId,
+          pull,
+          repo,
+          diff,
+          agent,
+          runId,
+          runLog,
+          skillsByAgent.get(agent.id) ?? [],
+        );
         logger?.info(
           {
             runId,
@@ -143,6 +190,7 @@ export class ReviewRunExecutor {
     agent: AgentRow,
     runId: string,
     parentLog: RunLogger,
+    resolvedSkills: ResolvedSkill[],
   ): Promise<RunOutcome> {
     const start = Date.now();
     // Narrow the fanned-out pre-work logger to THIS run; the shared diff/intent
@@ -203,6 +251,11 @@ export class ReviewRunExecutor {
         // PR author's description/body — untrusted; assemblePrompt wraps +
         // truncates it. Omitted when the PR has no body.
         ...(pull.body ? { prDescription: pull.body } : {}),
+        // SPEC-02 D1 — effective skills only (resolved in pre-work: link
+        // enabled && skill enabled && !needs_vetting), in prompt order.
+        ...(resolvedSkills.length > 0
+          ? { skills: resolvedSkills.map((s): SkillInput => ({ name: s.name, body: s.body })) }
+          : {}),
         task,
         sessionId: `${repo.owner}/${repo.name}#${pull.number}:${agent.name}`,
         onEvent: (e) => runLog.event(e.kind, e.msg, e.data),
@@ -238,6 +291,21 @@ export class ReviewRunExecutor {
       // Deterministic blocker count (severity ≥ the agent's gate) — the signal
       // the timeline colors on, NOT the model's self-reported verdict.
       const blockers = countBlockers(keptFindings, agent.ciFailOn);
+
+      // SPEC-02 AC-27 — snapshot of the skills resolved at run start, for the
+      // trace. `skills_tokens` is reviewer-core's job (assemblePrompt sums the
+      // rendered block); when that's absent (e.g. no skills, or an older
+      // reviewer-core build) fall back to the sum of the per-skill estimates.
+      const skillsUsed =
+        resolvedSkills.length > 0
+          ? resolvedSkills.map((s) => ({
+              id: s.id,
+              name: s.name,
+              version: s.version,
+              sha256: s.sha256,
+              tokens: estimateTokens(s.body),
+            }))
+          : null;
 
       // ---- Observability: agent_runs + ONE run_traces document --------------
       await this.repo.completeAgentRun(runId, {
@@ -275,7 +343,13 @@ export class ReviewRunExecutor {
           // possible on a successful run.
           cost_missing_reason: costUsd == null ? 'no_price' : undefined,
         },
-        prompt_assembly: outcome.assembly,
+        prompt_assembly: {
+          ...outcome.assembly,
+          skills_used: skillsUsed ?? outcome.assembly.skills_used ?? null,
+          skills_tokens:
+            outcome.assembly.skills_tokens ??
+            (skillsUsed ? skillsUsed.reduce((sum, s) => sum + s.tokens, 0) : null),
+        },
         tool_calls: outcome.chunks.map((c) => ({
           tool: 'review_file',
           args: c.label,
@@ -313,7 +387,10 @@ export class ReviewRunExecutor {
         })
         .catch(() => undefined);
       await this.repo
-        .saveRunTrace(runId, this.traceFromBuffer(runId, pull, agent, '0/0 passed', Date.now() - start))
+        .saveRunTrace(
+          runId,
+          this.traceFromBuffer(runId, pull, agent, '0/0 passed', Date.now() - start, resolvedSkills),
+        )
         .catch(() => undefined);
       this.container.runBus.complete(runId);
       throw err;
@@ -418,7 +495,23 @@ export class ReviewRunExecutor {
     agent: AgentRow,
     grounding: string,
     durationMs = 0,
+    resolvedSkills?: ResolvedSkill[],
   ): RunTrace {
+    // SPEC-02: fill skills_used even on a failure trace WHEN resolution had
+    // already happened (pre-work runs before the diff load / the LLM call, so
+    // a later failure still has it); absent entirely when it hadn't (skill
+    // resolution itself failed, or this is the pre-work failAll path with an
+    // agent that resolution never reached).
+    const skillsUsed =
+      resolvedSkills && resolvedSkills.length > 0
+        ? resolvedSkills.map((s) => ({
+            id: s.id,
+            name: s.name,
+            version: s.version,
+            sha256: s.sha256,
+            tokens: estimateTokens(s.body),
+          }))
+        : null;
     return {
       config: {
         agent: agent.name,
@@ -440,7 +533,15 @@ export class ReviewRunExecutor {
         // cancellation — never on a run that completed with a cost.
         cost_missing_reason: 'failed',
       },
-      prompt_assembly: { system: agent.systemPrompt, skills: null, memory: null, specs: null, user: '' },
+      prompt_assembly: {
+        system: agent.systemPrompt,
+        skills: null,
+        skills_used: skillsUsed,
+        skills_tokens: skillsUsed ? skillsUsed.reduce((sum, s) => sum + s.tokens, 0) : null,
+        memory: null,
+        specs: null,
+        user: '',
+      },
       tool_calls: [],
       raw_output: '',
       memory_pulled: [],
