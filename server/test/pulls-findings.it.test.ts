@@ -249,7 +249,9 @@ d('pulls list FINDINGS column (Testcontainers pg)', () => {
     const before = await countRows();
     await seed(pg.handle.db);
     expect(await countRows()).toEqual(before);
-    expect(before.prs).toBe(4);
+    // #482/#479/#477/#460 (this test's own fixtures) plus SPEC-02's control
+    // experiment #490/#491/#492 (server/src/db/seed.ts) — same repo.
+    expect(before.prs).toBe(7);
   });
 
   it('seeds the review→run link so the timeline and the run drawer join up', async () => {
