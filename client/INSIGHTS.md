@@ -172,4 +172,7 @@ Added `Collapse` to `@devdigest/ui` (`primitives/Collapse.tsx`) and routed all f
 ### 2026-09-20 — Agent-runs timeline polish (client) session
 Brought the TIMELINE row in the Agent-runs tab back in line with the design: the whole panel now opens the trace drawer (agent name, severity chips and both `RowAction` glyphs stop propagation, and the row stays a `<div>` because it nests buttons — the `Open run trace & logs` button is what keeps a keyboard path in), the row lifts to `var(--bg-hover)` on hover, tokens/cost moved up to `var(--text-secondary)` while the timestamp stayed `var(--text-muted)`, and the two trailing glyphs gained hover colours through a new `RunHistory/_components/RowAction/`. The Agent-runs tab icon moved off `AlertOctagon` onto a pinned pre-redraw `Activity`. Six new tests in `RunHistory.test.tsx` cover click routing and both hover states; suite is 19 files / 102 tests green.
 
+### 2026-09-28 — client session
+Renamed `client/CLAUDE.md` to `AGENTS.md` and added a one-line `@AGENTS.md` stub `CLAUDE.md` next to it, per ADR 0004. Edit rules in `AGENTS.md` only; the content itself did not change.
+
 ## Open Questions

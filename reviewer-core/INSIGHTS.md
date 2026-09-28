@@ -33,4 +33,7 @@ lives in the engineering-insights skill).
 ### 2026-09-19 — Cost Badge (reviewer-core) session
 Added `costSource` to `ReviewOutcome` and a map-reduce cost-provenance fold in `review/run.ts` ("weakest claim wins": provider+provider→provider, any estimated in the mix→estimated, any chunk missing a cost→both `costUsd`/`costSource` null), plus the shared `pickCost` helper in the new `llm/cost.ts`, used by both `OpenRouterProvider` and the server's OpenAI/Anthropic adapters. All tests pass (`run.test.ts` grew from 4 to 7 cases).
 
+### 2026-09-28 — reviewer-core session
+Renamed `reviewer-core/CLAUDE.md` to `AGENTS.md` and added a one-line `@AGENTS.md` stub `CLAUDE.md` next to it, per ADR 0004. Edit rules in `AGENTS.md` only; the content itself did not change.
+
 ## Open Questions

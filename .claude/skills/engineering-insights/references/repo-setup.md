@@ -49,14 +49,14 @@ cleanup — lives in the engineering-insights skill).
    it best fits per `SKILL.md`'s classification table and re-file it in the
    new shape — do not discard real recorded findings during a migration.
 
-## Closing the loop in CLAUDE.md
+## Closing the loop in AGENTS.md (or CLAUDE.md)
 
 One-time, per module, done alongside the file migration/bootstrap — this
 edits a file that's loaded every session, so treat it as a setup step to
 confirm with the user rather than something the live skill does silently on
 every run.
 
-In the module's `CLAUDE.md`, in its "Read when" section (or equivalent),
+In the module's `AGENTS.md` (or `CLAUDE.md`), in its "Read when" section (or equivalent),
 replace any existing discretionary INSIGHTS.md bullet with an unconditional
 one:
 
@@ -75,7 +75,7 @@ the `engineering-insights` skill** — don't skip this step, and don't edit the
 file by hand.
 ```
 
-If the module's `CLAUDE.md` fans out to more than one `INSIGHTS.md` (a root
+If the module's `AGENTS.md` (or `CLAUDE.md`) fans out to more than one `INSIGHTS.md` (a root
 file covering several packages), phrase the bullet to route to the right one:
 *"Read the touched package's `INSIGHTS.md` (or the root one for cross-package
 concerns) before starting work there..."*

@@ -54,5 +54,8 @@ Implemented cost provenance persistence end to end: `agent_runs.cost_usd`/`cost_
 ### 2026-09-20 — run_traces seed coverage (server) session
 `run_traces` was seeded only for PR #482's two `done` runs, so every other seeded run opened an empty Agent-run drawer. Added a shared `traceFor(run, opts)` helper in `src/db/seed.ts`, gave the failed #482 run a trace whose log ends on a real `kind: 'error'` line, extended #479 / #477 / the xvivs fixture, and — the part that actually reaches an already-seeded database — a final unconditional backfill pass that LEFT JOINs `run_traces` and fills every `agent_runs` row still missing one. PR #482's two hand-written traces are untouched, so the cost/timeline e2e spec still sees `8.2s`, `15k→1.2k` and `$0.041`. Verified on the live dev DB: 3 of 7 runs lacked a trace before, 0 after. 24 files / 151 tests green.
 
+### 2026-09-28 — server session
+Renamed `server/CLAUDE.md` to `AGENTS.md` and added a one-line `@AGENTS.md` stub `CLAUDE.md` next to it, per ADR 0004. Edit rules in `AGENTS.md` only; the content itself did not change.
+
 ## Open Questions
 

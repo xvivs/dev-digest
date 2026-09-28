@@ -6,7 +6,7 @@ description: The only sanctioned way to write a module's INSIGHTS.md — never e
 Knowledge that lives only in this session's context dies with it. This skill's
 job is narrow: recognize when something just learned is worth keeping, find
 the right module's `INSIGHTS.md`, and file it under the matching section — never
-inventing a new journal format, never touching `CLAUDE.md` on its own.
+inventing a new journal format, never touching `AGENTS.md` (or `CLAUDE.md`) on its own.
 
 ## Steps
 
@@ -67,7 +67,7 @@ Two things the report must never do: claim an entry was written without the
 script having returned `inserted` for it, and quote a long excerpt instead of
 the first handful of words — the file is the record, the report is an index.
 If a `Recurring Errors & Fixes` entry looks like a repeat worth promoting to
-`CLAUDE.md`, mention it on the `Flagged:` line — mention only, never an edit.
+`AGENTS.md` (or `CLAUDE.md`), mention it on the `Flagged:` line — mention only, never an edit.
 
 ## Quality bar
 
@@ -79,7 +79,7 @@ Test: **if it would be obvious to anyone reading the code, don't write it.**
   use `Promise.allSettled()` in batches of 10."* / *"Checkout-flow state
   always goes through Zustand (`cartStore.ts`) — 3 components share the cart;
   local state doesn't work here."*
-- Reject anything already stated in a `README`, `CLAUDE.md`, or `docs/` file
+- Reject anything already stated in a `README`, `AGENTS.md` (or `CLAUDE.md`), or `docs/` file
   loaded automatically — this file is for what nothing else already says.
 
 ## Section classification
@@ -173,7 +173,7 @@ precedence order above — Session Notes is never authoritative.
 
 Reached only when step 4 finds no `INSIGHTS.md`, or finds one that predates
 this 7-section shape (no `## What Works` heading). See
-`references/repo-setup.md` for the blank skeleton, the one-time `CLAUDE.md`
+`references/repo-setup.md` for the blank skeleton, the one-time `AGENTS.md` (or `CLAUDE.md`)
 diff that closes the read/update loop, and the migration checklist for
 converting an older-shaped file in place without losing its intro or
 module-specific priority note.

@@ -80,7 +80,7 @@ export function deriveReviewStatus(args: {
  * Why the PR's latest run has no cost — derived from that run's status at
  * read time, never persisted (mirrors `reviews/repository/run.repo.ts`'s
  * `costMissingReason`; duplicated rather than imported because modules never
- * import each other's internals — see `server/CLAUDE.md`).
+ * import each other's internals — see `server/AGENTS.md`).
  */
 export function deriveCostMissingReason(
   status: string | null,

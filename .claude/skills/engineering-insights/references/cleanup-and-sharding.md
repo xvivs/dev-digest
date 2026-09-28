@@ -54,8 +54,8 @@ automatically. When asked to actually do the split:
 Some predecessor learnings formats use a mechanical "hit it twice, escalate a
 one-liner to CLAUDE.md" rule. The 7-section shape here doesn't carry an
 equivalent, and `SKILL.md` only asks the agent to *mention* a suspected
-repeat, never to edit `CLAUDE.md` on its own. If a monthly cleanup
+repeat, never to edit `AGENTS.md` (or `CLAUDE.md`) on its own. If a monthly cleanup
 turns up a Recurring Errors & Fixes entry that keeps proving itself
 (mentioned, re-hit, still not common knowledge), it's a reasonable judgment
-call to promote it to a `CLAUDE.md` line by hand during that same reviewed
+call to promote it to an `AGENTS.md` (or `CLAUDE.md`) line by hand during that same reviewed
 commit — this is optional and per-entry, not a rule the live skill enforces.
