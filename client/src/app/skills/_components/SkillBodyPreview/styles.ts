@@ -13,10 +13,13 @@ export const s = {
     marginBottom: 12,
   } satisfies CSSProperties,
   rendered: {
-    padding: 16,
+    padding: "18px 20px",
     borderRadius: 8,
     border: "1px solid var(--border)",
     background: "var(--bg-elevated)",
+    fontSize: 13.5,
+    lineHeight: 1.65,
+    color: "var(--text-secondary)",
   } satisfies CSSProperties,
   source: {
     margin: 0,
@@ -28,11 +31,5 @@ export const s = {
     lineHeight: 1.6,
     whiteSpace: "pre-wrap",
     wordBreak: "break-word",
-  } satisfies CSSProperties,
-  invisibleMark: {
-    background: "var(--warn-bg)",
-    color: "var(--warn)",
-    borderRadius: 3,
-    padding: "0 2px",
   } satisfies CSSProperties,
 } as const;

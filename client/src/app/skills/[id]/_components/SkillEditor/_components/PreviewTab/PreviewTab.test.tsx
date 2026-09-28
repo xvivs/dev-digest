@@ -13,7 +13,8 @@ const renderTab = (body: string) =>
 describe("PreviewTab", () => {
   it("renders the body as markdown by default, with the receiving-agent caption", () => {
     renderTab("Use when a branch is **untested**.");
-    expect(screen.getByText("Rendered as the reviewing agent receives it")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 2, name: "Preview" })).toBeInTheDocument();
+    expect(screen.getByText("Rendered as the reviewing agent receives it.")).toBeInTheDocument();
     expect(screen.getByText("untested")).toBeInTheDocument();
   });
 
