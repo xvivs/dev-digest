@@ -10,6 +10,7 @@ import { AppShell } from "@/components/app-shell";
 import { useSkills } from "@/lib/hooks";
 import { SkillsListPane } from "../SkillsListPane";
 import { CreateSkillModal } from "../CreateSkillModal";
+import { ImportSkillDrawer } from "../ImportSkillDrawer";
 import { s } from "./styles";
 
 export function SkillsListView() {
@@ -21,10 +22,7 @@ export function SkillsListView() {
   return (
     <AppShell crumb={[{ label: t("page.crumbLab") }, { label: t("page.crumbSkills") }]}>
       {creating && <CreateSkillModal onClose={() => setCreating(false)} />}
-      {importing &&
-        // Seam for the import stream (owns app/skills/_components/ImportSkillDrawer/**):
-        // mount <ImportSkillDrawer onClose={() => setImporting(false)} /> here.
-        null}
+      {importing && <ImportSkillDrawer onClose={() => setImporting(false)} />}
       <div style={s.layout}>
         <SkillsListPane
           skills={skills}
