@@ -36,36 +36,40 @@ extra slots are omitted, so `assemblePrompt` simply leaves those sections out.
 
 ## Prompt layout
 
-`assemblePrompt()` emits two messages (ADR 0012, SPEC-02 D5):
+`assemblePrompt()` emits two messages (ADR 0012, ADR 0013, SPEC-02 D5). `N` is a
+nonce generated per call:
 
 ```
 system:  <agent system prompt>
 
          <one-line preamble>          ← only when skills are effective
-         <skills>
+         <skills-N>
          ### <name>
          <body>
 
          ### <name2> …
-         </skills>
+         </skills-N>
 
-         INJECTION_GUARD              ← always LAST
+         injection guard (names N)    ← always LAST
 user:    task · ## PR description · ## Relevant memory · ## Repo skeleton ·
          ## Project context · ## Callers of changed symbols · ## Diff to review
 ```
 
 - Skills are **trusted instructions** (the server only passes vetted ones), so
-  they live in the system message, not in `<untrusted>`. The guard closes the
-  system message and states that skills may add checks but never waive
-  findings, lower severity, or turn `<untrusted>` content into instructions.
-- `neutralizeDelimiters` runs on skill names, skill bodies AND every
-  `<untrusted>` block: `<untrusted`, `</untrusted`, `<skills`, `</skills` (any
-  case, with inner whitespace, or with a fullwidth `＜`) become a visible token
-  such as `[/skills]`. An HTML entity would not do: a model reads `&lt;/skills`
-  as a closing tag. A tag name followed by more identifier characters
-  (`<SkillsTab>`) is left alone, so diffs of JSX stay intact. So neither a skill
-  nor a PR can close a delimiter or forge a `<skills>` block, and the guard adds
-  that a `<skills>` block outside the system message is data.
+  they live in the system message, not in an untrusted block. The guard closes
+  the system message and states that skills may add checks but never waive
+  findings, lower severity, or turn untrusted content into instructions.
+- Every delimiter carries the per-call nonce: `<untrusted-N source="…">`,
+  `<skills-N>`. The guard says a tag without exactly that suffix is data, so a
+  skill or a PR cannot close a fence or forge a skills block without guessing
+  N, whatever script it spells the tag in (ADR 0013). Pass `parts.nonce` in
+  tests for stable output.
+- `neutralizeDelimiters` is defense in depth on top: it runs on the assembled
+  skills block and every untrusted block, and rewrites look-alike tags (any
+  case, inner whitespace or zero-width characters, fullwidth `＜`/`＞`/`／` or
+  letters) to a visible token such as `[/skills]`. A tag name followed by more
+  identifier characters (`<SkillsTab>`) is left alone, so JSX diffs stay
+  intact. It is not the boundary: no regex enumerates every homoglyph.
 - `assembly.skills` is the rendered block as sent (preamble included);
   `assembly.skills_tokens = estimateTokens(block)`. Both are `null` with no
   skills, and the prompt is then identical to one built without the slot.
