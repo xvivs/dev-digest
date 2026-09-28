@@ -94,6 +94,22 @@ claims it. Treat that as intent, not as a description of the current state.
 | **Generate copies from one origin via a sync script** | Keeps package independence and makes drift detectable in CI. The cheapest real improvement; not done yet. This is the recommended next step. |
 | **Accept drift, document it** | What we do today. Acceptable only while the divergence stays in unused contracts. |
 
+## Update 2026-09-29: copies reconciled
+
+The two copies were made identical before the skill versions / stats / evals
+work, which adds contracts the client does use. The client copy was a strict
+subset of the server's, so every server-only item above now exists on both
+sides (`openrouter` in `LLMProvider.id` and `PluginAgent.provider`,
+`sessionId`, `CommitFilesPayload`, `commitFiles`/`findOpenPr`, `sync`,
+`diffNameOnly`, `AgentManifest`, `AgentVersionConfig`/`AgentVersion`). The one
+client-only difference was a comment in `contracts/trace.ts`; its wording
+(`repo-intel` instead of task codes `T1.3`/`T3`) was kept on both sides. No
+client code needed changes. `diff -r server/src/vendor/shared
+client/src/vendor/shared` is empty as of this date.
+
+Nothing enforces this yet. The sync script from "Alternatives considered" is
+still the recommended next step.
+
 ## Revisit when
 
 - A diverged type reaches code the client actually runs, **or**
