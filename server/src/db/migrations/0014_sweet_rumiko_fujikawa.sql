@@ -1,0 +1,1 @@
+ALTER TABLE "skills" ADD CONSTRAINT "skills_type_check" CHECK ("skills"."type" IN ('rubric', 'convention', 'security', 'custom'));

@@ -65,7 +65,10 @@ export class SkillsRepository implements SkillStore {
   constructor(private readonly db: Db | Tx) {}
 
   /** One query (LEFT JOIN + GROUP BY), no N+1 — `agent_count` is every agent
-   *  linking the skill, regardless of the link's own enabled state. */
+   *  linking the skill, regardless of the link's own enabled state.
+   *  `q` is a linear `ILIKE '%q%'` scan over name/description within ONE
+   *  workspace (a handful of skills), so no trigram index; add `pg_trgm` +
+   *  GIN (`gin_trgm_ops`) if a workspace ever holds thousands. */
   async list(workspaceId: string, q?: string): Promise<SkillListItem[]> {
     const trimmed = q?.trim();
     const where =
