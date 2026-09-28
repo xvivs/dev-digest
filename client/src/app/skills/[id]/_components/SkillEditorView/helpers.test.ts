@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { editorQuery, parseFromVersion, resolveTab, withTab } from "./helpers";
+import { editorQuery, parseFromVersion, parseStatsWindow, resolveTab, statsWindowQuery, withTab } from "./helpers";
 
 describe("resolveTab", () => {
   it("keeps a known tab", () => {
@@ -39,5 +39,25 @@ describe("editorQuery", () => {
   it("drops fromVersion on any other navigation, so a later visit to Config starts clean", () => {
     expect(editorQuery("tab=config&fromVersion=3", "preview")).toBe("tab=preview");
     expect(editorQuery("tab=config&fromVersion=3", "config")).toBe("tab=config");
+  });
+});
+
+describe("parseStatsWindow", () => {
+  it.each(["7d", "30d", "90d"] as const)("keeps %s", (w) => {
+    expect(parseStatsWindow(w)).toBe(w);
+  });
+
+  it.each([null, "", "1d", "30D", "30"])("falls back to 30d for %j, matching the server default", (raw) => {
+    expect(parseStatsWindow(raw)).toBe("30d");
+  });
+});
+
+describe("statsWindowQuery", () => {
+  it("sets window and keeps the tab and other params", () => {
+    expect(statsWindowQuery("tab=stats&foo=1", "7d")).toBe("tab=stats&foo=1&window=7d");
+  });
+
+  it("replaces an existing window", () => {
+    expect(statsWindowQuery("tab=stats&window=7d", "90d")).toBe("tab=stats&window=90d");
   });
 });

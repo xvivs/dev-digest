@@ -1,7 +1,8 @@
 import { DEFAULT_EDITOR_TAB } from "@/app/skills/constants";
 import { resolveTab as resolveTabGeneric, withTab } from "@/lib/tabs";
 import { SKILL_EDITOR_TABS } from "../../constants";
-import { FROM_VERSION_PARAM } from "./constants";
+import { SkillStatsWindow } from "@devdigest/shared/contracts/skill-impact";
+import { FROM_VERSION_PARAM, STATS_WINDOW_PARAM } from "./constants";
 
 const TAB_KEYS = SKILL_EDITOR_TABS.map((tb) => tb.key);
 const POSITIVE_INT = /^[1-9]\d*$/;
@@ -25,6 +26,22 @@ export function editorQuery(search: string, tab: string, fromVersion: number | n
   const sp = new URLSearchParams(withTab(search, tab));
   if (fromVersion == null) sp.delete(FROM_VERSION_PARAM);
   else sp.set(FROM_VERSION_PARAM, String(fromVersion));
+  return sp.toString();
+}
+
+/** The server's default window (`SkillStatsQuery`), used for a missing or unknown `?window=`. */
+const DEFAULT_STATS_WINDOW: SkillStatsWindow = "30d";
+
+/** `?window=` → a Stats window; anything outside the enum → 30d, as the server defaults. */
+export function parseStatsWindow(raw: string | null): SkillStatsWindow {
+  const parsed = SkillStatsWindow.safeParse(raw);
+  return parsed.success ? parsed.data : DEFAULT_STATS_WINDOW;
+}
+
+/** The query string with `window` set, keeping `tab` and every other param. */
+export function statsWindowQuery(search: string, window: SkillStatsWindow): string {
+  const sp = new URLSearchParams(search);
+  sp.set(STATS_WINDOW_PARAM, window);
   return sp.toString();
 }
 
