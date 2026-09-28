@@ -58,5 +58,5 @@ source), and a `server/src/vendor/shared/**` change also type-checks
 | a `*/src/vendor/shared/<path>` changed without its twin in the other package | CRITICAL |
 | an existing `server/src/db/migrations/*.sql` modified, or a new one without a `db/schema/**` change | CRITICAL |
 | `server/.dependency-cruiser-known-violations.json` grew | CRITICAL |
-| the same baseline file created in this branch | HIGH (verify it came from `pnpm arch:baseline`) |
+| the same baseline file created in this branch and not equal to a fresh `depcruise-baseline` run (same `from → to [rule]` set) | HIGH |
 | a secret pattern in an added line | CRITICAL |

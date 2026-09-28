@@ -260,6 +260,7 @@ async function check(opts) {
   }
 
   results.push(...staticChecks(root, c));
+  await verifyNewBaseline(root, results);
   writeJson(join(runDir, 'checks.json'), results);
   out({
     status: 'ok',
@@ -267,6 +268,45 @@ async function check(opts) {
     passed: results.filter((r) => r.ok && !r.skipped).map((r) => r.id),
     skipped: results.filter((r) => r.skipped).map((r) => `${r.id}: ${r.detail}`),
   });
+}
+
+// A baseline created in this branch has no "before" to compare against, so
+// regenerate it and require an exact match: a hand-edited or stale baseline
+// (one that hides a violation the code no longer has, or lists one it does)
+// then fails with the difference instead of asking for a manual check. The
+// tree is clean (collect enforces it), so the disk is HEAD.
+async function verifyNewBaseline(root, results) {
+  const item = results.find((r) => r.id === 'arch-baseline' && r.verify);
+  if (!item) return;
+  const cwd = join(root, 'server');
+  const r = await run('pnpm', ['exec', 'depcruise-baseline', '--config', '.dependency-cruiser.cjs', '-f', '-', 'src'], cwd);
+  delete item.verify;
+  const parse = (text) => {
+    try {
+      return JSON.parse(text);
+    } catch {
+      return undefined;
+    }
+  };
+  const generated = r.code === 0 ? parse(r.output.slice(r.output.indexOf('['))) : undefined;
+  const committed = parse(readAtHead(root, 'server/.dependency-cruiser-known-violations.json') ?? '');
+  if (!Array.isArray(generated) || !Array.isArray(committed)) {
+    item.detail = `не вдалося перегенерувати baseline для порівняння:\n${tail(r.output, 15)}`;
+    return;
+  }
+  const key = (v) => `${v.from} -> ${v.to} [${v.rule?.name}]`;
+  const gen = new Set(generated.map(key));
+  const com = new Set(committed.map(key));
+  const onlyCommitted = [...com].filter((k) => !gen.has(k));
+  const onlyGenerated = [...gen].filter((k) => !com.has(k));
+  item.ok = onlyCommitted.length === 0 && onlyGenerated.length === 0;
+  item.detail = item.ok
+    ? undefined
+    : [
+        ...onlyCommitted.map((k) => `у файлі, але не в згенерованому: ${k}`),
+        ...onlyGenerated.map((k) => `згенеровано, але немає у файлі: ${k}`),
+        'перегенеруй: cd server && pnpm arch:baseline',
+      ].join('\n');
 }
 
 function staticChecks(root, c) {
@@ -306,7 +346,8 @@ function staticChecks(root, c) {
     const before = readAt(root, c.mergeBase, baselinePath);
     const after = readAtHead(root, baselinePath);
     if (before === undefined) {
-      results.push({ id: 'arch-baseline', name: 'baseline dependency-cruiser', severity: 'HIGH', ok: false, detail: `${baselinePath} з'явився в цій гілці: переконайся, що його згенеровано через pnpm arch:baseline, а не написано вручну` });
+      // Verified in check() by regenerating it — see verifyNewBaseline().
+      results.push({ id: 'arch-baseline', name: 'baseline dependency-cruiser = вихід pnpm arch:baseline', severity: 'HIGH', ok: false, verify: baselinePath, detail: `${baselinePath} з'явився в цій гілці: переконайся, що його згенеровано через pnpm arch:baseline, а не написано вручну` });
     } else if (after !== undefined) {
       const grew = count(after) > count(before) || Number.isNaN(count(after));
       results.push({ id: 'arch-baseline', name: 'baseline dependency-cruiser не росте', severity: 'CRITICAL', ok: !grew, detail: grew ? `записів було ${count(before)}, стало ${count(after)}` : undefined });
