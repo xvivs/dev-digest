@@ -137,9 +137,32 @@ export const Skill = z.object({
 });
 export type Skill = z.infer<typeof Skill>;
 
-/** `GET /skills` row: the skill plus how many agents link it. */
+/**
+ * Ablation-eval verdict for a skill (ADR 0017). `indicative` = too few
+ * non-flaky cases or a Quick suite; `unknown` = no suite has finished.
+ */
+export const ImpactVerdict = z.enum(['helps', 'neutral', 'hurts', 'indicative', 'unknown']);
+export type ImpactVerdict = z.infer<typeof ImpactVerdict>;
+
+/** Latest Full-suite verdict shown on the skill card. */
+export const SkillLatestVerdict = z.object({
+  verdict: ImpactVerdict,
+  carrier_name: z.string(),
+  /** The skill's prompt_sha256 or the carrier's version changed since the suite ran. */
+  stale: z.boolean(),
+});
+export type SkillLatestVerdict = z.infer<typeof SkillLatestVerdict>;
+
+/**
+ * `GET /skills` row: the skill plus how many agents link it, its completed
+ * runs over the last 30 days and the latest Full eval verdict (null = no
+ * evals). The server always sends `runs_30d` and `latest_verdict`; they are
+ * optional only so payloads from before skill-impact still parse.
+ */
 export const SkillListItem = Skill.extend({
   agent_count: z.number().int(),
+  runs_30d: z.number().int().nonnegative().optional(),
+  latest_verdict: SkillLatestVerdict.nullish(),
 });
 export type SkillListItem = z.infer<typeof SkillListItem>;
 
