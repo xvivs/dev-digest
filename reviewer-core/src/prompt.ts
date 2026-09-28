@@ -40,21 +40,34 @@ const SKILLS_PREAMBLE =
 /**
  * Neutralize any attempt to open or close one of our prompt delimiters
  * (`<untrusted`, `</untrusted`, `<skills`, `</skills`) in skill text AND in
- * untrusted blocks (ADR 0012 Decision 3). Case-insensitive, tolerant of
- * whitespace, zero-width characters and fullwidth / small-form `<` and `>`
- * lookalikes on both ends. The tag becomes a visibly different token
- * (`[/untrusted]`), not an HTML entity — a model reads `&lt;/skills` as a
- * closing tag. The trailing lookahead keeps identifiers such as `<SkillsTab>`
- * in a diff untouched.
+ * untrusted blocks (ADR 0012 Decision 3). A forged tag only has to LOOK like
+ * ours to a model, so matching is by appearance, not bytes: case-insensitive;
+ * fullwidth / small-form `<`, `>` and `/`; fullwidth letters; and whitespace,
+ * default-ignorable characters (zero-width, soft hyphen, …) or combining marks
+ * anywhere around or INSIDE the tag word. The tag becomes a visibly different
+ * token (`[/untrusted]`), not an HTML entity — a model reads `&lt;/skills` as
+ * a closing tag. The trailing lookahead keeps identifiers such as
+ * `<SkillsTab>` in a diff untouched. The rest of the text is never altered, so
+ * cited diff lines still match for grounding.
  */
-const GAP = '[\\s\\u200B-\\u200D\\u2060\\uFEFF]*';
+const INVISIBLE = '\\p{Default_Ignorable_Code_Point}\\p{M}';
+const GAP = `[\\s${INVISIBLE}]*`;
+/** One tag letter: ASCII or its fullwidth form, then any invisible run. */
+const letter = (c: string) =>
+  `[${c}${String.fromCodePoint(c.codePointAt(0)! - 0x21 + 0xff01)}][${INVISIBLE}]*`;
+const word = (w: string) => [...w].map(letter).join('');
 const DELIMITER_RE = new RegExp(
-  `[<\\uFF1C\\uFE64]${GAP}(\\/?)${GAP}(untrusted|skills)(?=[\\s>/\\uFF1E\\uFE65\\u200B-\\u200D\\u2060\\uFEFF]|$)`,
+  `[<\\uFF1C\\uFE64]${GAP}([/\\uFF0F]?)${GAP}(${word('untrusted')}|${word('skills')})` +
+    `(?=[\\s>/\\uFF0F\\uFF1E\\uFE65${INVISIBLE}]|$)`,
   'giu',
 );
+const INVISIBLE_RE = new RegExp(`[${INVISIBLE}]`, 'gu');
 
 export function neutralizeDelimiters(text: string): string {
-  return text.replace(DELIMITER_RE, (_m, slash: string, tag: string) => `[${slash}${tag}]`);
+  return text.replace(DELIMITER_RE, (_m, slash: string, tag: string) => {
+    const name = tag.replace(INVISIBLE_RE, '').normalize('NFKC');
+    return `[${slash ? '/' : ''}${name}]`;
+  });
 }
 
 /**
