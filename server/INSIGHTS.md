@@ -17,6 +17,8 @@ lives in the engineering-insights skill).
 
 - **Verify seed changes on a throwaway database created inside the existing container, not on the dev DB** — the per-PR `if (!pr)` guards in `src/db/seed.ts` mean findings or columns added to the seed never appear on a database seeded earlier, so a re-seed silently "works" and proves nothing. `docker exec devdigest-postgres psql -U devdigest -d postgres -c 'CREATE DATABASE <tmp>'`, then point `DATABASE_URL` at it for `tsx src/db/migrate.ts` + `tsx src/db/seed.ts` and run the API on a spare port. Reuses the running container, leaves `devdigest` untouched, and needs no `docker compose down -v`. Drop it afterwards — the API holds connections open, so stop it first or the DROP fails with "being accessed by other users". _(2026-09-20)_
 
+- **A `drizzle-kit generate --custom` backfill can be tested without a partial-migration harness: replay the SQL file inside an `*.it.test.ts`** — testcontainers applies every migration to an empty DB (`test/helpers/pg.ts:41`), so the DML in `0016_skill_versions_backfill.sql` never touches a row there. `test/skills-versions.it.test.ts` inserts the legacy shape (skill without snapshot, snapshot with NULL metadata), splits the file on `--> statement-breakpoint`, runs each piece with `db.execute(sql.raw(stmt))` twice, and asserts the result, which also proves idempotence. _(2026-09-29)_
+
 ## What Doesn't Work
 
 - **Running `pnpm db:migrate` against the shared `devdigest-postgres` docker container can fail with "column already exists"** — every worktree/branch on this course points at the SAME long-lived container (`docker ps` shows one `devdigest-postgres` regardless of branch), so its `__drizzle_migrations` history can be far ahead of this branch's local `src/db/migrations/*.sql` (e.g. `agent_runs.cost_usd` already existed there from another lesson's branch, but without `cost_source`). Check first with `docker exec devdigest-postgres psql -U devdigest -d devdigest -c '\d <table>'`; validate a new migration via the testcontainers-backed `*.it.test.ts` suite (fresh throwaway Postgres per run, `test/helpers/pg.ts`) instead of assuming the shared dev DB is safe to ALTER. _(2026-09-19)_
@@ -77,6 +79,9 @@ Built the `onion-architecture` skill (`.claude/skills/onion-architecture/`: SKIL
 
 ### 2026-09-28 — server session (SPEC-02 Skills)
 Added the `skills` module (ports/wiring, first production `db.transaction`), transactional tenant-checked `PUT /agents/:id/skills` with a 24 KB budget, `skill_count`, and effective-skill resolution in `run-executor`. Review follow-ups bound vetting to the reviewed `version` (atomic UPDATE, Postgres-side sha256) and made the resolver require a matching `vetted_body_hash` for imports. 215 tests and arch:check green.
+
+### 2026-09-29 — server session (skill versions, Phase 1)
+`skill_versions` now snapshots name/description/type/body plus `change_note` (migration 0015 + `--custom` backfill 0016), `SkillsRepository.insert` writes v1 in a savepoint, and any content change bumps the version while `enabled` does not. Added `GET /skills/:id/versions`, `GET /skills/:id/versions/:version` and the version-guarded `POST …/restore` (409 `skill_version_stale`, 200 no-op, ADR 0012 limits re-checked, vetting via `resolveVettingOnBodyEdit`). Seeded skills get a v1 snapshot. 33 files / 269 tests green. Left: Phase 2 stats, Phase 3 evals.
 
 ## Open Questions
 

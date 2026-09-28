@@ -15,9 +15,11 @@ grepping for `t.<table>` / `schema.<table>`.
 
 | Table | Refs | Role |
 |---|---|---|
+| `skills` | 48 | skill bodies + ADR 0012 vetting state (`modules/skills`) |
 | `repos` | 43 | imported repositories + clone path |
 | `symbols` | 35 | repo-intel: extracted declarations |
 | `agentRuns` | 27 | one row per agent execution |
+| `skillVersions` | 25 | append-only snapshot of every skill field per version (ADR 0016) |
 | `pullRequests` | 24 | imported PRs (unique on `repo_id`+`number`) |
 | `agents` | 20 | reviewer agent configs |
 | `references` | 18 | repo-intel: symbol usages |
@@ -45,7 +47,6 @@ These are **not** dead code. Removing them breaks compiling code.
 
 | Table | Where it is wired | Fed by |
 |---|---|---|
-| `skills`, `agentSkills` | `modules/agents/repository.ts` reads, links and unlinks skills | L02 — there is no skills module to create them yet |
 | `prIntent` | `modules/reviews/repository.ts` exposes `upsertIntent` / `getIntent` | L03 — nothing calls either yet |
 
 ## Unwired — zero references outside the schema
@@ -53,7 +54,6 @@ These are **not** dead code. Removing them breaks compiling code.
 Lesson scaffolding. Empty by design.
 
 ```
-skillVersions                      L02
 conventions                        L02
 codeChunks · memory                L05/L07 (memory + RAG, pgvector)
 onboarding · prBrief               L05
@@ -73,6 +73,10 @@ installedPlugins · digests         L08
   Never hand-edit a generated SQL file or the journal.
 - Migrations are **not** applied on boot. `relation ... does not exist` means
   `pnpm db:migrate` was skipped. pgvector is enabled by migration `0000`.
+- A data backfill is its own migration: `drizzle-kit generate --custom --name <slug>`
+  creates an empty file, the DML goes in it (e.g. `0016_skill_versions_backfill.sql`
+  snapshots each skill's current state). Write it idempotent (`ON CONFLICT DO
+  NOTHING`, `WHERE … IS NULL`) and cover it with an `*.it.test.ts`.
 - `pnpm db:seed` is idempotent and **required**, not optional: `LocalNoAuthProvider`
   resolves the seeded system user and default workspace by name and throws
   without them. The seed also creates the demo repo, PR #482, and three built-in
