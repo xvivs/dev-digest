@@ -1,14 +1,18 @@
 /**
  * PullsListView — wiring between the URL (?status=), the view state (query,
- * sort) and the pure `filterAndSortPulls`. The row, the shell and the data
- * hooks are faked: the list logic itself is covered in helpers.test.ts.
+ * sort) and the pure `filterAndSortPulls`. The list logic itself is covered in
+ * helpers.test.ts; this suite renders the real AppShell, RepoNotFound and
+ * PRRow, faking only data hooks, the API and next/navigation.
  */
 import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
 import { screen, cleanup, fireEvent } from "@testing-library/react";
-import type { ReactNode } from "react";
 import type { PrMeta } from "@devdigest/shared";
 import { renderWithProviders } from "@/test/render";
 import prReviewMessages from "../../../../../../../messages/en/prReview.json";
+import shellMessages from "../../../../../../../messages/en/shell.json";
+import commonMessages from "../../../../../../../messages/en/common.json";
+import costMessages from "../../../../../../../messages/en/cost.json";
+import findingsMessages from "../../../../../../../messages/en/findings.json";
 
 const h = vi.hoisted(() => ({
   replace: vi.fn(),
@@ -21,30 +25,35 @@ const h = vi.hoisted(() => ({
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ replace: h.replace, push: vi.fn() }),
   useSearchParams: () => h.search,
-}));
-vi.mock("@/components/app-shell", () => ({
-  AppShell: ({ children }: { children: ReactNode }) => <div>{children}</div>,
-}));
-vi.mock("@/components/repo-not-found", () => ({
-  RepoNotFound: () => <p>repo-not-found</p>,
+  usePathname: () => "/repos/repo-1/pulls",
 }));
 vi.mock("@/lib/repo-context", () => ({
-  useActiveRepo: () => ({ activeRepo: { full_name: "acme/api" } }),
+  useActiveRepo: () => ({
+    repoId: "repo-1",
+    setRepoId: vi.fn(),
+    repos: [],
+    activeRepo: { id: "repo-1", full_name: "acme/api", default_branch: "main", last_polled_at: null },
+    reposLoaded: true,
+  }),
   useRepoNotFound: () => h.repoNotFound,
 }));
-vi.mock("@/lib/hooks", () => ({
-  usePulls: () => ({
-    data: h.pulls,
-    isLoading: false,
-    isError: false,
-    error: null,
-    refetch: vi.fn(),
-  }),
-  useRefreshRepo: () => ({ mutate: h.refresh, isPending: false }),
-}));
-vi.mock("../PRRow", () => ({
-  PRRow: ({ pr }: { pr: PrMeta }) => <div data-testid="pr-row">{pr.title}</div>,
-}));
+// AppShell's useShellContext also calls usePulls (for the sidebar's PR-count
+// badge) and useDeleteRepo (repo removal) — keep the real implementations for
+// those and override only what this screen itself reads.
+vi.mock("@/lib/hooks", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/hooks")>();
+  return {
+    ...actual,
+    usePulls: () => ({
+      data: h.pulls,
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    }),
+    useRefreshRepo: () => ({ mutate: h.refresh, isPending: false }),
+  };
+});
 
 import { PullsListView } from "./PullsListView";
 
@@ -79,10 +88,23 @@ const PULLS = [
   pr(4, { title: "Old thing", status: "merged" }),
 ];
 
-const rowTitles = () => screen.queryAllByTestId("pr-row").map((el) => el.textContent);
+// PRRow renders the title as a real link to the PR route — scope to that
+// href pattern so AppShell's own links (sidebar nav, repo switcher) never
+// leak into the count.
+const rowTitles = () =>
+  screen
+    .getAllByRole("link")
+    .filter((el) => /^\/repos\/repo-1\/pulls\/\d+$/.test(el.getAttribute("href") ?? ""))
+    .map((el) => el.textContent);
 const renderView = () =>
   renderWithProviders(<PullsListView repoId="repo-1" />, {
-    namespaces: { prReview: prReviewMessages },
+    namespaces: {
+      prReview: prReviewMessages,
+      shell: shellMessages,
+      common: commonMessages,
+      cost: costMessages,
+      findings: findingsMessages,
+    },
   });
 
 beforeEach(() => {
@@ -135,7 +157,7 @@ describe("PullsListView", () => {
   it("shows RepoNotFound for a :repoId that is not in the workspace", () => {
     h.repoNotFound = true;
     renderView();
-    expect(screen.getByText("repo-not-found")).toBeInTheDocument();
+    expect(screen.getByText(commonMessages.repoNotFound.title)).toBeInTheDocument();
     expect(rowTitles()).toEqual([]);
   });
 

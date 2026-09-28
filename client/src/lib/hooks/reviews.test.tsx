@@ -23,15 +23,24 @@ class FakeEventSource {
   }
 }
 
+const get = vi.fn();
 const post = vi.fn();
 vi.mock("../api", () => ({
   openEventStream: (path: string) => new FakeEventSource(path),
-  api: { post: (...args: unknown[]) => post(...args) },
+  api: { get: (path: string) => get(path), post: (...args: unknown[]) => post(...args) },
 }));
 const notifyError = vi.fn();
 vi.mock("../toast", () => ({ notify: { error: (m: string) => notifyError(m) } }));
 
-import { useRunEvents, useRunReview, useCancelRun, useRefreshRunState } from "./reviews";
+import {
+  useRunEvents,
+  useRunReview,
+  useCancelRun,
+  useRefreshRunState,
+  usePrReviews,
+  usePrActiveRuns,
+  usePrRuns,
+} from "./reviews";
 
 function wrapperFor(qc: QueryClient) {
   return function Wrapper({ children }: { children: React.ReactNode }) {
@@ -41,6 +50,7 @@ function wrapperFor(qc: QueryClient) {
 
 beforeEach(() => {
   FakeEventSource.instances = [];
+  get.mockReset();
   post.mockReset();
   notifyError.mockReset();
 });
@@ -97,61 +107,106 @@ describe("useRunEvents", () => {
 });
 
 describe("run mutations invalidate the PR's run state", () => {
-  function invalidatedKeys(qc: QueryClient) {
-    const spy = vi.spyOn(qc, "invalidateQueries");
-    return () => spy.mock.calls.map(([filters]) => filters?.queryKey);
-  }
+  /** GET calls seen so far for one endpoint — the user-visible effect of an
+   *  invalidated query is a refetch, so count network calls instead of
+   *  spying on `invalidateQueries`. */
+  const gets = (path: string) => get.mock.calls.filter(([p]) => p === path).length;
 
   it("useRunReview refetches reviews, active runs and run history", async () => {
+    get.mockResolvedValue([]);
     post.mockResolvedValue({ runs: [] });
     const qc = createTestQueryClient();
-    const keys = invalidatedKeys(qc);
-    const { result } = renderHook(() => useRunReview(), { wrapper: wrapperFor(qc) });
-    await act(() => result.current.mutateAsync({ prId: "pr1", all: true }));
-    expect(keys()).toEqual([
-      ["reviews", "pr1"],
-      ["pr-active-runs", "pr1"],
-      ["pr-runs", "pr1"],
-    ]);
+    const { result } = renderHook(
+      () => ({
+        reviews: usePrReviews("pr1"),
+        active: usePrActiveRuns("pr1"),
+        runs: usePrRuns("pr1"),
+        mutation: useRunReview(),
+      }),
+      { wrapper: wrapperFor(qc) },
+    );
+    await waitFor(() => expect(gets("/pulls/pr1/reviews")).toBe(1));
+    await waitFor(() => expect(gets("/pulls/pr1/runs/active")).toBe(1));
+    await waitFor(() => expect(gets("/pulls/pr1/runs")).toBe(1));
+
+    await act(() => result.current.mutation.mutateAsync({ prId: "pr1", all: true }));
+
+    await waitFor(() => expect(gets("/pulls/pr1/reviews")).toBe(2));
+    await waitFor(() => expect(gets("/pulls/pr1/runs/active")).toBe(2));
+    await waitFor(() => expect(gets("/pulls/pr1/runs")).toBe(2));
   });
 
-  it("useCancelRun(prId) refetches active runs and history even when the request fails", async () => {
+  it("useCancelRun(prId) refetches active runs and history even when the request fails, but leaves reviews alone", async () => {
+    get.mockResolvedValue([]);
     post.mockRejectedValue(new Error("gone"));
     const qc = createTestQueryClient();
-    const keys = invalidatedKeys(qc);
-    const { result } = renderHook(() => useCancelRun("pr1"), { wrapper: wrapperFor(qc) });
-    act(() => result.current.mutate("run1"));
-    await waitFor(() => expect(result.current.isError).toBe(true));
-    expect(keys()).toEqual([
-      ["pr-active-runs", "pr1"],
-      ["pr-runs", "pr1"],
-    ]);
+    const { result } = renderHook(
+      () => ({
+        reviews: usePrReviews("pr1"),
+        active: usePrActiveRuns("pr1"),
+        runs: usePrRuns("pr1"),
+        mutation: useCancelRun("pr1"),
+      }),
+      { wrapper: wrapperFor(qc) },
+    );
+    await waitFor(() => expect(gets("/pulls/pr1/reviews")).toBe(1));
+    await waitFor(() => expect(gets("/pulls/pr1/runs/active")).toBe(1));
+    await waitFor(() => expect(gets("/pulls/pr1/runs")).toBe(1));
+
+    act(() => result.current.mutation.mutate("run1"));
+    await waitFor(() => expect(result.current.mutation.isError).toBe(true));
+
+    await waitFor(() => expect(gets("/pulls/pr1/runs/active")).toBe(2));
+    await waitFor(() => expect(gets("/pulls/pr1/runs")).toBe(2));
+    expect(gets("/pulls/pr1/reviews")).toBe(1);
   });
 
   it("useCancelRun() without a prId invalidates nothing", async () => {
+    get.mockResolvedValue([]);
     post.mockResolvedValue({ ok: true });
     const qc = createTestQueryClient();
-    const keys = invalidatedKeys(qc);
-    const { result } = renderHook(() => useCancelRun(), { wrapper: wrapperFor(qc) });
-    await act(() => result.current.mutateAsync("run1"));
-    expect(keys()).toEqual([]);
+    const { result } = renderHook(
+      () => ({
+        active: usePrActiveRuns("pr1"),
+        runs: usePrRuns("pr1"),
+        mutation: useCancelRun(),
+      }),
+      { wrapper: wrapperFor(qc) },
+    );
+    await waitFor(() => expect(gets("/pulls/pr1/runs/active")).toBe(1));
+    await waitFor(() => expect(gets("/pulls/pr1/runs")).toBe(1));
+
+    await act(() => result.current.mutation.mutateAsync("run1"));
+
+    expect(gets("/pulls/pr1/runs/active")).toBe(1);
+    expect(gets("/pulls/pr1/runs")).toBe(1);
   });
 
-  it("useRefreshRunState refetches all three, and is a no-op without a prId", () => {
+  it("useRefreshRunState refetches all three, and is a no-op without a prId", async () => {
+    get.mockResolvedValue([]);
     const qc = createTestQueryClient();
-    const keys = invalidatedKeys(qc);
-    const { result, rerender } = renderHook(({ prId }) => useRefreshRunState(prId), {
-      wrapper: wrapperFor(qc),
-      initialProps: { prId: null as string | null },
-    });
-    result.current();
-    expect(keys()).toEqual([]);
+    const { result, rerender } = renderHook(
+      ({ prId }: { prId: string | null }) => ({
+        reviews: usePrReviews(prId),
+        active: usePrActiveRuns(prId),
+        runs: usePrRuns(prId),
+        refresh: useRefreshRunState(prId),
+      }),
+      { wrapper: wrapperFor(qc), initialProps: { prId: null as string | null } },
+    );
+
+    result.current.refresh();
+    expect(gets("/pulls/pr1/runs/active")).toBe(0);
+
     rerender({ prId: "pr1" });
-    result.current();
-    expect(keys()).toEqual([
-      ["pr-active-runs", "pr1"],
-      ["pr-runs", "pr1"],
-      ["reviews", "pr1"],
-    ]);
+    await waitFor(() => expect(gets("/pulls/pr1/reviews")).toBe(1));
+    await waitFor(() => expect(gets("/pulls/pr1/runs/active")).toBe(1));
+    await waitFor(() => expect(gets("/pulls/pr1/runs")).toBe(1));
+
+    await act(() => result.current.refresh());
+
+    await waitFor(() => expect(gets("/pulls/pr1/reviews")).toBe(2));
+    await waitFor(() => expect(gets("/pulls/pr1/runs/active")).toBe(2));
+    await waitFor(() => expect(gets("/pulls/pr1/runs")).toBe(2));
   });
 });

@@ -2,12 +2,14 @@
  * SkillEditorView — what the SCREEN decides: which tab ?tab= resolves to,
  * where tab changes and skill cards point, the error branch, and the AC-8
  * dirty-form navigation guard end to end (Config tab dirty → card click
- * asks first). AppShell and the data hooks are faked; ConfigTab/PreviewTab
- * have their own suites.
+ * asks first). ConfigTab/PreviewTab have their own suites. AppShell renders
+ * for real (no `@/lib/repo-context` mock: with no `<RepoProvider>` in the
+ * tree it falls back to its context's empty default — no repo, no crash);
+ * only the skill data hooks, `next/navigation`, and — via `@/lib/hooks`'
+ * spread of the real module — nothing else needs faking.
  */
 import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
 import { screen, cleanup, fireEvent } from "@testing-library/react";
-import type { ReactNode } from "react";
 import type { Skill } from "@devdigest/shared";
 import { renderWithProviders } from "@/test/render";
 import { ToastProvider } from "@/lib/toast";
@@ -27,20 +29,24 @@ const h = vi.hoisted(() => ({
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ replace: h.replace, push: h.push }),
   useSearchParams: () => new URLSearchParams(h.search),
+  usePathname: () => "/skills/sk1",
 }));
 
-vi.mock("@/components/app-shell", () => ({
-  AppShell: ({ children }: { children: ReactNode }) => <div>{children}</div>,
-}));
-
-vi.mock("@/lib/hooks", () => ({
-  useSkills: () => ({ data: h.skills, isLoading: false, isError: false, refetch: vi.fn() }),
-  useSkill: () => h.skill,
-  useUpdateSkill: () => ({ mutate: vi.fn(), isPending: false, isSuccess: false, data: undefined }),
-  useDeleteSkill: () => ({ mutate: vi.fn(), isPending: false }),
-  useVetSkill: () => ({ mutateAsync: vi.fn(), isPending: false }),
-  useCreateSkill: () => ({ mutateAsync: vi.fn(), isPending: false }),
-}));
+// AppShell's useShellContext also calls usePulls (sidebar PR-count badge) and
+// useDeleteRepo (repo removal) — keep the real implementations for those and
+// override only the skill hooks this screen itself reads.
+vi.mock("@/lib/hooks", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/hooks")>();
+  return {
+    ...actual,
+    useSkills: () => ({ data: h.skills, isLoading: false, isError: false, refetch: vi.fn() }),
+    useSkill: () => h.skill,
+    useUpdateSkill: () => ({ mutate: vi.fn(), isPending: false, isSuccess: false, data: undefined }),
+    useDeleteSkill: () => ({ mutate: vi.fn(), isPending: false }),
+    useVetSkill: () => ({ mutateAsync: vi.fn(), isPending: false }),
+    useCreateSkill: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  };
+});
 
 import { SkillEditorView } from "./SkillEditorView";
 

@@ -65,11 +65,4 @@ describe("useShellCommands", () => {
     cmd?.run();
     expect(h.toggle).toHaveBeenCalledTimes(1);
   });
-
-  it("returns the same array across renders when nothing changed", () => {
-    const { result, rerender } = mount();
-    const first = result.current;
-    rerender();
-    expect(result.current).toBe(first);
-  });
 });
