@@ -43,6 +43,15 @@ export const s = {
   } satisfies CSSProperties,
   metaRow: { display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 } satisfies CSSProperties,
   /** The "N agents · M runs · verdict" line. */
-  stats: { display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-muted)" } satisfies CSSProperties,
+  stats: {
+    display: "inline-flex",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: 6,
+    fontSize: 12,
+    color: "var(--text-muted)",
+    // Each segment stays on one line ("142 runs"); the row wraps between them.
+    whiteSpace: "nowrap",
+  } satisfies CSSProperties,
   sourceLabel: { fontSize: 12, color: "var(--text-muted)" } satisfies CSSProperties,
 } as const;
