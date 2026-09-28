@@ -19,6 +19,9 @@ export {
   type AssembledPrompt,
 } from './prompt.js';
 
+// Skill inputs + token estimate (SPEC-02).
+export { estimateTokens, type SkillInput } from './skills.js';
+
 // Citation grounding — the mandatory mechanical gate for diff findings.
 export { groundFindings, groundingSummary, type GroundingResult } from './grounding.js';
 

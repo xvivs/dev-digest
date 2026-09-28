@@ -1,4 +1,5 @@
 import type { ChatMessage, PromptAssembly } from '@devdigest/shared';
+import type { SkillInput } from './skills.js';
 
 /**
  * Prompt assembly + prompt-injection hardening.
@@ -39,8 +40,8 @@ const MAX_PR_DESCRIPTION_CHARS = 4000;
 export interface PromptParts {
   /** Agent's system prompt (trusted). */
   system: string;
-  /** Linked skill bodies (trusted-ish; community skills should be sanitized upstream). */
-  skills?: string[];
+  /** Effective skills in prompt order (resolved + vetted by the caller, SPEC-02). */
+  skills?: SkillInput[];
   /** Relevant memory items (trusted, curated). */
   memory?: string[];
   /** Project-context spec chunks (untrusted content). */
@@ -86,7 +87,9 @@ export function assemblePrompt(parts: PromptParts): AssembledPrompt {
   const system = `${parts.system}\n\n${INJECTION_GUARD}`;
 
   const skillsBlock =
-    parts.skills && parts.skills.length > 0 ? parts.skills.join('\n\n') : undefined;
+    parts.skills && parts.skills.length > 0
+      ? parts.skills.map((sk) => `### ${sk.name}\n${sk.body}`).join('\n\n')
+      : undefined;
   const memoryBlock =
     parts.memory && parts.memory.length > 0
       ? parts.memory.map((m) => `- ${m}`).join('\n')
