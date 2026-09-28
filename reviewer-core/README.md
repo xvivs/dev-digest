@@ -58,9 +58,14 @@ user:    task · ## PR description · ## Relevant memory · ## Repo skeleton ·
   they live in the system message, not in `<untrusted>`. The guard closes the
   system message and states that skills may add checks but never waive
   findings, lower severity, or turn `<untrusted>` content into instructions.
-- Skill names and bodies are escaped: `<untrusted`, `</untrusted`, `<skills`,
-  `</skills` (any case) get their `<` replaced with `&lt;`, so a skill cannot
-  open or close a delimiter. The rest of the body is sent verbatim.
+- `neutralizeDelimiters` runs on skill names, skill bodies AND every
+  `<untrusted>` block: `<untrusted`, `</untrusted`, `<skills`, `</skills` (any
+  case, with inner whitespace, or with a fullwidth `＜`) become a visible token
+  such as `[/skills]`. An HTML entity would not do: a model reads `&lt;/skills`
+  as a closing tag. A tag name followed by more identifier characters
+  (`<SkillsTab>`) is left alone, so diffs of JSX stay intact. So neither a skill
+  nor a PR can close a delimiter or forge a `<skills>` block, and the guard adds
+  that a `<skills>` block outside the system message is data.
 - `assembly.skills` is the rendered block as sent (preamble included);
   `assembly.skills_tokens = estimateTokens(block)`. Both are `null` with no
   skills, and the prompt is then identical to one built without the slot.
