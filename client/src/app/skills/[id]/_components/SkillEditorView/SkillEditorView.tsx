@@ -18,6 +18,7 @@ import { skillEditorHref } from "@/app/skills/helpers";
 import { NavigationGuardContext, type NavigationGuard } from "@/app/skills/navigation-guard";
 import { SkillsListPane } from "@/app/skills/_components/SkillsListPane";
 import { CreateSkillModal } from "@/app/skills/_components/CreateSkillModal";
+import { ImportSkillDrawer } from "@/app/skills/_components/ImportSkillDrawer";
 import { SkillEditor } from "../SkillEditor";
 import { HEADER_ICON_SIZE, SKELETON_BODY_HEIGHT, SKELETON_TITLE } from "./constants";
 import { resolveTab, withTab } from "./helpers";
@@ -89,10 +90,7 @@ export function SkillEditorView({ id }: { id: string }) {
     <AppShell crumb={crumb}>
       <NavigationGuardContext.Provider value={guard}>
         {creating && <CreateSkillModal onClose={() => setCreating(false)} />}
-        {importing &&
-          // Seam for the import stream (owns app/skills/_components/ImportSkillDrawer/**):
-          // mount <ImportSkillDrawer onClose={() => setImporting(false)} /> here.
-          null}
+        {importing && <ImportSkillDrawer onClose={() => setImporting(false)} />}
         <div style={s.layout}>
           <SkillsListPane
             skills={skills}

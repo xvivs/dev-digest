@@ -129,12 +129,36 @@
       "file": "From file"
     },
     "trustBanner": "This is someone else's instructions. Once enabled, it goes into your agent's prompt.",
-    "importFailed": "Import failed"
+    "importFailed": "Import failed",
+    "reading": "Reading file…",
+    "chooseFile": "Choose file",
+    "chooseFileHint": "Markdown (.md) or a zip (.zip) archive, up to 1 MB.",
+    "changeFile": "Choose a different file",
+    "cancel": "Cancel",
+    "entries": {
+      "title": "Archive contents",
+      "skipped": "Skipped, not executed",
+      "executable": "executable — not run",
+      "rejected": "rejected — unsafe path"
+    },
+    "errors": {
+      "tooLarge": "Archive is larger than 1 MB.",
+      "noSkillMd": "No SKILL.md found at the archive root or one level deep.",
+      "bomb": "Archive expands past 5 MB once decompressed.",
+      "tooManyEntries": "Archive has more than 200 entries.",
+      "badUtf8": "SKILL.md is not valid UTF-8 text.",
+      "nulByte": "SKILL.md contains a NUL byte.",
+      "readFailed": "Could not read this file.",
+      "unsupported": "Choose a .md or .zip file."
+    }
   },
   "file": {
     "nameLabel": "Skill name",
     "nameHint": "Optional — derived from the file name when the file has no frontmatter.",
     "namePlaceholder": "pr-quality-rubric",
+    "descriptionLabel": "Description",
+    "descriptionPlaceholder": "Use when… Flags…",
+    "typeLabel": "Type",
     "bodyLabel": "Skill body (Markdown)",
     "bodyHint": "Imported skills start disabled and unvetted — review the body before you enable them.",
     "bodyPlaceholder": "# Rule\nDescribe the rule…",

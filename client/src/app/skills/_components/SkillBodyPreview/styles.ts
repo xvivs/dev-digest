@@ -1,6 +1,6 @@
 import type { CSSProperties } from "react";
 
-/** Co-located styles for PreviewTab. */
+/** Co-located styles for SkillBodyPreview. */
 export const s = {
   caption: { fontSize: 13, color: "var(--text-muted)", marginBottom: 14 } satisfies CSSProperties,
   modeBar: { marginBottom: 16 } satisfies CSSProperties,
