@@ -2,6 +2,10 @@
   "breadcrumb": "Settings",
   "title": "Settings",
   "fallbackBody": "Standard configuration forms for {label} live here (A6 finalizes the full Settings surface).",
+  "sections": {
+    "api-keys": "API Keys",
+    "models": "Feature Models"
+  },
   "apiKeys": {
     "title": "API Keys",
     "body": "Bring your own keys. Stored locally through SecretsProvider (.env in MVP) — never uploaded.",
@@ -14,6 +18,7 @@
     "githubLabel": "GitHub PAT (fine-grained)",
     "githubHint": "Contents (read), Pull requests (read+write), Metadata (read), Actions (read).",
     "placeholder": "•••• stored via SecretsProvider (.env)",
+    "reveal": "Show key",
     "testConnection": "Test connection",
     "testing": "Testing…",
     "testFailed": "Test failed",

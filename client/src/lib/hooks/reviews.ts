@@ -4,8 +4,9 @@
 
 import React from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api, API_BASE } from "../api";
+import { api, openEventStream } from "../api";
 import { notify } from "../toast";
+import type { MutationHookOptions } from "../query-client";
 import type {
   FindingActionKind,
   PrReviewComment,
@@ -14,6 +15,12 @@ import type {
   RunEvent,
   RunSummary,
 } from "@devdigest/shared";
+
+/** Poll interval while a PR has a run in flight (active runs + run history). */
+const RUN_POLL_INTERVAL_MS = 4000;
+
+/** SSE `event:` names a run stream emits (besides default `message` frames). */
+const RUN_EVENT_KINDS = ["info", "tool", "result", "error"] as const;
 
 // ---- Active (in-flight) runs — server-side source of truth ----
 export interface ActiveRun {
@@ -30,7 +37,8 @@ export function usePrActiveRuns(prId: string | null | undefined) {
     queryKey: ["pr-active-runs", prId],
     queryFn: () => api.get<ActiveRun[]>(`/pulls/${prId}/runs/active`),
     enabled: !!prId,
-    refetchInterval: (query) => ((query.state.data?.length ?? 0) > 0 ? 4000 : false),
+    refetchInterval: (query) =>
+      (query.state.data?.length ?? 0) > 0 ? RUN_POLL_INTERVAL_MS : false,
   });
 }
 
@@ -43,7 +51,7 @@ export function usePrRuns(prId: string | null | undefined) {
     queryFn: () => api.get<RunSummary[]>(`/pulls/${prId}/runs`),
     enabled: !!prId,
     refetchInterval: (query) =>
-      (query.state.data ?? []).some((r) => r.status === "running") ? 4000 : false,
+      (query.state.data ?? []).some((r) => r.status === "running") ? RUN_POLL_INTERVAL_MS : false,
   });
 }
 
@@ -76,10 +84,37 @@ export function useDeleteRun(prId: string | null | undefined) {
   });
 }
 
-/** Request cancellation of an in-flight run (takes effect at the next step). */
-export function useCancelRun() {
+/**
+ * Refetch everything a run's lifecycle touches for one PR: in-flight runs, the
+ * run history and the persisted reviews. Call it when a run stream settles
+ * (done OR failed), so a just-failed run shows up in "Run history" without a
+ * reload. No-op while `prId` is unknown.
+ */
+export function useRefreshRunState(prId: string | null | undefined): () => void {
+  const qc = useQueryClient();
+  return React.useCallback(() => {
+    if (!prId) return;
+    qc.invalidateQueries({ queryKey: ["pr-active-runs", prId] });
+    qc.invalidateQueries({ queryKey: ["pr-runs", prId] });
+    qc.invalidateQueries({ queryKey: ["reviews", prId] });
+  }, [qc, prId]);
+}
+
+/**
+ * Request cancellation of an in-flight run (takes effect at the next step).
+ * With a `prId`, the PR's active runs and run history refetch once the request
+ * settles (success or failure), so the "running" state clears without waiting
+ * for the next poll.
+ */
+export function useCancelRun(prId?: string | null) {
+  const qc = useQueryClient();
   return useMutation({
     mutationFn: (runId: string) => api.post<{ ok: boolean }>(`/runs/${runId}/cancel`),
+    onSettled: () => {
+      if (!prId) return;
+      qc.invalidateQueries({ queryKey: ["pr-active-runs", prId] });
+      qc.invalidateQueries({ queryKey: ["pr-runs", prId] });
+    },
   });
 }
 
@@ -111,9 +146,13 @@ export interface CreateCommentInput {
 }
 
 /** Post one inline comment (or reply) to GitHub; refreshes the thread list. */
-export function useCreatePrComment(prId: string | null | undefined) {
+export function useCreatePrComment(
+  prId: string | null | undefined,
+  options?: MutationHookOptions,
+) {
   const qc = useQueryClient();
   return useMutation({
+    meta: options?.meta,
     mutationFn: (input: CreateCommentInput) =>
       api.post<PrReviewComment>(`/pulls/${prId}/comments`, input),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["pr-comments", prId] }),
@@ -127,6 +166,10 @@ export interface RunReviewInput {
   all?: boolean;
 }
 
+/**
+ * Start a review. On success the PR's reviews, in-flight runs and run history
+ * all refetch, so callers don't invalidate anything themselves.
+ */
 export function useRunReview() {
   const qc = useQueryClient();
   return useMutation({
@@ -137,6 +180,8 @@ export function useRunReview() {
       }),
     onSuccess: (_d, { prId }) => {
       qc.invalidateQueries({ queryKey: ["reviews", prId] });
+      qc.invalidateQueries({ queryKey: ["pr-active-runs", prId] });
+      qc.invalidateQueries({ queryKey: ["pr-runs", prId] });
     },
   });
 }
@@ -187,7 +232,7 @@ export function useRunEvents(runIds: string[]) {
     let open = runIds.length;
 
     for (const runId of runIds) {
-      const es = new EventSource(`${API_BASE}/runs/${runId}/events`);
+      const es = openEventStream(`/runs/${runId}/events`);
       const onMsg = (ev: MessageEvent) => {
         try {
           const parsed = JSON.parse(ev.data) as RunEvent;
@@ -203,9 +248,7 @@ export function useRunEvents(runIds: string[]) {
       // The server tags events with kind as the SSE `event:` name AND emits them
       // as default messages too in some clients — listen broadly.
       es.onmessage = onMsg;
-      for (const kind of ["info", "tool", "result", "error"]) {
-        es.addEventListener(kind, onMsg as EventListener);
-      }
+      for (const kind of RUN_EVENT_KINDS) es.addEventListener(kind, onMsg);
       es.onerror = () => {
         es.close();
         open -= 1;

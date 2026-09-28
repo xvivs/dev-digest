@@ -7,6 +7,9 @@ import { usePathname } from "next/navigation";
 import { useRepos } from "./hooks";
 import type { Repo } from "./types";
 
+/** localStorage key that remembers the last active repo across reloads. */
+export const ACTIVE_REPO_STORAGE_KEY = "dd-repo";
+
 const RepoCtx = React.createContext<{
   repoId: string | null;
   setRepoId: (id: string) => void;
@@ -17,8 +20,8 @@ const RepoCtx = React.createContext<{
 
 function repoIdFromPath(pathname: string | null): string | null {
   if (!pathname) return null;
-  const m = pathname.match(/^\/repos\/([^/]+)/);
-  return m ? decodeURIComponent(m[1]!) : null;
+  const segment = pathname.match(/^\/repos\/([^/]+)/)?.[1];
+  return segment ? decodeURIComponent(segment) : null;
 }
 
 export function RepoProvider({ children }: { children: React.ReactNode }) {
@@ -28,7 +31,7 @@ export function RepoProvider({ children }: { children: React.ReactNode }) {
 
   React.useEffect(() => {
     try {
-      setStored(localStorage.getItem("dd-repo"));
+      setStored(localStorage.getItem(ACTIVE_REPO_STORAGE_KEY));
     } catch {
       /* ignore */
     }
@@ -37,7 +40,7 @@ export function RepoProvider({ children }: { children: React.ReactNode }) {
   const setRepoId = React.useCallback((id: string) => {
     setStored(id);
     try {
-      localStorage.setItem("dd-repo", id);
+      localStorage.setItem(ACTIVE_REPO_STORAGE_KEY, id);
     } catch {
       /* ignore */
     }

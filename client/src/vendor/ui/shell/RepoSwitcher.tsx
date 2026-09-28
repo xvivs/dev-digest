@@ -23,20 +23,26 @@ export function RepoSwitcher({ ctx }: { ctx: ShellContext }) {
       width={240}
       items={items}
       trigger={
-        <div
+        <button
+          type="button"
           style={{
             display: "flex",
             alignItems: "center",
             gap: 10,
+            width: "100%",
             padding: "10px 14px",
             margin: "0 0 8px",
             borderRadius: 7,
             border: "1px solid var(--border)",
             background: "var(--bg-elevated)",
+            color: "inherit",
+            font: "inherit",
+            lineHeight: "inherit",
+            textAlign: "left",
             cursor: "pointer",
           }}
         >
-          <div
+          <span
             style={{
               width: 26,
               height: 26,
@@ -48,11 +54,12 @@ export function RepoSwitcher({ ctx }: { ctx: ShellContext }) {
             }}
           >
             <Icon.GitBranch size={14} style={{ color: "#fff" }} />
-          </div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div
+          </span>
+          <span style={{ display: "block", flex: 1, minWidth: 0 }}>
+            <span
               className="mono"
               style={{
+                display: "block",
                 fontSize: 13,
                 fontWeight: 600,
                 whiteSpace: "nowrap",
@@ -61,13 +68,13 @@ export function RepoSwitcher({ ctx }: { ctx: ShellContext }) {
               }}
             >
               {active?.full_name ?? "No repo selected"}
-            </div>
-            <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+            </span>
+            <span style={{ display: "block", fontSize: 12, color: "var(--text-muted)" }}>
               {active ? `${active.default_branch ?? "main"} · ${active.syncedLabel ?? "not synced"}` : "Add a repo to begin"}
-            </div>
-          </div>
+            </span>
+          </span>
           <Icon.ChevronsUpDown size={14} style={{ color: "var(--text-muted)" }} />
-        </div>
+        </button>
       }
     />
   );

@@ -3,6 +3,7 @@
 import React from "react";
 import { Icon, type IconName } from "../icons";
 import { Kbd } from "../primitives";
+import { useDialogFocus } from "../hooks";
 
 export interface Command {
   id: string;
@@ -25,16 +26,14 @@ export function CommandPalette({
   const [q, setQ] = React.useState("");
   const [sel, setSel] = React.useState(0);
   const inputRef = React.useRef<HTMLInputElement>(null);
+  // Focus in (the search field), Tab trap, Escape → onClose, focus back to the opener.
+  const dialogRef = useDialogFocus<HTMLDivElement>({ open, onClose, initialFocusRef: inputRef });
 
   React.useEffect(() => {
     if (open) {
       setQ("");
       setSel(0);
-      // focus after paint
-      const t = setTimeout(() => inputRef.current?.focus(), 0);
-      return () => clearTimeout(t);
     }
-    return undefined;
   }, [open]);
 
   const filtered = React.useMemo(() => {
@@ -46,8 +45,7 @@ export function CommandPalette({
   if (!open) return null;
 
   const onKey = (e: React.KeyboardEvent) => {
-    if (e.key === "Escape") onClose();
-    else if (e.key === "ArrowDown") {
+    if (e.key === "ArrowDown") {
       e.preventDefault();
       setSel((s) => Math.min(s + 1, filtered.length - 1));
     } else if (e.key === "ArrowUp") {
@@ -73,9 +71,13 @@ export function CommandPalette({
         style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.5)", animation: "ddfadein .12s ease" }}
       />
       <div
+        ref={dialogRef}
         role="dialog"
+        aria-modal="true"
         aria-label="Command palette"
+        tabIndex={-1}
         style={{
+          outline: "none",
           position: "relative",
           width: 560,
           maxWidth: "100%",
@@ -120,6 +122,7 @@ export function CommandPalette({
               return (
                 <button
                   key={c.id}
+                  type="button"
                   onMouseEnter={() => setSel(i)}
                   onClick={() => {
                     c.run();

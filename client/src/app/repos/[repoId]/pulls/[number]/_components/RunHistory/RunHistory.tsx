@@ -2,7 +2,7 @@
 
 import React from "react";
 import { useTranslations } from "next-intl";
-import { Badge, Icon, CircularScore, type IconName } from "@devdigest/ui";
+import { Badge, Icon, CircularScore, RowAction } from "@devdigest/ui";
 import type {
   RunSummary,
   PrCommit,
@@ -13,111 +13,27 @@ import type {
 import { RunCostValue } from "@/components/run-cost-value";
 import { SeverityIcons, ZERO_COUNTS } from "@/components/severity-icons";
 import { FindingsPopover } from "@/components/findings-popover";
-import { formatTokenTotal } from "./helpers";
-import { RowAction } from "./_components/RowAction";
+import { LocalTime } from "@/components/local-time";
+import { OUTCOME_META, SHORT_SHA_LENGTH } from "./constants";
+import { buildTimeline, formatTokenTotal, outcomeOf } from "./helpers";
+import { s } from "./styles";
 
 /**
  * PR timeline — every agent run interleaved with the PR's commits, newest-first
  * and DB-backed so it survives reload. Showing commits between runs makes it
  * clear which commit each review ran against. Failed runs show their error
- * inline; clicking a run row opens its trace.
- *
- * The badge reflects the review OUTCOME, not just the run lifecycle: a finished
- * run that found blockers reads "rejected" (red), never a green "done". Outcome
- * is derived from the denormalized blocker/finding counts on the run row, so it
- * matches the CI gate (deterministic) rather than the model's verdict.
+ * inline; clicking a run row opens its trace. The badge is the review OUTCOME
+ * (see `outcomeOf`), not the run lifecycle.
  */
-
-type Outcome = { key: string; color: string; bg: string; icon: IconName };
-
-function outcomeOf(run: RunSummary): Outcome {
-  const status = run.status ?? "";
-  if (status === "running")
-    return { key: "running", color: "var(--accent)", bg: "var(--accent-bg)", icon: "RefreshCw" };
-  if (status === "failed")
-    return { key: "error", color: "var(--crit)", bg: "var(--crit-bg)", icon: "XCircle" };
-  if (status === "cancelled")
-    return { key: "cancelled", color: "var(--text-muted)", bg: "var(--bg-hover)", icon: "X" };
-  // Settled ("done"): color by the deterministic outcome.
-  if ((run.blockers ?? 0) > 0)
-    return { key: "rejected", color: "var(--crit)", bg: "var(--crit-bg)", icon: "XCircle" };
-  if ((run.findings_count ?? 0) > 0)
-    return { key: "reviewed", color: "var(--warn)", bg: "var(--warn-bg)", icon: "MessageSquare" };
-  return { key: "approved", color: "var(--ok)", bg: "var(--ok-bg)", icon: "CheckCircle" };
-}
-
-function rowStyle(hovered: boolean): React.CSSProperties {
-  return {
-    display: "flex",
-    alignItems: "center",
-    gap: 12,
-    width: "100%",
-    padding: "10px 14px",
-    borderRadius: 8,
-    border: "1px solid var(--border)",
-    background: hovered ? "var(--bg-hover)" : "var(--bg-elevated)",
-    textAlign: "left",
-    transition: "background .12s",
-    cursor: "pointer",
-  };
-}
-
-/** The two trailing actions travel together, spaced wider than the row's gap —
- *  roughly one glyph-width apart, so "open trace" and "delete" never read as a
- *  single control the way a tight pair of borderless icons would. */
-const actionsStyle: React.CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  gap: 16,
-  marginLeft: 6,
-  flexShrink: 0,
-};
-
-// Commits are markers, not actions — lighter (dashed, transparent) so they read
-// as separators between the runs they sit chronologically between.
-const commitRowStyle: React.CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: 12,
-  width: "100%",
-  padding: "8px 14px",
-  borderRadius: 8,
-  border: "1px dashed var(--border)",
-  background: "transparent",
-};
 
 /** Stable default for the optional lookup maps: a `new Map()` in a default
  *  parameter is a fresh object every render and would defeat every memo below. */
 const EMPTY_MAP: ReadonlyMap<string, never> = new Map<string, never>();
 
-const findingsLineStyle: React.CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: 4,
-  fontSize: 12,
-  color: "var(--text-muted)",
-};
+/** Keeps a click on a nested control from also opening the row's trace. */
+const stop = (e: React.SyntheticEvent) => e.stopPropagation();
 
-type TimelineItem =
-  | { kind: "run"; ts: number; run: RunSummary }
-  | { kind: "commit"; ts: number; commit: PrCommit };
-
-/** Epoch ms for sorting; unparseable / missing timestamps sort last. */
-function tsOf(s: string | null | undefined): number {
-  if (!s) return 0;
-  const n = Date.parse(s);
-  return Number.isNaN(n) ? 0 : n;
-}
-
-export function RunHistory({
-  runs,
-  commits = [],
-  findingsByRun = EMPTY_MAP,
-  countsByRun = EMPTY_MAP,
-  onOpenTrace,
-  onGoToReview,
-  onDelete,
-}: {
+export interface RunHistoryProps {
   runs: RunSummary[];
   commits?: PrCommit[];
   /** run_id → that run's findings, for the hover popover. Optional: the
@@ -132,7 +48,17 @@ export function RunHistory({
    *  or a severity chip — which also pre-filters the panel to that severity). */
   onGoToReview?: (runId: string, severity?: Severity) => void;
   onDelete?: (runId: string) => void;
-}) {
+}
+
+export function RunHistory({
+  runs,
+  commits = [],
+  findingsByRun = EMPTY_MAP,
+  countsByRun = EMPTY_MAP,
+  onOpenTrace,
+  onGoToReview,
+  onDelete,
+}: RunHistoryProps) {
   const t = useTranslations("prReview");
   // One stable handler per run rather than an arrow in the row's JSX: a fresh
   // closure every render would defeat the `React.memo` on `SeverityIcons` just
@@ -151,54 +77,31 @@ export function RunHistory({
 
   if (runs.length === 0 && commits.length === 0) return null;
 
-  const items: TimelineItem[] = [
-    ...runs.map((run) => ({ kind: "run" as const, ts: tsOf(run.ran_at), run })),
-    ...commits.map((commit) => ({
-      kind: "commit" as const,
-      ts: tsOf(commit.committed_at),
-      commit,
-    })),
-  ].sort((a, b) => b.ts - a.ts);
+  const items = buildTimeline(runs, commits);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+    <div style={s.list}>
       {items.map((item) => {
         if (item.kind === "commit") {
           const c = item.commit;
           return (
-            <div key={`commit:${c.sha}`} style={commitRowStyle}>
-              <Icon.GitCommit size={15} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
-              {/* Accent-tinted like every other code reference in the app — the
-                  sha is the one token in this row that identifies a commit. */}
-              <span className="mono" style={{ fontSize: 12, color: "var(--accent-text)", flexShrink: 0 }}>
-                {c.sha.slice(0, 7)}
+            <div key={`commit:${c.sha}`} style={s.commitRow}>
+              <Icon.GitCommit size={15} style={s.commitIcon} />
+              <span className="mono" style={s.commitSha}>
+                {c.sha.slice(0, SHORT_SHA_LENGTH)}
               </span>
-              <span
-                style={{
-                  fontSize: 12.5,
-                  color: "var(--text-secondary)",
-                  flex: 1,
-                  minWidth: 0,
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                }}
-                title={c.message}
-              >
+              <span style={s.commitMessage} title={c.message}>
                 {c.message.split("\n")[0]}
               </span>
-              <span style={{ fontSize: 11, color: "var(--text-muted)", flexShrink: 0 }}>{c.author}</span>
-              {c.committed_at && (
-                <span style={{ fontSize: 11, color: "var(--text-muted)", flexShrink: 0 }}>
-                  {new Date(c.committed_at).toLocaleTimeString()}
-                </span>
-              )}
+              <span style={s.commitMeta}>{c.author}</span>
+              {c.committed_at && <LocalTime iso={c.committed_at} style={s.commitMeta} />}
             </div>
           );
         }
 
         const r = item.run;
-        const o = outcomeOf(r);
+        const outcome = outcomeOf(r);
+        const o = OUTCOME_META[outcome];
         const settled = r.status === "done";
         const tokenTotal = formatTokenTotal(r.tokens_in, r.tokens_out);
         return (
@@ -210,17 +113,17 @@ export function RunHistory({
           <div
             key={`run:${r.run_id}`}
             data-run-id={r.run_id}
-            style={rowStyle(hoveredRun === r.run_id)}
+            style={s.row(hoveredRun === r.run_id)}
             onMouseEnter={() => setHoveredRun(r.run_id)}
             onMouseLeave={() => setHoveredRun((prev) => (prev === r.run_id ? null : prev))}
             onClick={() => onOpenTrace(r.run_id)}
           >
             <Badge color={o.color} bg={o.bg} icon={o.icon}>
-              {t(`runStatus.${o.key}`)}
+              {t(`runStatus.${outcome}`)}
             </Badge>
             {settled && r.score != null && <CircularScore score={r.score} size={30} stroke={3} />}
-            <div style={{ display: "flex", flexDirection: "column", gap: 2, flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>
+            <div style={s.main}>
+              <div style={s.titleLine}>
                 <button
                   type="button"
                   onClick={(e) => {
@@ -228,30 +131,16 @@ export function RunHistory({
                     onGoToReview?.(r.run_id);
                   }}
                   title={t("timeline.goToReview")}
-                  style={{
-                    background: "none",
-                    border: "none",
-                    padding: 0,
-                    font: "inherit",
-                    fontWeight: 600,
-                    color: "var(--text-primary)",
-                    cursor: onGoToReview ? "pointer" : "default",
-                    // No underline: the design keeps the agent name as plain
-                    // text. `title` + the pointer carry the affordance instead.
-                    textDecoration: "none",
-                  }}
+                  style={s.agentButton(!!onGoToReview)}
                 >
-                  {r.agent_name ?? "Agent"}
+                  {r.agent_name ?? t("timeline.agentFallback")}
                 </button>{" "}
-                <span className="mono" style={{ fontSize: 12, fontWeight: 400, color: "var(--text-muted)" }}>
+                <span className="mono" style={s.model}>
                   {r.provider}/{r.model}
                 </span>
               </div>
               {r.status === "failed" && r.error && (
-                <div
-                  style={{ fontSize: 12, color: "var(--crit)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
-                  title={r.error}
-                >
+                <div style={s.error} title={r.error}>
                   {r.error}
                 </div>
               )}
@@ -259,8 +148,9 @@ export function RunHistory({
                 // The severity strip REPLACES the old "N finding(s)" text — it
                 // carries the same total, broken down and clickable. Blockers
                 // stay as text: they're a gate outcome, not a severity.
-                <div style={findingsLineStyle}>
-                  <span onClick={(e) => e.stopPropagation()}>
+                <div style={s.findingsLine}>
+                  {/* Not a control: only keeps chip clicks from bubbling to the row. */}
+                  <span onClick={stop}>
                     <FindingsPopover
                       total={r.findings_count ?? 0}
                       findings={findingsByRun.get(r.run_id)}
@@ -279,17 +169,22 @@ export function RunHistory({
                 </div>
               )}
             </div>
-            <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2, fontSize: 11, color: "var(--text-muted)", flexShrink: 0 }}>
-              {r.ran_at && <span>{new Date(r.ran_at).toLocaleTimeString()}</span>}
-              <span className="tnum" style={{ color: "var(--text-secondary)" }}>
+            <div style={s.side}>
+              {r.ran_at && <LocalTime iso={r.ran_at} />}
+              <span className="tnum" style={s.cost}>
                 {tokenTotal && `${tokenTotal} · `}
                 <RunCostValue usd={r.cost_usd} source={r.cost_source} missingReason={r.cost_missing_reason} />
               </span>
             </div>
-            <div style={actionsStyle}>
+            <div style={s.actions}>
               <RowAction icon="Copy" label={t("timeline.openTrace")} onClick={() => onOpenTrace(r.run_id)} />
               {onDelete && r.status !== "running" && (
-                <RowAction icon="Trash" label={t("timeline.deleteRun")} danger onClick={() => onDelete(r.run_id)} />
+                <RowAction
+                  icon="Trash"
+                  label={t("timeline.deleteRun")}
+                  tone="danger"
+                  onClick={() => onDelete(r.run_id)}
+                />
               )}
             </div>
           </div>

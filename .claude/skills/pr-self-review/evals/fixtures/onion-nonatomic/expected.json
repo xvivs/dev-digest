@@ -1,0 +1,6 @@
+{
+  "verdict": "BLOCK",
+  "why": "Two dependent deletes outside store.transaction(): onion rule 9, CRITICAL per the skill's audit severity.",
+  "deterministic": { "mustFail": [], "mustPass": ["typecheck:server", "unit:server", "arch:server"] },
+  "lensFindings": [{ "lens": "server-arch", "file": "server/src/modules/eval-archive/service.ts", "severity": "CRITICAL", "ruleMatches": "9|transaction|atomic" }]
+}

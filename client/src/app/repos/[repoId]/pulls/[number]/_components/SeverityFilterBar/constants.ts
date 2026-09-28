@@ -6,8 +6,9 @@ import type { Severity, SeverityCounts } from "@devdigest/shared";
  * (`prReview.panel.counts.*` / `prReview.panel.filter.*`). One table keeps the
  * tally row, the filter row and the copy from drifting apart.
  *
- * `INFO` is deliberately absent: `Severity` from `@devdigest/shared` has three
- * members, the four-member `Severity` in `@devdigest/ui` is a different type.
+ * `INFO` is deliberately absent: no finding carries it. `Severity` from
+ * `@devdigest/shared` has three members; `@devdigest/ui`'s adds `INFO` for
+ * non-finding UI (ADR 0008).
  */
 export const SEVERITY_LEVELS = [
   { severity: "CRITICAL", key: "critical" },

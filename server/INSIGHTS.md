@@ -29,6 +29,12 @@ lives in the engineering-insights skill).
 
 - **Seeded run counters are copied into `run_traces`, so they must be edited in the `.values([...])` literal, not by a follow-up UPDATE** — `seed.ts` builds `trace.stats.findings` from `.returning()` on the `agent_runs` insert. An UPDATE after the fact fixes the row but leaves the trace document behind, and the run drawer then shows a different finding count than the list. _(2026-09-20)_
 
+- **`dependency-cruiser` in server deps is a runtime library for the repo-intel indexer, not an architecture lint of our own code** — `server/src/adapters/depgraph/index.ts:17` imports `cruise()` to graph *target* repos; there is no `.dependency-cruiser.*` config and no arch-check script, so an import-boundary lint would be a new, separate usage and must not share config with the `DepGraph` adapter. _(2026-09-28)_
+
+- **No production code uses `db.transaction(` — multi-step writes are non-atomic** — e.g. `server/src/modules/reviews/repository/run.repo.ts:92-105` (`deleteAgentRun`) deletes `reviews` then `agentRuns` in two independent queries although its comment requires both. A Drizzle `tx` is structurally a `Db`, so `new ReviewRepository(tx)` inside `db.transaction` works, but never use `container.reviewRepo` there: it memoizes a `db`-bound instance (`server/src/platform/container.ts:99-100`). _(2026-09-28)_
+
+- **The pgvector extension is created by the migrate script, not by a migration file** — `server/src/db/migrate.ts:23` runs `CREATE EXTENSION IF NOT EXISTS vector` before migrations; grepping only `src/db/migrations/` gives a false "extension missing". _(2026-09-28)_
+
 ## Tool & Library Notes
 
 - **`pnpm exec <bin>` / `pnpm run <script>` can fail non-interactively with `ERR_PNPM_IGNORED_BUILDS` even when `node_modules` is already correct** — both `pnpm db:generate` and `pnpm exec drizzle-kit generate` refused to run this way, erroring "Run \"pnpm approve-builds\" to pick which dependencies should be allowed to run scripts." Workaround: invoke the wrapper under `node_modules/.bin/` directly with `sh`, e.g. `sh node_modules/.bin/drizzle-kit generate`, `sh node_modules/.bin/tsx src/db/migrate.ts`, `sh node_modules/.bin/vitest run` — bypasses pnpm's pre-flight check entirely. _(2026-09-19)_
@@ -43,6 +49,12 @@ lives in the engineering-insights skill).
 
 - **`server/.env` in this worktree points `DATABASE_URL` at `devdigest_l01`, not the default `devdigest`, so a bare `psql -d devdigest` reads a different database than the API serves** — the default DB holds only PR #482's three runs, while `devdigest_l01` holds every seeded repo; auditing a data gap against the wrong one shows a tidy, complete picture and sends you after a bug that does not exist. Hit while checking `run_traces` coverage: `devdigest` looked fine, `devdigest_l01` had 3 of 7 runs with no trace. Read `DATABASE_URL` out of `server/.env` and pass it with `-d` before any `docker exec devdigest-postgres psql`. _(2026-09-20)_
 
+- **`pnpm typecheck` in `server/` fails with `TS2307: Cannot find module 'openai'` / `'zod'` from `../reviewer-core/src/llm/*.ts` in a fresh worktree** — the server type-checks reviewer-core's raw source through the tsconfig path alias (`server/tsconfig.json` `paths`), so reviewer-core's own deps must be installed; fix: `cd reviewer-core && npm ci` (CI does the same step in `.github/workflows/server-unit.yml`). The follow-on `TS2322 'unknown' is not assignable to 'T'` errors in `src/adapters/llm/*.ts` are the same cause, not a real type bug. _(2026-09-28)_
+
+- **Changing an exported TypeScript shape can leave `tsc --noEmit -p tsconfig.json` green while `server/test/**` breaks: the server tsconfig includes only `src/**/*.ts` (`server/tsconfig.json:28`), and vitest strips types without checking them** — changing `PromptParts.skills` from `string[]` to `SkillInput[]` broke `test/prompt-structured.test.ts` and `test/prompt-callers.test.ts` with no type error, only failing assertions (`### undefined`). After any contract change, run the full `vitest run`, or grep `test/` for the old shape; typecheck alone proves nothing about `test/`. `reviewer-core/tsconfig.json:28` has the same `src/**` include. _(2026-09-28)_
+
+- **`arch:check` green locally but CI fails with `presentation-no-db: src/modules/*/routes.ts → node_modules/drizzle-orm/index.cjs` on already-baselined routes** — `.dependency-cruiser-known-violations.json` stores the *resolved* `to` path, so a baseline made on a pnpm `isolated` install (`node_modules/.pnpm/drizzle-orm@0.38.4_postgres@3.4.9/…`, check `nodeLinker` in `node_modules/.modules.yaml`; worktree installs can ignore `server/.npmrc` `node-linker=hoisted`) never matches CI's hoisted `node_modules/drizzle-orm/…`. Fixed with `preserveSymlinks: true` in `server/.dependency-cruiser.cjs:184` so paths are layout-independent; after any rule/option change regenerate with `pnpm arch:baseline`. _(2026-09-29)_
+
 ## Session Notes
 
 ### 2026-09-19 — Cost Badge (server) session
@@ -54,5 +66,18 @@ Implemented cost provenance persistence end to end: `agent_runs.cost_usd`/`cost_
 ### 2026-09-20 — run_traces seed coverage (server) session
 `run_traces` was seeded only for PR #482's two `done` runs, so every other seeded run opened an empty Agent-run drawer. Added a shared `traceFor(run, opts)` helper in `src/db/seed.ts`, gave the failed #482 run a trace whose log ends on a real `kind: 'error'` line, extended #479 / #477 / the xvivs fixture, and — the part that actually reaches an already-seeded database — a final unconditional backfill pass that LEFT JOINs `run_traces` and fills every `agent_runs` row still missing one. PR #482's two hand-written traces are untouched, so the cost/timeline e2e spec still sees `8.2s`, `15k→1.2k` and `$0.041`. Verified on the live dev DB: 3 of 7 runs lacked a trace before, 0 after. 24 files / 151 tests green.
 
+### 2026-09-28 — server session
+Renamed `server/CLAUDE.md` to `AGENTS.md` and added a one-line `@AGENTS.md` stub `CLAUDE.md` next to it, per ADR 0004. Edit rules in `AGENTS.md` only; the content itself did not change.
+
+### 2026-09-28 — server session
+Research-only session: surveyed server layering against Onion Architecture (5 parallel research subagents) and wrote the skill plan at `server/specs/onion-architecture-skill.md`. No code changed. Left: ADR 0005, the skill itself, `.dependency-cruiser.cjs` + `arch:check` with a baseline for the existing violations in `pulls`/`polling`/`settings`/`workspace`.
+
+### 2026-09-28 — server session (onion-architecture skill)
+Built the `onion-architecture` skill (`.claude/skills/onion-architecture/`: SKILL.md, 8 references, compiling module templates), ADR 0005 (proposed), `server/.dependency-cruiser.cjs` with 15 rules, `pnpm arch:check`/`arch:baseline` and a CI step in `server-unit.yml`. Every rule was proved against throwaway violating files. The 19 legacy violations are frozen in `.dependency-cruiser-known-violations.json`. Left: migrate `pulls`/`polling`/`settings`/`workspace` and the services that build their own repositories, and fix the non-atomic `deleteAgentRun`.
+
+### 2026-09-28 — server session (SPEC-02 Skills)
+Added the `skills` module (ports/wiring, first production `db.transaction`), transactional tenant-checked `PUT /agents/:id/skills` with a 24 KB budget, `skill_count`, and effective-skill resolution in `run-executor`. Review follow-ups bound vetting to the reviewed `version` (atomic UPDATE, Postgres-side sha256) and made the resolver require a matching `vetted_body_hash` for imports. 215 tests and arch:check green.
+
 ## Open Questions
 
+- **Stale entry: "no `.dependency-cruiser.*` config and no arch-check script" (Codebase Patterns, 2026-09-28) is no longer true** — `server/.dependency-cruiser.cjs` and `pnpm arch:check` now exist (`docs/adr/0005-onion-layering-for-server-modules.md`); the runtime-library half (`src/adapters/depgraph/index.ts:17`) still holds. Prune or rewrite the entry during cleanup. _(2026-09-28)_

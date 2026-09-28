@@ -1,1 +1,2 @@
-export { VerdictBanner, VerdictBanner as default } from "./VerdictBanner";
+export { VerdictBanner } from "./VerdictBanner";
+export { VERDICT_META, type VerdictMeta } from "./constants";

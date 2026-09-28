@@ -5,14 +5,15 @@
  *
  * `@/components/severity-icons` and `@/components/findings-popover` are faked:
  * this suite is about the row, not about how those two render.
+ *
+ * The title is a real link (REACT-2: keyboard, middle-click), asserted on its
+ * href. The rest of the row is a mouse convenience asserted on router.push.
  */
 import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
-import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/react";
-import { NextIntlClientProvider } from "next-intl";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { act, screen, cleanup, fireEvent, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
-import type { PrMeta } from "@/lib/types";
-import type { FindingRecord, Severity, SeverityCounts } from "@devdigest/shared";
+import type { FindingRecord, PrMeta, Severity, SeverityCounts } from "@devdigest/shared";
+import { renderWithProviders } from "@/test/render";
 import prReviewMessages from "../../../../../../../messages/en/prReview.json";
 import costMessages from "../../../../../../../messages/en/cost.json";
 import findingsMessages from "../../../../../../../messages/en/findings.json";
@@ -114,23 +115,11 @@ afterEach(() => {
 });
 
 function renderRow(meta: PrMeta) {
-  // The FINDINGS cell holds a lazy React Query subscription, so the row now
-  // needs a QueryClient in scope even when nothing is ever fetched.
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(
-    <QueryClientProvider client={qc}>
-      <NextIntlClientProvider
-        locale="en"
-        messages={{
-          prReview: prReviewMessages,
-          cost: costMessages,
-          findings: findingsMessages,
-        }}
-      >
-        <PRRow pr={meta} repoId="repo-1" />
-      </NextIntlClientProvider>
-    </QueryClientProvider>,
-  );
+  // The FINDINGS cell holds a lazy React Query subscription, so the row needs
+  // a QueryClient in scope even when nothing is ever fetched.
+  return renderWithProviders(<PRRow pr={meta} repoId="repo-1" />, {
+    namespaces: { prReview: prReviewMessages, cost: costMessages, findings: findingsMessages },
+  });
 }
 
 describe("PRRow — cost column", () => {
@@ -181,11 +170,43 @@ describe("PRRow — findings column", () => {
       "/repos/repo-1/pulls/482?tab=findings&severity=CRITICAL",
     );
     expect(pushMock).not.toHaveBeenCalledWith("/repos/repo-1/pulls/482");
+    // The severity chips are siblings of the row link, never inside it: a
+    // click on one cannot also be a click on the link.
+    expect(screen.getByRole("link", { name: "Add cost badge" })).not.toContainElement(
+      screen.getByRole("button", { name: "CRITICAL 1" }),
+    );
+  });
+});
+
+describe("PRRow — row link", () => {
+  it("opens the PR through a real, keyboard-reachable link named after the PR title", () => {
+    renderRow(pr({ score: 87 }));
+    const link = screen.getByRole("link", { name: "Add cost badge" });
+    expect(link).toHaveAttribute("href", "/repos/repo-1/pulls/482");
+    act(() => link.focus());
+    expect(link).toHaveFocus();
   });
 
-  it("still opens the PR when the row is clicked outside the findings cell", () => {
+  it("a click on the row outside the link pushes the PR route once", () => {
     renderRow(pr({ score: 87 }));
-    fireEvent.click(screen.getByText("Add cost badge"));
+    fireEvent.click(screen.getByText("#482"));
+    expect(pushMock).toHaveBeenCalledTimes(1);
     expect(pushMock).toHaveBeenCalledWith("/repos/repo-1/pulls/482");
+  });
+
+  it("a click on the title link is left to the link (no second push)", () => {
+    renderRow(pr({ score: 87 }));
+    fireEvent.click(screen.getByRole("link", { name: "Add cost badge" }));
+    expect(pushMock).not.toHaveBeenCalled();
+  });
+
+  it("renders the UPDATED column as a compact relative time", () => {
+    vi.useFakeTimers({ now: new Date("2026-06-10T03:00:00.000Z"), toFake: ["Date"] });
+    try {
+      renderRow(pr({ updated_at: "2026-06-10T00:00:00.000Z" }));
+      expect(screen.getByText("3h")).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

@@ -2,6 +2,7 @@
    Import styles once at the app root: `import "@devdigest/ui/styles.css"`. */
 
 export * from "./icons";
+export * from "./hooks";
 export * from "./primitives";
 export * from "./kit";
 export * from "./charts";

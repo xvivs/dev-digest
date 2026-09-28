@@ -1,62 +1,85 @@
 /* AgentCard — model chip, skills count, enabled toggle. Stats are an A5 mount;
-   we render the provider/model + skill count here. */
+   we render the provider/model + skill count here. Shared leaf: rendered by
+   the /agents list and the /agents/[id] editor's side list.
+
+   The agent name is a real <Link>: the keyboard, middle-click and prefetch
+   path. The rest of the card is a mouse-only convenience that pushes the same
+   href. A stretched-link overlay was dropped for the same reason as in PRRow
+   (client/INSIGHTS.md): agent-browser cannot click a link whose box includes
+   such an overlay. The toggle and delete action stay siblings of the link,
+   never inside it: a button nested in a link is invalid HTML. */
 "use client";
 
 import React from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { Icon, Badge, Toggle } from "@devdigest/ui";
+import { Icon, Badge, Toggle, RowAction } from "@devdigest/ui";
 import type { Agent } from "@devdigest/shared";
-import { useDeleteAgent } from "../../../../lib/hooks/agents";
+import { useDeleteAgent } from "@/lib/hooks";
+import { CARD_ICON_SIZE, DELETE_ICON_SIZE, TOGGLE_SIZE } from "./constants";
 import { modelColor } from "./helpers";
 import { s } from "./styles";
 
 export function AgentCard({
   ag,
+  href,
   active,
   skillCount,
-  onClick,
   onToggle,
 }: {
   ag: Agent;
+  /** Where the card navigates. Omit for a static (non-navigating) card. */
+  href?: string;
   active?: boolean;
   skillCount?: number;
-  onClick?: () => void;
   onToggle?: (enabled: boolean) => void;
 }) {
   const t = useTranslations("agents");
+  const router = useRouter();
   const del = useDeleteAgent();
   const color = modelColor(ag.model);
+  const onDelete = () => {
+    if (window.confirm(t("card.deleteConfirm", { name: ag.name }))) del.mutate(ag.id);
+  };
   return (
-    <div onClick={onClick} style={s.card(!!active, ag.enabled)}>
+    <div
+      style={s.card(!!active, ag.enabled, !!href)}
+      onClick={(e) => {
+        // The link, toggle and delete handle their own clicks.
+        if (!href || (e.target as Element).closest("a, button, input, [role='switch']")) return;
+        router.push(href);
+      }}
+    >
       <div style={s.headerRow}>
         <div style={s.iconBox}>
-          <Icon.Cpu size={15} />
+          <Icon.Cpu size={CARD_ICON_SIZE} />
         </div>
-        <span style={s.name}>{ag.name}</span>
-        {onToggle && (
-          <div onClick={(e) => e.stopPropagation()}>
-            <Toggle on={ag.enabled} onChange={onToggle} size={14} />
-          </div>
+        {href ? (
+          <Link href={href} aria-current={active ? "page" : undefined} style={s.nameLink}>
+            {ag.name}
+          </Link>
+        ) : (
+          <span style={s.name}>{ag.name}</span>
         )}
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            if (window.confirm(`Delete agent "${ag.name}"? This cannot be undone.`)) del.mutate(ag.id);
-          }}
-          disabled={del.isPending}
-          title="Delete agent"
-          aria-label="Delete agent"
-          style={{
-            background: "none",
-            border: "none",
-            cursor: del.isPending ? "not-allowed" : "pointer",
-            color: "var(--text-muted)",
-            display: "inline-flex",
-            padding: 4,
-          }}
-        >
-          <Icon.Trash size={14} style={del.isPending ? { animation: "ddspin 1s linear infinite" } : undefined} />
-        </button>
+        <div style={s.controls}>
+          {onToggle && (
+            <Toggle
+              on={ag.enabled}
+              onChange={onToggle}
+              size={TOGGLE_SIZE}
+              label={t("card.enabledToggle", { name: ag.name })}
+            />
+          )}
+          <RowAction
+            icon="Trash"
+            tone="danger"
+            label={t("card.delete")}
+            size={DELETE_ICON_SIZE}
+            busy={del.isPending}
+            onClick={onDelete}
+          />
+        </div>
       </div>
       <div style={s.description}>{ag.description || t("card.noDescription")}</div>
       <div style={s.metaRow}>

@@ -9,7 +9,7 @@ import type { FindingRecord, Severity } from "@devdigest/shared";
 import { countBySeverity } from "@/components/severity-icons";
 import { FindingCard } from "../FindingCard";
 import { SeverityFilterBar } from "../SeverityFilterBar";
-import { useFindingAction } from "../../../../../../../lib/hooks/reviews";
+import { useFindingAction } from "@/lib/hooks";
 import { KEY_TO_ACTION } from "./constants";
 import { baseFindings, bySeverity } from "./helpers";
 import { s } from "./styles";
@@ -66,8 +66,10 @@ export function FindingsPanel({
       if (tag === "INPUT" || tag === "TEXTAREA") return;
       if (e.key === "j") setFocusIdx(Math.min(focus + 1, shown.length - 1));
       else if (e.key === "k") setFocusIdx(Math.max(focus - 1, 0));
-      else if (KEY_TO_ACTION[e.key] && shown[focus]) {
-        action.mutate({ findingId: shown[focus]!.id, action: KEY_TO_ACTION[e.key]!, prId });
+      else {
+        const act = KEY_TO_ACTION[e.key];
+        const current = shown[focus];
+        if (act && current) action.mutate({ findingId: current.id, action: act, prId });
       }
     };
     window.addEventListener("keydown", handler);

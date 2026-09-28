@@ -7,7 +7,9 @@ import { Providers } from "../lib/providers";
 import { themeNoFlashScript } from "../lib/theme";
 
 export const metadata: Metadata = {
-  title: "DevDigest",
+  // Route pages (Server Components) export `metadata = { title: "Pull requests" }`
+  // and get "Pull requests · DevDigest"; pages without a title get the default.
+  title: { default: "DevDigest", template: "%s · DevDigest" },
   description: "Local-first AI PR review tool",
 };
 
@@ -26,6 +28,11 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           (one level deep) — real mismatches in descendants are still reported. */}
       <body suppressHydrationWarning>
         <NextIntlClientProvider locale={locale} messages={messages}>
+          {/* Root Suspense boundary. Kept: it is the bailout target for any
+              useSearchParams() consumer on a statically prerendered route. Narrow
+              it only after each consumer has its own local <Suspense>. No root
+              loading.tsx: every page renders its own AppShell, so a route-level
+              fallback would blank the shell on each client navigation. */}
           <Suspense fallback={null}>
             <Providers>{children}</Providers>
           </Suspense>

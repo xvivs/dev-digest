@@ -30,9 +30,13 @@ lives in the engineering-insights skill).
 
 - **`wait --text` is case-SENSITIVE, `find text` is case-INSENSITIVE — the two locators do not agree, so case is not a disambiguator** — measured on agent-browser 0.27.0: `find text "Warning"` and `find text "warning"` both exit 0, while `wait --text "2 Warning findings in this run"` times out where `"2 WARNING FINDINGS IN THIS RUN"` passes. This kills the older advice of separating the tally pill from the filter button by case alone. Disambiguate a control by `find role button --name X --exact` (only the filter button's accessible name is exactly `Warning`; the timeline chip's is `2 Warning findings`), and write `wait --text` in the case the browser paints after `text-transform` (`e2e/specs/04-pr-findings.flow.json:23`, `e2e/specs/08-findings-popover-severity.flow.json`). _(2026-09-20)_
 
+- **`find role link click --name X` fails with `✗ Element not found` on every link, even the plain sidebar "Settings" `<a>`, while `find role button --name` and `find text X click` work** — measured on agent-browser 0.27.0 against the isolated stack (port 3100): `find role link click --name "Settings"` and `--name "Performance Reviewer"` both failed, and `find text "Security Reviewer" click` navigated to `/agents/<id>?tab=config`. Open a link by its visible text (`find text`), not by role. Also: after a click that navigates to a not-yet-compiled `next dev` route, `get url` still shows the old page for a few seconds — use `wait --url` before asserting (`e2e/specs/09-disclosure-a11y.flow.json:9-10`: `find text … click` then `wait --url`). _(2026-09-28)_
+
 ## Recurring Errors & Fixes
 
 - **A flow fails on your dev DB with healthy code because the seed never repairs an existing repo — it inserts the demo repo only when it is missing** (`server/src/db/seed.ts:84`, `if (!repo)`). A database seeded before a fixture was widened keeps the old rows forever, and re-running `pnpm db:seed` does not touch them: live #482 carried 2 findings and `1/1 passed` grounding where `seed.ts` says 4 and `4/4`, so `wait --text "4 findings"` timed out against correct code. Symptom to pattern-match: a count assertion fails locally but the same flow passes under `./scripts/e2e.sh`, whose Postgres is ephemeral and therefore always matches `seed.ts`. Trust the hermetic run; do not "fix" the flow to match a stale database. _(2026-09-20)_
+
+- **`wait --url` passing does not mean the target view has mounted: a `find role button click` issued right after it fails with `✗ Element not found` for a button that exists a moment later** — the App Router updates the URL before the route's client component (here the agent editor and its tab bar) renders, so `find` runs against the old tree. Put a `wait --text` for something inside the target view between the two (`e2e/specs/11-skills.flow.json:19-20`: `wait --text "Config"` before clicking the Skills tab button). Measured on agent-browser 0.27.0; the same click passed when run by hand a second later. _(2026-09-28)_
 
 ## Session Notes
 
@@ -41,6 +45,12 @@ Rewrote `specs/04-pr-findings.flow.json` for the widened seed: PR #482 now carri
 
 ### 2026-09-20 — e2e coverage catch-up session
 Grew the suite from 7 flows to 10 and ran it for real: `08-findings-popover-severity` (hover/focus scoping of the findings popover), `09-disclosure-a11y` (`aria-expanded` counts across collapse/expand, keyboard Enter on a card trigger) and `10-run-cost-and-timeline` (cost provenance on three surfaces, derived timeline badges, trace drawer stats). Repaired `04-pr-findings`, whose filter assertions had been passing without the filter ever being applied, and added the `wait --text "acme/payments-api"` guard to every repo-specific flow now that the seed intentionally holds a second repo (`xvivs/dev-digest`) and `listByWorkspace` has no `ORDER BY`. Result: 10/10 via `./scripts/e2e.sh`. Not covered and not silently dropped: the popover's unscoped header (needs a cursor position no selector can express), `ToolCallRow` (seed has no tool calls), and the collapse animation itself (only its `aria-expanded` outcome is asserted, never the curve).
+
+### 2026-09-28 — e2e session
+Renamed `e2e/CLAUDE.md` to `AGENTS.md` and added a one-line `@AGENTS.md` stub `CLAUDE.md` next to it, per ADR 0004. Edit rules in `AGENTS.md` only; the content itself did not change.
+
+### 2026-09-28 — e2e session (SPEC-02 Skills)
+Added read-only `11-skills.flow.json`. Ran all 11 flows against a hand-built isolated stack (fresh DB, API :3401, web :3400) because `./scripts/e2e.sh` dies on pnpm's IGNORED_BUILDS preflight here; 11/11 green. Starting that second `next dev` in the same `client/` broke the :3300 dev web (known root INSIGHTS entry), fixed by restarting it.
 
 ## Open Questions
 

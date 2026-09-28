@@ -37,9 +37,24 @@ export const ToolCall = z.object({
 });
 export type ToolCall = z.infer<typeof ToolCall>;
 
+/** One skill as it went into a run's prompt (SPEC-02 AC-27). */
+export const SkillUsed = z.object({
+  id: z.string(),
+  name: z.string(),
+  version: z.number().int(),
+  sha256: z.string(),
+  tokens: z.number().int(),
+});
+export type SkillUsed = z.infer<typeof SkillUsed>;
+
 export const PromptAssembly = z.object({
   system: z.string(),
   skills: z.string().nullish(),
+  // SPEC-02. .nullish(): traces written before L02 lack these keys entirely.
+  /** ≈ tokens of the skills block for ONE model call (chars / 4 estimate). */
+  skills_tokens: z.number().int().nullish(),
+  /** Snapshot of the skills resolved at run start, in prompt order. */
+  skills_used: z.array(SkillUsed).nullish(),
   memory: z.string().nullish(),
   specs: z.string().nullish(),
   /** Callers-of-changed-symbols digest (T1.3); null when absent. */

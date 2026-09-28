@@ -9,6 +9,8 @@ in the DB). The canonical, reviewable copies live next to this file:
 - [`general-reviewer.md`](./general-reviewer.md)
 - [`security-reviewer.md`](./security-reviewer.md)
 - [`performance-reviewer.md`](./performance-reviewer.md)
+- [`test-quality-reviewer.md`](./test-quality-reviewer.md)
+- [`api-contract-reviewer.md`](./api-contract-reviewer.md)
 
 > The DB is the source of truth at run time. These files are the human-readable
 > originals — when you change a prompt, edit the file here **and** push it to the
@@ -19,13 +21,24 @@ in the DB). The canonical, reviewable copies live next to this file:
 Assembly happens in `reviewer-core/src/prompt.ts` (`assemblePrompt`). The model
 receives exactly two messages:
 
-**System message** = your agent prompt **+** a fixed injection guard:
+**System message** = your agent prompt **+** the agent's effective skills **+** a
+fixed injection guard:
 
 ```
 <your system_prompt>
 
-<INJECTION_GUARD>   // appended verbatim to EVERY agent, every run
+<skills>            // only when the agent has enabled, vetted skills (SPEC-02)
+### <skill-name>
+<body>
+</skills>
+
+<INJECTION_GUARD>   // appended verbatim to EVERY agent, every run — always last
 ```
+
+Skills sit before the guard on purpose (ADR 0012): the guard gets the last word, and
+it states that skills may add checks but never waive findings. Keep detailed
+checklists in skills rather than in the agent prompt, so you can switch them per
+agent and see their effect in the run trace.
 
 `INJECTION_GUARD` (`prompt.ts:16`) tells the model that everything inside
 `<untrusted>…</untrusted>` is data, never instructions, and that claims like "test
@@ -38,7 +51,6 @@ delimiter-wrapped (`prompt.ts:104-122`):
 ```
 <task line, e.g. "Review PR #7 '…'">
 ## PR description        (untrusted, author-controlled, truncated to 4000 chars)
-## Skills / rules        (linked skill bodies)
 ## Relevant memory       (curated memory items)
 ## Repo skeleton         (untrusted, repo-derived)
 ## Project context       (untrusted spec chunks)

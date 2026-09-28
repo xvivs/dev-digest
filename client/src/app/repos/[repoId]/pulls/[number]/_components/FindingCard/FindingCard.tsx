@@ -1,27 +1,30 @@
 /* FindingCard — ported from findings.jsx (createElement → TSX).
    Severity icon+label, category, file:line, confidence, markdown rationale +
    suggestion, accept/dismiss actions. Accept/dismiss reflect persisted
-   timestamps. */
+   timestamps.
+
+   The header is a Disclosure: badge + title row + chevron live in the toggle
+   <button>; the file:line link sits in `actions` (a link inside a button is
+   invalid HTML and unreachable by Tab) and wraps onto its own line under the
+   title, indented past the badge column, so the card reads as before. */
 "use client";
 
 import React from "react";
 import { useTranslations } from "next-intl";
 import {
-  Icon,
   SeverityBadge,
   CategoryTag,
   MonoLink,
   ConfidenceNum,
   Button,
-  Collapse,
+  Disclosure,
+  DisclosureChevron,
   Markdown,
-  type Severity,
-  type Category,
+  SEV,
 } from "@devdigest/ui";
 import type { FindingRecord, FindingActionKind } from "@devdigest/shared";
-import { SEV_COLOR, SEV_COLOR_FALLBACK } from "./constants";
-import { lineLabel } from "./helpers";
-import { githubBlobUrl } from "../../../../../../../lib/github-urls";
+import { lineLabel } from "@/components/findings-popover";
+import { githubBlobUrl } from "@/lib/github-urls";
 import { s } from "./styles";
 
 export function FindingCard({
@@ -42,9 +45,7 @@ export function FindingCard({
   headSha?: string | null;
 }) {
   const t = useTranslations("prReview");
-  const [expanded, setExpanded] = React.useState(defaultExpanded ?? false);
-  const bodyId = React.useId();
-  const sevColor = SEV_COLOR[f.severity] ?? SEV_COLOR_FALLBACK;
+  const sevColor = SEV[f.severity].c;
   const fileHref =
     repoFullName && headSha
       ? githubBlobUrl(repoFullName, headSha, f.file, f.start_line, f.end_line)
@@ -55,52 +56,43 @@ export function FindingCard({
 
   return (
     <div data-finding-id={f.id} style={s.card(!!focused, sevColor, muted)}>
-      <div
-        role="button"
-        tabIndex={0}
-        aria-expanded={expanded}
-        aria-controls={bodyId}
-        onClick={() => setExpanded((e) => !e)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") {
-            // Space scrolls the page by default, and the card is inside a
-            // scroll container — the toggle would be invisible.
-            e.preventDefault();
-            setExpanded((x) => !x);
-          }
-        }}
-        style={s.header}
-      >
-        <div style={s.badgeWrap}>
-          <SeverityBadge severity={f.severity as Severity} compact />
-        </div>
-        <div style={s.headerMain}>
-          <div style={s.titleRow}>
-            <span style={s.title(muted, dismissed)}>{f.title}</span>
-            <CategoryTag category={f.category as Category} />
-            {accepted && <span style={s.acceptedTag}>{t("finding.accepted")}</span>}
-            {dismissed && <span style={s.dismissedTag}>{t("finding.dismissed")}</span>}
-          </div>
+      <Disclosure
+        defaultOpen={defaultExpanded ?? false}
+        headerStyle={s.header}
+        header={(open) => (
+          <>
+            <div style={s.badgeWrap}>
+              <SeverityBadge severity={f.severity} compact />
+            </div>
+            <div style={s.headerMain}>
+              <div style={s.titleRow}>
+                <span style={s.title(muted, dismissed)}>{f.title}</span>
+                <CategoryTag category={f.category} />
+                {accepted && <span style={s.acceptedTag}>{t("finding.accepted")}</span>}
+                {dismissed && <span style={s.dismissedTag}>{t("finding.dismissed")}</span>}
+              </div>
+            </div>
+            <DisclosureChevron open={open} style={s.chevron} />
+          </>
+        )}
+        actions={
           <div style={s.metaRow}>
             <MonoLink href={fileHref}>
               {f.file}:{lineLabel(f)}
             </MonoLink>
             <ConfidenceNum value={f.confidence} />
           </div>
-        </div>
-        <Icon.ChevronDown size={16} style={s.chevron(expanded)} />
-      </div>
-
-      <Collapse open={expanded} id={bodyId}>
+        }
+      >
         <div style={s.body}>
           <div style={s.prose}>
-            <Markdown>{f.rationale}</Markdown>
+            <Markdown safe>{f.rationale}</Markdown>
           </div>
           {f.suggestion && (
             <div style={s.suggestionWrap}>
               <div style={s.suggestionLabel}>{t("finding.suggestedFix")}</div>
               <div style={s.prose}>
-                <Markdown>{f.suggestion}</Markdown>
+                <Markdown safe>{f.suggestion}</Markdown>
               </div>
             </div>
           )}
@@ -128,7 +120,7 @@ export function FindingCard({
             </Button>
           </div>
         </div>
-      </Collapse>
+      </Disclosure>
     </div>
   );
 }

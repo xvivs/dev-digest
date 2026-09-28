@@ -5,9 +5,10 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { type ShellContext } from "@devdigest/ui";
-import { useTheme } from "../../../lib/theme";
-import { useActiveRepo } from "../../../lib/repo-context";
-import { usePulls, useDeleteRepo } from "../../../lib/hooks";
+import { useTheme } from "@/lib/theme";
+import { useActiveRepo } from "@/lib/repo-context";
+import { usePulls, useDeleteRepo } from "@/lib/hooks";
+import { countNeedsReview } from "@/lib/pr-status";
 import { activeKeyFor, toShellRepo } from "../helpers";
 
 interface ShellContextOptions {
@@ -57,13 +58,20 @@ export function useShellContext({ onOpenCommandPalette }: ShellContextOptions): 
     [repos, repoId, t, deleteRepo, router],
   );
 
+  const syncedLabel = React.useCallback(
+    (synced: boolean) => t(synced ? "repo.synced" : "repo.notSynced"),
+    [t],
+  );
+
   return React.useMemo<ShellContext>(
     () => ({
       Link,
+      // Sidebar nav labels come from `shell.nav.*` via each item's labelKey (D6).
+      translateNav: t,
       activeKey: activeKeyFor(pathname),
       repoId,
-      repos: repos.map(toShellRepo),
-      activeRepo: activeRepo ? toShellRepo(activeRepo) : null,
+      repos: repos.map((r) => toShellRepo(r, syncedLabel)),
+      activeRepo: activeRepo ? toShellRepo(activeRepo, syncedLabel) : null,
       theme,
       onToggleTheme: toggle,
       onOpenCommandPalette,
@@ -72,9 +80,11 @@ export function useShellContext({ onOpenCommandPalette }: ShellContextOptions): 
       onRemoveRepo,
       // Sidebar badge = PRs that still NEED review, not the total PR count.
       // 0 → undefined so the badge hides entirely when nothing needs review.
-      prCount: pulls?.filter((p) => p.status === "needs_review").length || undefined,
+      prCount: countNeedsReview(pulls) || undefined,
     }),
     [
+      t,
+      syncedLabel,
       pathname,
       repoId,
       repos,

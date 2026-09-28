@@ -5,7 +5,8 @@
 import React from "react";
 import { useTranslations } from "next-intl";
 import { Textarea, Button } from "@devdigest/ui";
-import { cs, type DiffCommentApi } from "../comments";
+import type { DiffCommentApi } from "../comments";
+import { cs } from "../styles";
 
 export function InlineComposer({
   commenting,
@@ -22,7 +23,7 @@ export function InlineComposer({
   inReplyTo?: number;
   onClose: () => void;
 }) {
-  const t = useTranslations("shell");
+  const t = useTranslations("diffViewer");
   const [text, setText] = React.useState("");
   const submit = async () => {
     const body = text.trim();
@@ -53,7 +54,7 @@ export function InlineComposer({
         value={text}
         onChange={setText}
         rows={3}
-        placeholder={t("diffViewer.commentPlaceholder")}
+        placeholder={t("commentPlaceholder")}
       />
       <div style={cs.composerActions}>
         <Button
@@ -64,12 +65,12 @@ export function InlineComposer({
           disabled={commenting.posting || !text.trim()}
           onClick={() => void submit()}
         >
-          {t("diffViewer.post")}
+          {t("post")}
         </Button>
         <Button kind="ghost" size="sm" onClick={onClose} disabled={commenting.posting}>
-          {t("diffViewer.cancel")}
+          {t("cancel")}
         </Button>
-        <span style={cs.hint}>{t("diffViewer.postedToGitHub")}</span>
+        <span style={cs.hint}>{t("postedToGitHub")}</span>
       </div>
     </div>
   );

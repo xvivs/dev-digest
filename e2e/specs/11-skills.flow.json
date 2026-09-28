@@ -1,0 +1,25 @@
+{
+  "name": "Skills page lists seeded skills and an agent's Skills tab shows its links",
+  "description": "SPEC-02 read-only path: /skills renders the seeded skills with their agent count, a card opens the editor on the Config tab, and the Test Quality Reviewer's Skills tab shows its four enabled links out of the workspace's five seeded skills.",
+  "steps": [
+    { "cmd": ["open", "{BASE}/skills"], "label": "load the skills page" },
+    { "cmd": ["wait", "--url", "/skills"], "label": "skills route reached" },
+    { "cmd": ["wait", "--load", "networkidle"], "label": "skills fetch settles" },
+    { "cmd": ["wait", "--text", "branch-coverage-gate"], "label": "seeded skill card is visible" },
+    { "cmd": ["wait", "--text", "route-signature-diff"], "label": "second agent's seeded skill is visible" },
+    { "cmd": ["wait", "--text", "1 agent"], "label": "agent count renders on the card" },
+    { "cmd": ["find", "text", "branch-coverage-gate", "click"], "label": "open the skill from its name (find role link does not match Next <Link> here; the wait --url below proves the click landed)" },
+    { "cmd": ["wait", "--url", "tab=config"], "label": "editor opens on the Config tab" },
+    { "cmd": ["wait", "--text", "Configuration"], "label": "Config form rendered" },
+    { "cmd": ["open", "{BASE}/agents"], "label": "load the agents page" },
+    { "cmd": ["wait", "--load", "networkidle"], "label": "agents fetch settles" },
+    { "cmd": ["wait", "--text", "4 skills"], "label": "Test Quality Reviewer card shows its enabled skill count" },
+    { "cmd": ["find", "text", "Test Quality Reviewer", "click"], "label": "open the Test Quality Reviewer" },
+    { "cmd": ["wait", "--url", "/agents/"], "label": "agent editor route reached" },
+    { "cmd": ["wait", "--text", "Config"], "label": "agent editor tabs rendered (the URL changes before the editor mounts)" },
+    { "cmd": ["find", "role", "button", "click", "--name", "Skills", "--exact"], "label": "switch to the Skills tab" },
+    { "cmd": ["wait", "--url", "tab=skills"], "label": "Skills tab is in the URL" },
+    { "cmd": ["wait", "--text", "4 of 5 enabled"], "label": "enabled counter reflects the seeded links" },
+    { "cmd": ["wait", "--text", "Changes save automatically"], "label": "autosave hint is shown" }
+  ]
+}

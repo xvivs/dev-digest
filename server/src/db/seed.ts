@@ -6,12 +6,182 @@ import {
   GENERAL_REVIEWER_PROMPT,
   SECURITY_REVIEWER_PROMPT,
   PERFORMANCE_REVIEWER_PROMPT,
+  TEST_QUALITY_REVIEWER_PROMPT,
+  API_CONTRACT_REVIEWER_PROMPT,
 } from './seed-prompts.js';
+import { TEST_QUALITY_SKILLS, API_CONTRACT_SKILLS, type SeedSkillDef } from './seed-skills.js';
 import type { RunTrace, CostSource } from '@devdigest/shared';
 
 /** Default provider/model for the built-in reviewer agents. */
 const DEFAULT_PROVIDER = 'openrouter' as const;
 const DEFAULT_MODEL = 'deepseek/deepseek-v4-flash';
+
+// ---- SPEC-02 control-experiment pr_files fixtures ---------------------
+// Exported (not inlined below) so `seed-diffs.test.ts` can feed the exact
+// same patch text through `parseUnifiedDiff` — the same reconstruction
+// `diffFromPrFiles` does — without a database. Line numbers cited in
+// specs/02-skills-rubric.md are the NEW-side numbers these hunks produce;
+// change a patch here and that rubric doc goes stale.
+
+export type SeedPrFile = {
+  path: string;
+  additions: number;
+  deletions: number;
+  patch: string;
+};
+
+/** #490 "Add refund amount validation" — the new `amount > captured` branch
+ *  (and its equality boundary) ships with no test; the one new test only
+ *  covers the pre-existing happy path. */
+export const PR_490_FILES: SeedPrFile[] = [
+  {
+    path: 'src/refunds/service.ts',
+    additions: 4,
+    deletions: 0,
+    patch: `@@ -1,12 +1,16 @@
+ import { RefundError } from './errors';
+ import { refundsRepo } from './repository';
+ import type { Payment, Refund } from './types';
+
+ export async function createRefund(payment: Payment, amount: number): Promise<Refund> {
++  if (amount > payment.captured) {
++    throw new RefundError('exceeds_captured');
++  }
++
+   const refund = await refundsRepo.create({
+     paymentId: payment.id,
+     amount,
+   });
+
+   return refund;
+ }`,
+  },
+  {
+    path: 'src/refunds/service.test.ts',
+    additions: 11,
+    deletions: 0,
+    patch: `@@ -0,0 +1,11 @@
++import { describe, it, expect } from 'vitest';
++import { createRefund } from './service';
++
++describe('createRefund', () => {
++  it('creates a refund when amount is within the captured total', async () => {
++    const payment = { id: 'pay_1', captured: 5000 };
++    const refund = await createRefund(payment as any, 2000);
++
++    expect(refund.amount).toBe(2000);
++  });
++});`,
+  },
+];
+
+/** #491 "Use paymentId route param and require currency" — route param
+ *  rename, `currency` becomes required, and the response field
+ *  `amount_cents` is renamed `amountCents`; none versioned or deprecated. */
+export const PR_491_FILES: SeedPrFile[] = [
+  {
+    path: 'src/api/payments.ts',
+    additions: 5,
+    deletions: 5,
+    patch: `@@ -1,31 +1,31 @@
+ import { z } from 'zod';
+ import type { FastifyPluginAsync } from 'fastify';
+ import { paymentsRepo } from './repository';
+
+ const CreatePaymentBody = z.object({
+   amount: z.number().int().positive(),
+-  currency: z.string().length(3).default('USD'),
++  currency: z.string().length(3),
+ });
+
+ export const paymentsRoutes: FastifyPluginAsync = async (app) => {
+-  app.get('/payments/:id', async (req) => {
+-    const payment = await paymentsRepo.findById(req.params.id);
++  app.get('/payments/:paymentId', async (req) => {
++    const payment = await paymentsRepo.findById(req.params.paymentId);
+     return {
+       id: payment.id,
+-      amount_cents: payment.amountCents,
++      amountCents: payment.amountCents,
+       currency: payment.currency,
+       status: payment.status,
+     };
+   });
+
+   app.post('/payments', async (req) => {
+     const body = CreatePaymentBody.parse(req.body);
+     const payment = await paymentsRepo.create(body);
+     return {
+       id: payment.id,
+-      amount_cents: payment.amountCents,
++      amountCents: payment.amountCents,
+       currency: payment.currency,
+       status: payment.status,
+     };
+   });
+ };`,
+  },
+];
+
+/** #492 (held-out) "Paginate list refunds" — response shape becomes
+ *  `{ items, next_cursor }` (breaking, no versioning) and adds an untested
+ *  `if (!cursor.valid) return 400` branch; the one new test only covers the
+ *  first page. */
+export const PR_492_FILES: SeedPrFile[] = [
+  {
+    path: 'src/api/refunds.ts',
+    additions: 16,
+    deletions: 7,
+    patch: `@@ -1,13 +1,22 @@
+ import type { FastifyPluginAsync } from 'fastify';
+ import { refundsRepo } from './repository';
++import { parseCursor } from './cursor';
+
+ export const refundsRoutes: FastifyPluginAsync = async (app) => {
+-  app.get('/refunds', async (req) => {
+-    const refunds = await refundsRepo.list();
+-    return refunds.map((r) => ({
+-      id: r.id,
+-      amount: r.amount,
+-      status: r.status,
+-    }));
++  app.get('/refunds', async (req, reply) => {
++    const cursor = parseCursor(req.query.cursor);
++    if (!cursor.valid) {
++      return reply.code(400).send({ error: 'invalid_cursor' });
++    }
++
++    const page = await refundsRepo.list({ after: cursor.value, limit: 20 });
++    return {
++      items: page.refunds.map((r) => ({
++        id: r.id,
++        amount: r.amount,
++        status: r.status,
++      })),
++      next_cursor: page.nextCursor,
++    };
+   });
+ };`,
+  },
+  {
+    path: 'src/api/refunds.test.ts',
+    additions: 12,
+    deletions: 0,
+    patch: `@@ -0,0 +1,12 @@
++import { describe, it, expect } from 'vitest';
++import { buildApp } from '../test/helpers/app';
++
++describe('GET /refunds', () => {
++  it('returns the first page of refunds', async () => {
++    const app = await buildApp();
++    const res = await app.inject({ method: 'GET', url: '/refunds' });
++
++    expect(res.statusCode).toBe(200);
++    expect(res.json()).toMatchObject({ items: expect.any(Array) });
++  });
++});`,
+  },
+];
 
 // ---- run_traces helper ------------------------------------------------
 // Every seeded agent_runs row should get a matching run_traces document —
@@ -126,18 +296,27 @@ function traceFor(
  * workspace/user and the demo fixtures.
  *
  * Seeds: default workspace + system user + membership, default settings,
- * demo repo (acme/payments-api), four PRs with files/commits, sample reviews
- * with findings, and the three built-in agents (General + Security +
- * Performance), all on the default openrouter/deepseek-v4-flash provider+model.
+ * demo repo (acme/payments-api), seven PRs with files/commits, sample reviews
+ * with findings, five built-in agents (General + Security + Performance +
+ * Test Quality + API Contract), all on the default
+ * openrouter/deepseek-v4-flash provider+model, and the SPEC-02 skills linked
+ * to the two newest agents.
  *
- * The four PRs are chosen so the Pull Requests list shows every column state
- * on a clean seed: #482 needs_review (4 findings across all three severities,
- * one below the low-confidence cutoff), #479 needs_review (head moved since the
- * review), #477 reviewed (1 suggestion), #460 stale (no review at all → a dash
- * in SCORE / FINDINGS / COST).
+ * The first four PRs are chosen so the Pull Requests list shows every column
+ * state on a clean seed: #482 needs_review (4 findings across all three
+ * severities, one below the low-confidence cutoff), #479 needs_review (head
+ * moved since the review), #477 reviewed (1 suggestion), #460 stale (no
+ * review at all → a dash in SCORE / FINDINGS / COST).
  *
- * Course lessons populate the other tables (skills, conventions, memory, eval,
- * …) once their features are built — they start empty here.
+ * #490 / #491 / #492 are the SPEC-02 control experiment's fixtures: real
+ * pr_files.patch unified diffs (this repo's clonePath is null, so every
+ * review of them goes through the diffFromPrFiles fallback), each carrying
+ * exactly one seeded defect for Test Quality Reviewer / API Contract
+ * Reviewer to catch — see specs/02-skills-rubric.md for the expected finding
+ * per PR, written before any run.
+ *
+ * Course lessons populate the other tables (conventions, memory, eval, …)
+ * once their features are built — they start empty here.
  */
 
 export const DEFAULT_WORKSPACE_NAME = 'default';
@@ -357,6 +536,34 @@ export async function seed(db: Db): Promise<{ workspaceId: string; userId: strin
       version: 1,
       createdBy: userId,
     },
+    {
+      // SPEC-02 control-experiment agent. Its checklists live in skills
+      // (see seed-skills.ts / the linking pass below), not in this prompt.
+      workspaceId,
+      name: 'Test Quality Reviewer',
+      description:
+        'Finds uncovered branches, missing corner/boundary cases, over-mocking, and flaky test patterns.',
+      provider: DEFAULT_PROVIDER,
+      model: DEFAULT_MODEL,
+      systemPrompt: TEST_QUALITY_REVIEWER_PROMPT,
+      enabled: true,
+      version: 1,
+      createdBy: userId,
+    },
+    {
+      // SPEC-02 control-experiment agent. Its checklist lives in the
+      // route-signature-diff skill, not in this prompt.
+      workspaceId,
+      name: 'API Contract Reviewer',
+      description:
+        'Finds breaking changes in HTTP routes, params, request/response schemas, and status codes.',
+      provider: DEFAULT_PROVIDER,
+      model: DEFAULT_MODEL,
+      systemPrompt: API_CONTRACT_REVIEWER_PROMPT,
+      enabled: true,
+      version: 1,
+      createdBy: userId,
+    },
   ];
   for (const a of seedAgents) {
     const [existing] = await db
@@ -374,6 +581,48 @@ export async function seed(db: Db): Promise<{ workspaceId: string; userId: strin
     .from(t.agents)
     .where(eq(t.agents.workspaceId, workspaceId));
   const agentIdByName = new Map(agentRows.map((a) => [a.name, a.id]));
+
+  // ---- skills (SPEC-02) ----
+  // Idempotent by (workspace, name) — same select-then-insert shape as the
+  // agents above; `skills_workspace_name_uq` is the DB-level backstop.
+  async function upsertSkill(def: SeedSkillDef): Promise<string> {
+    const [existing] = await db
+      .select({ id: t.skills.id })
+      .from(t.skills)
+      .where(and(eq(t.skills.workspaceId, workspaceId), eq(t.skills.name, def.name)));
+    if (existing) return existing.id;
+    const [created] = await db
+      .insert(t.skills)
+      .values({
+        workspaceId,
+        name: def.name,
+        description: def.description,
+        type: def.type,
+        source: 'manual',
+        body: def.body,
+        enabled: true,
+        version: 1,
+      })
+      .returning({ id: t.skills.id });
+    return created!.id;
+  }
+
+  /** Link `defs` to `agentId` in order, enabled. Idempotent: the composite PK
+   *  (agent_id, skill_id) makes a second seed run a no-op via
+   *  onConflictDoNothing rather than a duplicate row. */
+  async function linkSkills(agentId: string | undefined, defs: SeedSkillDef[]): Promise<void> {
+    if (!agentId) return;
+    for (const [order, def] of defs.entries()) {
+      const skillId = await upsertSkill(def);
+      await db
+        .insert(t.agentSkills)
+        .values({ agentId, skillId, order, enabled: true })
+        .onConflictDoNothing();
+    }
+  }
+
+  await linkSkills(agentIdByName.get('Test Quality Reviewer'), TEST_QUALITY_SKILLS);
+  await linkSkills(agentIdByName.get('API Contract Reviewer'), API_CONTRACT_SKILLS);
 
   // ---- run history for the Cost Badge (PR #482) ----
   // Three runs covering all three states the UI must render: a 'provider'
@@ -807,6 +1056,134 @@ export async function seed(db: Db): Promise<{ workspaceId: string; userId: strin
       prId: pr460!.id,
       sha: '9ab7150c33e2',
       message: 'Bump the CI node matrix to 20',
+      author: 'deepak.r',
+    });
+  }
+
+  // ---- SPEC-02 control experiment: #490 / #491 / #492 on acme/payments-api ----
+  // Real unified-diff hunks in pr_files.patch (valid `@@ -a,b +c,d @@` headers
+  // parseUnifiedDiff accepts), so diffFromPrFiles reconstructs a real diff —
+  // this repo's clonePath is null, so every review of these PRs goes through
+  // that fallback (see diff-loader.ts). Line numbers cited below are the
+  // NEW-side numbers `parseUnifiedDiff` derives from these exact hunks;
+  // specs/02-skills-rubric.md was written from the same numbers, before any
+  // run. Titles/bodies deliberately do not hint at the seeded defect.
+
+  // #490 — refund amount validation: the new `amount > captured` branch (and
+  // its exact-equality boundary) has no test; the diff's one new test only
+  // covers the pre-existing happy path.
+  let [pr490] = await db
+    .select()
+    .from(t.pullRequests)
+    .where(and(eq(t.pullRequests.repoId, repoId), eq(t.pullRequests.number, 490)));
+  if (!pr490) {
+    [pr490] = await db
+      .insert(t.pullRequests)
+      .values({
+        workspaceId,
+        repoId,
+        number: 490,
+        title: 'Add refund amount validation',
+        author: 'priya.nair',
+        branch: 'feat/refund-amount-validation',
+        base: 'main',
+        headSha: 'f1a02c9de001',
+        additions: 15,
+        deletions: 0,
+        filesCount: 2,
+        status: 'open',
+        openedAt: new Date(nowMs - 3 * HOUR_MS),
+        updatedAt: new Date(nowMs - 3 * HOUR_MS),
+        body: 'Reject a refund that would exceed the amount captured on the original payment.',
+      })
+      .returning();
+
+    await db.insert(t.prFiles).values(PR_490_FILES.map((f) => ({ prId: pr490!.id, ...f })));
+
+    await db.insert(t.prCommits).values({
+      prId: pr490!.id,
+      sha: 'f1a02c9de001',
+      message: 'Reject refunds that exceed the captured amount',
+      author: 'priya.nair',
+    });
+  }
+
+  // #491 — payments route: `/payments/:id` → `/payments/:paymentId`, `currency`
+  // becomes required (was optional with a default), and the response field
+  // `amount_cents` is renamed `amountCents` — all three breaking, none
+  // versioned or deprecated.
+  let [pr491] = await db
+    .select()
+    .from(t.pullRequests)
+    .where(and(eq(t.pullRequests.repoId, repoId), eq(t.pullRequests.number, 491)));
+  if (!pr491) {
+    [pr491] = await db
+      .insert(t.pullRequests)
+      .values({
+        workspaceId,
+        repoId,
+        number: 491,
+        title: 'Use paymentId route param and require currency',
+        author: 'priya.nair',
+        branch: 'refactor/payments-route-params',
+        base: 'main',
+        headSha: 'b2c4e8f1a003',
+        additions: 5,
+        deletions: 5,
+        filesCount: 1,
+        status: 'open',
+        openedAt: new Date(nowMs - 2 * HOUR_MS),
+        updatedAt: new Date(nowMs - 2 * HOUR_MS),
+        body: 'Clean up the payments route: consistent param naming and an explicit currency on every create.',
+      })
+      .returning();
+
+    await db.insert(t.prFiles).values(PR_491_FILES.map((f) => ({ prId: pr491!.id, ...f })));
+
+    await db.insert(t.prCommits).values({
+      prId: pr491!.id,
+      sha: 'b2c4e8f1a003',
+      message: 'Rename payments route param and require currency explicitly',
+      author: 'priya.nair',
+    });
+  }
+
+  // #492 (held-out) — list refunds moves from a bare array to
+  // `{ items, next_cursor }` (breaking, no versioning) and adds an untested
+  // `if (!cursor.valid) return 400` branch; the one new test only covers the
+  // first page.
+  let [pr492] = await db
+    .select()
+    .from(t.pullRequests)
+    .where(and(eq(t.pullRequests.repoId, repoId), eq(t.pullRequests.number, 492)));
+  if (!pr492) {
+    [pr492] = await db
+      .insert(t.pullRequests)
+      .values({
+        workspaceId,
+        repoId,
+        number: 492,
+        title: 'Paginate list refunds',
+        author: 'deepak.r',
+        branch: 'feat/paginate-list-refunds',
+        base: 'main',
+        headSha: 'c3d5f9a2b004',
+        additions: 28,
+        deletions: 7,
+        filesCount: 2,
+        status: 'open',
+        openedAt: new Date(nowMs - HOUR_MS),
+        updatedAt: new Date(nowMs - HOUR_MS),
+        body: 'The refunds list is unbounded today; add cursor-based pagination ahead of the dashboard redesign.',
+      })
+      .returning();
+
+    await db.insert(t.prFiles).values(PR_492_FILES.map((f) => ({ prId: pr492!.id, ...f })));
+
+    await db.insert(t.prCommits).values({
+      prId: pr492!.id,
+      sha: 'c3d5f9a2b004',
+      message: 'Paginate the refunds list with a cursor',
       author: 'deepak.r',
     });
   }

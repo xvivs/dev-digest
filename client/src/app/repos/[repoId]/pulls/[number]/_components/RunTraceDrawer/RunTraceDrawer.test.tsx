@@ -1,9 +1,10 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { render, screen, cleanup, fireEvent } from "@testing-library/react";
-import { NextIntlClientProvider } from "next-intl";
+import { screen, cleanup, fireEvent } from "@testing-library/react";
 import type { RunTrace } from "@devdigest/shared";
-import messages from "../../../../../../../../messages/en/runs.json"; // apps/web/messages/en/runs.json
-import costMessages from "../../../../../../../../messages/en/cost.json";
+import runs from "@/../messages/en/runs.json";
+import cost from "@/../messages/en/cost.json";
+import shell from "@/../messages/en/shell.json";
+import { renderWithProviders } from "@/test/render";
 
 // Mock the trace hooks so the drawer renders without a query client / SSE.
 const TRACE: RunTrace = {
@@ -29,23 +30,25 @@ const TRACE: RunTrace = {
   ],
 };
 
-vi.mock("../../../../../../../lib/hooks/trace", () => ({
+vi.mock("@/lib/hooks/trace", () => ({
   useRunTrace: () => ({ data: TRACE, isLoading: false }),
 }));
-vi.mock("../../../../../../../lib/hooks/reviews", () => ({
+vi.mock("@/lib/hooks/reviews", () => ({
   useRunEvents: () => ({ events: [], running: false }),
 }));
+// TraceBody reads this to tell a deleted skill from a live one (SPEC-02
+// AC-27); this fixture's trace predates skills_used, so the value is unused
+// here — mocked only so the test stays hermetic (no real fetch).
+vi.mock("@/lib/hooks/skills", () => ({
+  useSkills: () => ({ data: [], isLoading: false }),
+}));
 
-import RunTraceDrawer from "./RunTraceDrawer";
+import { RunTraceDrawer } from "./RunTraceDrawer";
 
 afterEach(cleanup);
 
 function renderWithIntl(ui: React.ReactElement) {
-  return render(
-    <NextIntlClientProvider locale="en" messages={{ runs: messages, cost: costMessages }}>
-      <div data-theme="dark">{ui}</div>
-    </NextIntlClientProvider>,
-  );
+  return renderWithProviders(<div data-theme="dark">{ui}</div>, { namespaces: { runs, cost, shell } });
 }
 
 describe("A5 Run Trace drawer (smoke)", () => {
@@ -65,8 +68,29 @@ describe("A5 Run Trace drawer (smoke)", () => {
 
   it("switches to the live log tab", () => {
     renderWithIntl(<RunTraceDrawer runId="r1" agentName="Security" prNumber={482} onClose={() => {}} />);
-    fireEvent.click(screen.getByText("log"));
+    fireEvent.click(screen.getByRole("button", { name: "log" }));
     // LiveLogStream renders its filter input
     expect(screen.getByPlaceholderText("Filter log…")).toBeInTheDocument();
+  });
+
+  it("is a dialog named by its title, with a translated close button", () => {
+    const onClose = vi.fn();
+    renderWithIntl(<RunTraceDrawer runId="r1" agentName="Security" prNumber={482} onClose={onClose} />);
+    expect(screen.getByRole("dialog", { name: "Agent run · Security" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("opens a collapsed trace section from its header button", () => {
+    renderWithIntl(<RunTraceDrawer runId="r1" agentName="Security" prNumber={482} onClose={() => {}} />);
+    const section = screen.getByRole("button", { name: "Prompt assembly" });
+    expect(section).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByText("System")).not.toBeInTheDocument();
+    fireEvent.click(section);
+    expect(section).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("button", { name: /^System/ })).toBeInTheDocument();
+    // Copy / fullscreen are siblings of the prompt toggle, not nested in it.
+    const fullscreen = screen.getAllByRole("button", { name: "Open fullscreen" })[0]!;
+    expect(screen.getByRole("button", { name: /^System/ })).not.toContainElement(fullscreen);
   });
 });

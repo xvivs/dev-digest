@@ -9,12 +9,12 @@
  * review behind it would be a button that goes nowhere.
  */
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { render, screen, cleanup, fireEvent } from "@testing-library/react";
-import { NextIntlClientProvider } from "next-intl";
+import { screen, cleanup, fireEvent } from "@testing-library/react";
 import type { FindingRecord, RunSummary, Severity, SeverityCounts } from "@devdigest/shared";
-import messages from "../../../../../../../../messages/en/prReview.json";
-import costMessages from "../../../../../../../../messages/en/cost.json";
-import findingsMessages from "../../../../../../../../messages/en/findings.json";
+import messages from "@/../messages/en/prReview.json";
+import costMessages from "@/../messages/en/cost.json";
+import findingsMessages from "@/../messages/en/findings.json";
+import { renderWithProviders } from "@/test/render";
 import { RunHistory } from "./RunHistory";
 
 afterEach(cleanup);
@@ -73,14 +73,9 @@ function renderRuns(
     onDelete?: (runId: string) => void;
   } = {},
 ) {
-  return render(
-    <NextIntlClientProvider
-      locale="en"
-      messages={{ prReview: messages, cost: costMessages, findings: findingsMessages }}
-    >
-      <RunHistory runs={runs} onOpenTrace={() => {}} {...extra} />
-    </NextIntlClientProvider>,
-  );
+  return renderWithProviders(<RunHistory runs={runs} onOpenTrace={() => {}} {...extra} />, {
+    namespaces: { prReview: messages, cost: costMessages, findings: findingsMessages },
+  });
 }
 
 describe("RunHistory — outcome badge", () => {
@@ -101,7 +96,7 @@ describe("RunHistory — outcome badge", () => {
   it("a done run with non-blocking findings reads 'reviewed'", () => {
     renderRuns([run({ status: "done", findings_count: 3, blockers: 0, score: 72 })]);
     expect(screen.getByText("reviewed")).toBeInTheDocument();
-    expect(screen.queryByText(/blockers/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/blocker/)).not.toBeInTheDocument();
   });
 
   it("a failed run reads 'error'", () => {
@@ -173,7 +168,7 @@ describe("RunHistory — severity strip", () => {
     expect(screen.getByRole("button", { name: "1 Critical finding" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "2 Warning findings" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Suggestion findings/ })).not.toBeInTheDocument();
-    expect(screen.getByText(/1 blockers/)).toBeInTheDocument();
+    expect(screen.getByText(/· 1 blocker$/)).toBeInTheDocument();
   });
 
   it("clicking a chip asks the tab to open that run filtered to that severity", () => {
@@ -195,7 +190,7 @@ describe("RunHistory — severity strip", () => {
     });
 
     expect(screen.queryByRole("button", { name: /findings$/ })).not.toBeInTheDocument();
-    expect(screen.getByText(/1 blockers/)).toBeInTheDocument();
+    expect(screen.getByText(/· 1 blocker$/)).toBeInTheDocument();
   });
 });
 

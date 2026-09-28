@@ -57,9 +57,11 @@ export function PrFindingsCell({ pr, repoId }: { pr: PrMeta; repoId: string }) {
   }
 
   return (
-    // The row itself navigates on click; the cell owns its own interactions, so
-    // it swallows the click rather than letting the row hijack a severity pick.
-    <div style={s.findingsCell} onClick={(e) => e.stopPropagation()}>
+    // The row navigates through a stretched link (PRRow). This cell is its
+    // sibling, not its child, and sits above the link's hit area, so a severity
+    // pick never reaches the row. It still swallows the click so a row-level
+    // handler added later cannot hijack it either.
+    <div style={s.findingsCellInteractive} onClick={(e) => e.stopPropagation()}>
       <FindingsPopover
         total={total}
         findings={review?.findings}

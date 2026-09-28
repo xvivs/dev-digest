@@ -1,79 +1,94 @@
 /* PromptBlock — one labelled, collapsible prompt segment with copy + fullscreen
-   actions; fullscreen opens PromptModalBody in a Modal. */
+   actions; fullscreen opens PromptModalBody in a Modal.
+
+   The header is a Disclosure: the toggle is a real <button> (Enter/Space work
+   natively), and the copy/fullscreen buttons sit in `actions`, beside it — a
+   button nested inside the toggle would be invalid and unreachable by Tab. */
 "use client";
 
 import React from "react";
 import { useTranslations } from "next-intl";
-import { Button, Icon, Modal } from "@devdigest/ui";
+import { Button, Disclosure, Icon, Modal } from "@devdigest/ui";
+import { PROMPT_COPIED_FEEDBACK_MS, PROMPT_MODAL_WIDTH } from "../../constants";
 import { s } from "../../styles";
 import { PromptModalBody } from "../PromptModalBody";
 
-const miniBtnStyle: React.CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  padding: 4,
-  borderRadius: 5,
-  border: "1px solid var(--border)",
-  background: "var(--bg-elevated)",
-  color: "var(--text-muted)",
-  cursor: "pointer",
-};
-
-export function PromptBlock({ label, text, color }: { label: string; text: string; color: string }) {
+export function PromptBlock({
+  label,
+  text,
+  color,
+  meta,
+  extra,
+}: {
+  label: string;
+  text: string;
+  color: string;
+  /** Short readout shown in the header next to the label, e.g. "≈2.3k tokens" (SPEC-02 AC-27). */
+  meta?: React.ReactNode;
+  /** Extra content rendered above the raw text, inside the collapsible body (e.g. the skills_used list). */
+  extra?: React.ReactNode;
+}) {
   const t = useTranslations("runs");
-  const [open, setOpen] = React.useState(false);
+  const tShell = useTranslations("shell");
   const [full, setFull] = React.useState(false);
   const [copied, setCopied] = React.useState(false);
   const copy = () => {
     void navigator.clipboard?.writeText(text || "");
     setCopied(true);
-    setTimeout(() => setCopied(false), 1200);
   };
+  // Timer tied to the state it resets, so unmounting cancels it.
+  React.useEffect(() => {
+    if (!copied) return;
+    const id = setTimeout(() => setCopied(false), PROMPT_COPIED_FEEDBACK_MS);
+    return () => clearTimeout(id);
+  }, [copied]);
+
   return (
-    <div style={s.promptRow}>
-      <div onClick={() => setOpen((o) => !o)} style={s.promptHead}>
-        <span style={s.promptDot(color)} />
-        <span style={s.promptLabel}>{label}</span>
-        <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
-          <button
-            type="button"
-            title={t("trace.prompt.copy")}
-            aria-label={t("trace.prompt.copy")}
-            onClick={(e) => {
-              e.stopPropagation();
-              copy();
-            }}
-            style={miniBtnStyle}
-          >
-            {copied ? <Icon.Check size={12} /> : <Icon.Copy size={12} />}
-          </button>
-          <button
-            type="button"
-            title={t("trace.prompt.fullscreen")}
-            aria-label={t("trace.prompt.fullscreen")}
-            onClick={(e) => {
-              e.stopPropagation();
-              setFull(true);
-            }}
-            style={miniBtnStyle}
-          >
-            <Icon.ExternalLink size={12} />
-          </button>
-          <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
-            {open ? t("trace.collapse") : t("trace.expand")}
+    <>
+      <Disclosure
+        style={s.promptRow}
+        headerStyle={s.promptHead}
+        header={(open) => (
+          <>
+            <span style={s.promptDot(color)} />
+            <span style={s.promptLabel}>{label}</span>
+            {meta && <span style={s.promptMeta}>{meta}</span>}
+            <span style={s.promptToggle}>{open ? t("trace.collapse") : t("trace.expand")}</span>
+          </>
+        )}
+        actions={
+          <span style={s.promptActions}>
+            <button
+              type="button"
+              title={t("trace.prompt.copy")}
+              aria-label={t("trace.prompt.copy")}
+              onClick={copy}
+              style={s.miniBtn}
+            >
+              {copied ? <Icon.Check size={12} /> : <Icon.Copy size={12} />}
+            </button>
+            <button
+              type="button"
+              title={t("trace.prompt.fullscreen")}
+              aria-label={t("trace.prompt.fullscreen")}
+              onClick={() => setFull(true)}
+              style={s.miniBtn}
+            >
+              <Icon.ExternalLink size={12} />
+            </button>
           </span>
-        </span>
-      </div>
-      {open && (
+        }
+      >
+        {extra}
         <pre className="mono" style={s.promptPre}>
-          {text || "—"}
+          {text || t("trace.empty")}
         </pre>
-      )}
+      </Disclosure>
       {full && (
         <Modal
-          width={1200}
+          width={PROMPT_MODAL_WIDTH}
           title={label}
+          closeLabel={tShell("ui.close")}
           onClose={() => setFull(false)}
           footer={
             <Button kind="secondary" size="sm" icon={copied ? "Check" : "Copy"} onClick={copy}>
@@ -84,6 +99,6 @@ export function PromptBlock({ label, text, color }: { label: string; text: strin
           <PromptModalBody text={text} />
         </Modal>
       )}
-    </div>
+    </>
   );
 }

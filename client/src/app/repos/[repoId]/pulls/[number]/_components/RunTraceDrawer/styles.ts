@@ -10,20 +10,13 @@ export const s = {
     marginBottom: 14,
     background: "var(--bg-elevated)",
   } satisfies CSSProperties,
+  /** Disclosure header row (the toggle button inherits `gap`). */
   sectionHead: {
-    display: "flex",
-    alignItems: "center",
     gap: 10,
     padding: "12px 16px",
-    cursor: "pointer",
   } satisfies CSSProperties,
   sectionIcon: { color: "var(--text-muted)" } satisfies CSSProperties,
   sectionTitle: { fontSize: 14, fontWeight: 600, flex: 1 } satisfies CSSProperties,
-  chevron: (open: boolean): CSSProperties => ({
-    color: "var(--text-muted)",
-    transform: open ? "rotate(180deg)" : "none",
-    transition: "transform .15s",
-  }),
   sectionBody: { borderTop: "1px solid var(--border)", padding: 16 } satisfies CSSProperties,
 
   // ---- ToolCallRow ----
@@ -34,11 +27,8 @@ export const s = {
     overflow: "hidden",
   } satisfies CSSProperties,
   toolHead: {
-    display: "flex",
-    alignItems: "center",
     gap: 10,
     padding: "10px 12px",
-    cursor: "pointer",
     background: "var(--bg-surface)",
   } satisfies CSSProperties,
   toolIcon: { color: "var(--warn)" } satisfies CSSProperties,
@@ -62,10 +52,56 @@ export const s = {
     marginBottom: 8,
     overflow: "hidden",
   } satisfies CSSProperties,
-  promptHead: { display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", cursor: "pointer" } satisfies CSSProperties,
+  promptHead: { gap: 10, padding: "8px 12px" } satisfies CSSProperties,
   promptDot: (color: string): CSSProperties => ({ width: 7, height: 7, borderRadius: 2, background: color }),
   promptLabel: { fontSize: 13, fontWeight: 600 } satisfies CSSProperties,
+  promptMeta: { fontSize: 11.5, color: "var(--text-muted)" } satisfies CSSProperties,
   promptToggle: { marginLeft: "auto", fontSize: 12, color: "var(--text-muted)" } satisfies CSSProperties,
+  promptActions: { display: "flex", alignItems: "center", gap: 8 } satisfies CSSProperties,
+  miniBtn: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 4,
+    borderRadius: 5,
+    border: "1px solid var(--border)",
+    background: "var(--bg-elevated)",
+    color: "var(--text-muted)",
+    cursor: "pointer",
+  } satisfies CSSProperties,
+
+  // ---- PromptModalBody ----
+  modalBody: { display: "flex", flexDirection: "column", height: "70vh" } satisfies CSSProperties,
+  modalSearch: { padding: "12px 24px", borderBottom: "1px solid var(--border)", flexShrink: 0 } satisfies CSSProperties,
+  modalMatchCount: { fontSize: 12, color: "var(--text-muted)", whiteSpace: "nowrap" } satisfies CSSProperties,
+  modalScroll: { flex: 1, minHeight: 0, overflow: "auto" } satisfies CSSProperties,
+  modalNoMatches: {
+    padding: "32px 24px",
+    textAlign: "center",
+    color: "var(--text-muted)",
+    fontSize: 13,
+  } satisfies CSSProperties,
+  modalPre: { margin: 0, padding: "16px 24px", whiteSpace: "pre-wrap", fontSize: 12.5, lineHeight: 1.6 } satisfies CSSProperties,
+  modalMark: { background: "var(--accent)", color: "var(--bg-primary)", borderRadius: 2 } satisfies CSSProperties,
+
+  // ---- FindingsSection ----
+  findingList: { display: "flex", flexDirection: "column", gap: 10 } satisfies CSSProperties,
+  finding: {
+    border: "1px solid var(--border)",
+    borderRadius: 8,
+    padding: "10px 12px",
+    background: "var(--bg-surface)",
+  } satisfies CSSProperties,
+  findingHead: { display: "flex", alignItems: "center", gap: 8, marginBottom: 4 } satisfies CSSProperties,
+  findingTitle: { fontSize: 13, fontWeight: 600 } satisfies CSSProperties,
+  findingLocation: { fontSize: 11.5, color: "var(--text-muted)", marginBottom: 6 } satisfies CSSProperties,
+  findingText: { fontSize: 12.5, color: "var(--text-secondary)", lineHeight: 1.5 } satisfies CSSProperties,
+  findingSuggestion: {
+    fontSize: 12.5,
+    color: "var(--text-secondary)",
+    lineHeight: 1.5,
+    marginTop: 6,
+  } satisfies CSSProperties,
   promptPre: {
     margin: 0,
     padding: "12px 14px",
@@ -89,6 +125,20 @@ export const s = {
   } satisfies CSSProperties,
   statLabel: { fontSize: 12, color: "var(--text-muted)", fontWeight: 600 } satisfies CSSProperties,
   statVal: { fontSize: 16, fontWeight: 700, marginTop: 4 } satisfies CSSProperties,
+
+  // ---- Skills used (PromptBlock extra, SPEC-02 AC-27) ----
+  skillsUsedList: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 4,
+    padding: "10px 14px",
+    borderTop: "1px solid var(--border)",
+    background: "var(--bg-surface)",
+  } satisfies CSSProperties,
+  skillsUsedRow: { display: "flex", alignItems: "baseline", gap: 8, fontSize: 12 } satisfies CSSProperties,
+  skillsUsedName: { color: "var(--text-primary)" } satisfies CSSProperties,
+  skillsUsedMeta: { color: "var(--text-muted)" } satisfies CSSProperties,
+  skillsUsedDeleted: { color: "var(--warn)" } satisfies CSSProperties,
 
   // ---- TraceBody ----
   configList: { display: "flex", flexDirection: "column", gap: 10, fontSize: 13 } satisfies CSSProperties,

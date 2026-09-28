@@ -5,12 +5,12 @@
  * BEFORE the severity filter, so both controls stay honest together.
  */
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { render, screen, cleanup, fireEvent } from "@testing-library/react";
-import { NextIntlClientProvider } from "next-intl";
+import { screen, cleanup, fireEvent } from "@testing-library/react";
 import type { FindingRecord, Severity } from "@devdigest/shared";
-import messages from "../../../../../../../../messages/en/prReview.json";
+import prReview from "@/../messages/en/prReview.json";
+import { renderWithProviders } from "@/test/render";
 
-vi.mock("../../../../../../../lib/hooks/reviews", () => ({
+vi.mock("@/lib/hooks", () => ({
   useFindingAction: () => ({ mutate: vi.fn(), isPending: false }),
 }));
 
@@ -49,12 +49,9 @@ const FINDINGS: FindingRecord[] = [
   finding({ id: "f4", severity: "SUGGESTION", title: "Extract a helper", confidence: 0.3 }),
 ];
 
+/** The wrapper persists across `rerender`, so a rerender only passes the panel. */
 function renderWithIntl(ui: React.ReactElement) {
-  return render(
-    <NextIntlClientProvider locale="en" messages={{ prReview: messages }}>
-      {ui}
-    </NextIntlClientProvider>,
-  );
+  return renderWithProviders(ui, { namespaces: { prReview } });
 }
 
 /** FindingCard stamps `data-finding-id` on its root — the only structural
@@ -143,11 +140,7 @@ describe("FindingsPanel — Timeline hand-off", () => {
     const { rerender } = renderWithIntl(<FindingsPanel findings={FINDINGS} prId="pr1" />);
     expect(cardCount()).toBe(4);
 
-    rerender(
-      <NextIntlClientProvider locale="en" messages={{ prReview: messages }}>
-        <FindingsPanel findings={FINDINGS} prId="pr1" targetSeverity="WARNING" targetNonce={1} />
-      </NextIntlClientProvider>,
-    );
+    rerender(<FindingsPanel findings={FINDINGS} prId="pr1" targetSeverity="WARNING" targetNonce={1} />);
     expect(cardCount()).toBe(2);
     expect(screen.getByRole("button", { name: "Warning" })).toHaveAttribute(
       "aria-pressed",
@@ -157,11 +150,7 @@ describe("FindingsPanel — Timeline hand-off", () => {
     // Same severity, new nonce — still re-applied after the user cleared it.
     fireEvent.click(screen.getByRole("button", { name: "Warning" }));
     expect(cardCount()).toBe(4);
-    rerender(
-      <NextIntlClientProvider locale="en" messages={{ prReview: messages }}>
-        <FindingsPanel findings={FINDINGS} prId="pr1" targetSeverity="WARNING" targetNonce={2} />
-      </NextIntlClientProvider>,
-    );
+    rerender(<FindingsPanel findings={FINDINGS} prId="pr1" targetSeverity="WARNING" targetNonce={2} />);
     expect(cardCount()).toBe(2);
   });
 });

@@ -1,0 +1,13 @@
+{
+  "noDiffText": "No diff text available (binary or unfetched patch).",
+  "noChangedFiles": "No changed files.",
+  "addComment": "Add a comment on this line",
+  "commentPlaceholder": "Leave a comment… (⌘/Ctrl+Enter to post)",
+  "post": "Comment",
+  "cancel": "Cancel",
+  "reply": "Reply",
+  "viewOnGitHub": "View on GitHub",
+  "postedToGitHub": "Posts to GitHub immediately",
+  "outdatedTitle": "{count, plural, one {# comment} other {# comments}} on older revisions",
+  "commentCount": "{count, plural, one {# comment} other {# comments}}"
+}

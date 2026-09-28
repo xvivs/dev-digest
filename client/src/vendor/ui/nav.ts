@@ -4,7 +4,13 @@ import type { IconName } from "./icons";
 
 export interface NavItemDef {
   key: string;
+  /**
+   * English fallback. Deprecated for rendering — resolve `labelKey` through
+   * next-intl instead; kept until every consumer has migrated (ADR D6).
+   */
   label: string;
+  /** Message key in the `shell` namespace, e.g. `t(item.labelKey)` with `useTranslations("shell")`. */
+  labelKey: `nav.${string}`;
   icon: IconName;
   /** Route template; :repoId is replaced with the active repo id by the app. */
   href: string;
@@ -22,8 +28,9 @@ export const NAV: NavGroup[] = [
   {
     section: "WORKSPACE",
     items: [
-      { key: "pulls", label: "Pull Requests", icon: "GitPullRequest", href: "/repos/:repoId/pulls", gKey: "p" },
-      { key: "agents", label: "Agents", icon: "Cpu", href: "/agents", gKey: "a" },
+      { key: "pulls", label: "Pull Requests", labelKey: "nav.pulls", icon: "GitPullRequest", href: "/repos/:repoId/pulls", gKey: "p" },
+      { key: "skills", label: "Skills", labelKey: "nav.skills", icon: "Sparkles", href: "/skills", gKey: "s" },
+      { key: "agents", label: "Agents", labelKey: "nav.agents", icon: "Cpu", href: "/agents", gKey: "a" },
     ],
   },
 ];
@@ -31,6 +38,7 @@ export const NAV: NavGroup[] = [
 export const SETTINGS_ITEM: NavItemDef = {
   key: "settings",
   label: "Settings",
+  labelKey: "nav.settings",
   icon: "Settings",
   href: "/settings/api-keys",
   gKey: ",",
@@ -52,6 +60,7 @@ export const SHORTCUTS: ShortcutDef[] = [
   { keys: "⌘K", label: "Open command palette", group: "Global" },
   { keys: "?", label: "Show keyboard shortcuts", group: "Global" },
   { keys: "g p", label: "Go to Pull Requests", group: "Navigation" },
+  { keys: "g s", label: "Go to Skills", group: "Navigation" },
   { keys: "g a", label: "Go to Agents", group: "Navigation" },
   { keys: "j / k", label: "Next / previous finding", group: "Findings" },
   { keys: "a", label: "Accept finding", group: "Findings" },

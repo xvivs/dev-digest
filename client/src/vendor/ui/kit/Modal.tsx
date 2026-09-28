@@ -1,5 +1,6 @@
 import React from "react";
 import { IconBtn } from "../primitives";
+import { useDialogFocus } from "../hooks";
 
 export function Modal({
   width = 720,
@@ -8,14 +9,24 @@ export function Modal({
   onClose,
   children,
   footer,
+  ariaLabel,
+  closeLabel = "Close",
 }: {
   width?: number;
   title?: React.ReactNode;
   subtitle?: React.ReactNode;
+  /** Close button, backdrop click and Escape all call this. */
   onClose?: () => void;
   children?: React.ReactNode;
   footer?: React.ReactNode;
+  /** Accessible name when there is no visible `title` (otherwise the title names the dialog). */
+  ariaLabel?: string;
+  /** Accessible name of the close button — pass a translated string. */
+  closeLabel?: string;
 }) {
+  const titleId = React.useId();
+  const subtitleId = React.useId();
+  const dialogRef = useDialogFocus<HTMLDivElement>({ onClose });
   return (
     <div style={{ position: "fixed", inset: 0, display: "grid", placeItems: "center", zIndex: 50, padding: 28 }}>
       <div
@@ -23,8 +34,13 @@ export function Modal({
         style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.5)", animation: "ddfadein .15s ease" }}
       />
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
+        aria-labelledby={title ? titleId : undefined}
+        aria-label={title ? undefined : ariaLabel}
+        aria-describedby={subtitle ? subtitleId : undefined}
+        tabIndex={-1}
         style={{
           position: "relative",
           width,
@@ -37,6 +53,7 @@ export function Modal({
           display: "flex",
           flexDirection: "column",
           overflow: "hidden",
+          outline: "none",
           animation: "ddpop .18s ease",
         }}
       >
@@ -50,12 +67,16 @@ export function Modal({
           }}
         >
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 16, fontWeight: 700 }}>{title}</div>
+            <h2 id={titleId} style={{ fontSize: 16, fontWeight: 700 }}>
+              {title}
+            </h2>
             {subtitle && (
-              <div style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 2 }}>{subtitle}</div>
+              <div id={subtitleId} style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 2 }}>
+                {subtitle}
+              </div>
             )}
           </div>
-          {onClose && <IconBtn icon="X" label="Close" onClick={onClose} />}
+          {onClose && <IconBtn icon="X" label={closeLabel} onClick={onClose} />}
         </div>
         <div style={{ flex: 1, overflow: "auto" }}>{children}</div>
         {footer && (

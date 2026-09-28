@@ -7,18 +7,25 @@ import { useTranslations } from "next-intl";
 import { Badge } from "@devdigest/ui";
 import type { RunTrace, FindingRecord } from "@devdigest/shared";
 import { RunCostValue } from "@/components/run-cost-value";
+import { useSkills } from "@/lib/hooks";
 import { PROMPT_COLORS } from "../../constants";
-import { formatSeconds, formatTokens } from "../../helpers";
+import { formatApproxTokens, formatSeconds, formatTokens, isSkillDeleted } from "../../helpers";
 import { s } from "../../styles";
 import { TraceSection } from "../TraceSection";
 import { ToolCallRow } from "../ToolCallRow";
 import { PromptBlock } from "../PromptBlock";
 import { FindingsSection } from "../FindingsSection";
-import { Row, Stat } from "../atoms";
+import { Row } from "../Row";
+import { Stat } from "../Stat";
 
 export function TraceBody({ trace, findings }: { trace: RunTrace; findings: FindingRecord[] }) {
   const t = useTranslations("runs");
   const stats = trace.stats;
+  // Only used to tell a live skill from a deleted one in the skills_used list
+  // below (AC-27); `undefined` while loading, so "deleted" never flashes on
+  // a skill that simply hasn't finished loading yet.
+  const { data: knownSkills } = useSkills();
+  const knownSkillIds = knownSkills ? new Set(knownSkills.map((sk) => sk.id)) : null;
   return (
     <>
       <TraceSection icon="Settings" title={t("trace.configuration")}>
@@ -30,7 +37,7 @@ export function TraceBody({ trace, findings }: { trace: RunTrace; findings: Find
           </Row>
           <Row label={t("trace.config.provider")}>
             <span className="mono" style={s.configProvider}>
-              {trace.config.provider ?? "—"}
+              {trace.config.provider ?? t("trace.empty")}
             </span>
           </Row>
           <Row label={t("trace.config.memoryPulled")}>
@@ -77,7 +84,35 @@ export function TraceBody({ trace, findings }: { trace: RunTrace; findings: Find
       <TraceSection icon="FileText" title={t("trace.promptAssembly")} defaultOpen={false}>
         <PromptBlock label={t("trace.prompt.system")} text={trace.prompt_assembly.system} color={PROMPT_COLORS.system} />
         {trace.prompt_assembly.skills != null && (
-          <PromptBlock label={t("trace.prompt.skills")} text={trace.prompt_assembly.skills} color={PROMPT_COLORS.skills} />
+          <PromptBlock
+            label={t("trace.prompt.skills")}
+            text={trace.prompt_assembly.skills}
+            color={PROMPT_COLORS.skills}
+            meta={
+              trace.prompt_assembly.skills_tokens != null
+                ? formatApproxTokens(trace.prompt_assembly.skills_tokens)
+                : undefined
+            }
+            extra={
+              trace.prompt_assembly.skills_used != null && trace.prompt_assembly.skills_used.length > 0 ? (
+                <div style={s.skillsUsedList}>
+                  {trace.prompt_assembly.skills_used.map((su) => (
+                    <div key={su.id} style={s.skillsUsedRow}>
+                      <span className="mono" style={s.skillsUsedName}>
+                        {su.name}
+                      </span>
+                      <span style={s.skillsUsedMeta}>
+                        {t("trace.prompt.skillsUsedVersion", { version: su.version })} · {formatApproxTokens(su.tokens)}
+                      </span>
+                      {isSkillDeleted(knownSkillIds, su.id) && (
+                        <span style={s.skillsUsedDeleted}>{t("trace.prompt.skillsUsedDeleted")}</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : undefined
+            }
+          />
         )}
         {trace.prompt_assembly.memory != null && (
           <PromptBlock label={t("trace.prompt.memory")} text={trace.prompt_assembly.memory} color={PROMPT_COLORS.memory} />
@@ -108,7 +143,7 @@ export function TraceBody({ trace, findings }: { trace: RunTrace; findings: Find
 
       <TraceSection icon="Code" title={t("trace.rawOutput")} defaultOpen={false}>
         <pre className="mono" style={s.rawPre}>
-          {trace.raw_output || "—"}
+          {trace.raw_output || t("trace.empty")}
         </pre>
       </TraceSection>
     </>

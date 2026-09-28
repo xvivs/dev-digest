@@ -5,3 +5,6 @@ export const AUTO_EXPAND_MAX_LINES = 200;
 
 /** Matches a unified-diff hunk header, e.g. `@@ -1,2 +1,3 @@`. */
 export const HUNK_HEADER_RE = /@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/;
+
+/** Prefix of git's "\\ No newline at end of file" annotation line in a patch. */
+export const NO_NEWLINE_MARKER = "\\";

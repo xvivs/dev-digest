@@ -9,6 +9,7 @@ import type {
 } from '@devdigest/shared';
 import { Review as ReviewSchema } from '@devdigest/shared';
 import { assemblePrompt } from '../prompt.js';
+import type { SkillInput } from '../skills.js';
 import { groundFindings, groundingSummary } from '../grounding.js';
 import { reduceReviews, scoreFromFindings, sliceDiff } from './reduce.js';
 
@@ -53,8 +54,8 @@ export interface ReviewInput {
   llm: LLMProvider;
   /** 'auto' (default) picks single-pass unless the diff is large + multi-file. */
   strategy?: ReviewStrategy;
-  /** Resolved skill bodies (NOT slugs). */
-  skills?: string[];
+  /** Effective skills in prompt order, resolved by the caller (SPEC-02). */
+  skills?: SkillInput[];
   /** Curated memory items. */
   memory?: string[];
   /** Project-context spec chunks (untrusted; delimiter-wrapped downstream). */

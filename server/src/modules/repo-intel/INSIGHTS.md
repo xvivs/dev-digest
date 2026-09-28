@@ -29,4 +29,7 @@ lives in the engineering-insights skill).
 
 ## Session Notes
 
+### 2026-09-28 — repo-intel session
+Renamed `server/src/modules/repo-intel/CLAUDE.md` to `AGENTS.md` and added a one-line `@AGENTS.md` stub `CLAUDE.md` next to it, per ADR 0004. Edit rules in `AGENTS.md` only; the content itself did not change.
+
 ## Open Questions

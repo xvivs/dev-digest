@@ -18,6 +18,7 @@ export function Button({
   loading,
   disabled,
   style,
+  type = "button",
   ...rest
 }: ButtonProps) {
   // While loading, show a spinning RefreshCw regardless of the configured icon.
@@ -43,7 +44,7 @@ export function Button({
     letterSpacing: "-0.01em",
   };
   const kinds: Record<ButtonKind, React.CSSProperties> = {
-    primary: { background: "var(--accent)", color: "#fff", borderColor: "var(--accent)" },
+    primary: { background: "var(--accent)", color: "var(--on-accent)", borderColor: "var(--accent)" },
     secondary: {
       background: "var(--bg-elevated)",
       color: "var(--text-primary)",
@@ -68,6 +69,7 @@ export function Button({
   return (
     <button
       {...rest}
+      type={type}
       disabled={disabled || loading}
       style={{
         ...base,

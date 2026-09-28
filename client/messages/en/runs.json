@@ -45,6 +45,8 @@
     "prompt": {
       "system": "System",
       "skills": "Skills (dynamic)",
+      "skillsUsedVersion": "v{version}",
+      "skillsUsedDeleted": "deleted",
       "memory": "Memory (dynamic)",
       "repoMap": "Repo skeleton — repo-intel (dynamic)",
       "specs": "Project context (dynamic)",
@@ -53,15 +55,22 @@
       "copy": "Copy",
       "fullscreen": "Open fullscreen",
       "search": "Search in this block…",
-      "noMatches": "No matches for “{q}”."
+      "noMatches": "No matches for “{q}”.",
+      "matchCount": "{shown} / {total}"
     },
     "tools": {
       "args": "args",
       "result": "result",
-      "previewTruncated": "(preview truncated)"
-    }
+      "previewTruncated": "(preview truncated)",
+      "ms": "{ms}ms"
+    },
+    "empty": "—"
   },
   "drawer": {
+    "tab": {
+      "trace": "trace",
+      "log": "log"
+    },
     "title": "Agent run · {agent}",
     "run": "Run",
     "pr": "PR #{number}",

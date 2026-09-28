@@ -19,7 +19,7 @@
     { "cmd": ["wait", "--text", "1 SUGGESTION"], "label": "severity tally: suggestion pill" },
     { "cmd": ["wait", "--text", "Hardcoded Stripe secret key in commit"], "label": "the CRITICAL finding card is visible unfiltered" },
     { "cmd": ["get", "count", "[data-finding-id]"], "assert": { "stdoutIncludes": "4" }, "label": "unfiltered, all four seeded findings are mounted" },
-    { "cmd": ["scrollintoview", "[aria-expanded]"], "label": "bring the run accordion — and the filter row just under it — into the viewport; without this the next click silently no-ops" },
+    { "cmd": ["scrollintoview", "[data-disclosure][aria-expanded]"], "label": "bring the run accordion — and the filter row just under it — into the viewport; without this the next click silently no-ops" },
     { "cmd": ["find", "role", "button", "click", "--name", "Warning", "--exact"], "label": "apply the Warning severity filter (exact accessible name 'Warning' hits only the filter button, never the '2 Warning findings' chip)" },
     { "cmd": ["get", "count", "[data-finding-id]"], "assert": { "stdoutIncludes": "2" }, "label": "the filter really applied: exactly the two WARNING findings stay mounted" },
     { "cmd": ["wait", "--text", "N+1 query in user list endpoint"], "label": "first WARNING finding survives the filter" },

@@ -135,3 +135,4 @@ a CI artifact by `.github/workflows/e2e-web.yml`).
 | `08-findings-popover-severity` | hover/focus a severity chip → FindingsPopover scoped to that severity; sticky scope, Escape closes |
 | `09-disclosure-a11y` | `Collapse` disclosures: `aria-expanded` wiring, body unmount after `ddCollapseOut`, Enter on a card trigger |
 | `10-run-cost-and-timeline` | cost provenance (bare `$` vs `~$` vs `—`), timeline run badges, trace drawer duration/tokens |
+| `11-skills` | `/skills` → seeded skill cards + agent count → open a skill on Config; Test Quality Reviewer → Skills tab → `4 of 5 enabled` (SPEC-02, read-only) |

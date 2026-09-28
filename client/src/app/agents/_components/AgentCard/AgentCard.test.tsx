@@ -1,12 +1,25 @@
-import { describe, it, expect, afterEach } from "vitest";
-import { render, screen, cleanup } from "@testing-library/react";
-import { NextIntlClientProvider } from "next-intl";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { describe, it, expect, afterEach, vi, beforeEach } from "vitest";
+import { screen, cleanup, fireEvent, within } from "@testing-library/react";
 import type { Agent } from "@devdigest/shared";
+import { renderWithProviders } from "@/test/render";
 import messages from "../../../../../messages/en/agents.json";
+
+const { mutateMock, pushMock } = vi.hoisted(() => ({ mutateMock: vi.fn(), pushMock: vi.fn() }));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push: pushMock }) }));
+vi.mock("@/lib/hooks", () => ({
+  useDeleteAgent: () => ({ mutate: mutateMock, isPending: false }),
+}));
+
 import { AgentCard } from "./AgentCard";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
+beforeEach(() => {
+  mutateMock.mockReset();
+  pushMock.mockReset();
+});
 
 const AGENT: Agent = {
   id: "ag1",
@@ -23,27 +36,79 @@ const AGENT: Agent = {
   version: 1,
 };
 
-function renderWithIntl(ui: React.ReactElement) {
-  const qc = new QueryClient();
-  return render(
-    <QueryClientProvider client={qc}>
-      <NextIntlClientProvider locale="en" messages={{ agents: messages }}>
-        {ui}
-      </NextIntlClientProvider>
-    </QueryClientProvider>,
-  );
-}
+const renderCard = (ui: React.ReactElement) => renderWithProviders(ui, { namespaces: { agents: messages } });
 
-describe("AgentCard (smoke)", () => {
+describe("AgentCard", () => {
   it("renders the agent name, model chip and skill count", () => {
-    renderWithIntl(<AgentCard ag={AGENT} skillCount={3} />);
+    renderCard(<AgentCard ag={AGENT} skillCount={3} />);
     expect(screen.getByText("Security Reviewer")).toBeInTheDocument();
     expect(screen.getByText("gpt-4.1")).toBeInTheDocument();
     expect(screen.getByText("3 skills")).toBeInTheDocument();
   });
 
   it("falls back to a translated placeholder when description is empty", () => {
-    renderWithIntl(<AgentCard ag={{ ...AGENT, description: "" }} />);
+    renderCard(<AgentCard ag={{ ...AGENT, description: "" }} />);
     expect(screen.getByText("No description")).toBeInTheDocument();
+  });
+
+  it("opens the agent through a focusable link named after it", () => {
+    renderCard(<AgentCard ag={AGENT} href="/agents/ag1?tab=config" />);
+    const link = screen.getByRole("link", { name: "Security Reviewer" });
+    expect(link).toHaveAttribute("href", "/agents/ag1?tab=config");
+    link.focus();
+    expect(link).toHaveFocus();
+  });
+
+  it("marks the active card as the current page", () => {
+    renderCard(<AgentCard ag={AGENT} href="/agents/ag1" active />);
+    expect(screen.getByRole("link", { name: "Security Reviewer" })).toHaveAttribute("aria-current", "page");
+  });
+
+  it("a click on the card body opens the agent; the name link is left to itself", () => {
+    renderCard(<AgentCard ag={AGENT} href="/agents/ag1" />);
+    fireEvent.click(screen.getByText("Flags secrets and injection"));
+    expect(pushMock).toHaveBeenCalledTimes(1);
+    expect(pushMock).toHaveBeenCalledWith("/agents/ag1");
+
+    pushMock.mockReset();
+    fireEvent.click(screen.getByRole("link", { name: "Security Reviewer" }));
+    expect(pushMock).not.toHaveBeenCalled();
+  });
+
+  it("toggle and delete never open the agent", () => {
+    vi.spyOn(window, "confirm").mockReturnValue(false);
+    renderCard(<AgentCard ag={AGENT} href="/agents/ag1" onToggle={() => {}} />);
+    fireEvent.click(screen.getByRole("switch", { name: "Enable Security Reviewer" }));
+    fireEvent.click(screen.getByRole("button", { name: "Delete agent" }));
+    expect(pushMock).not.toHaveBeenCalled();
+  });
+
+  it("renders no link when it has nowhere to go", () => {
+    renderCard(<AgentCard ag={AGENT} />);
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
+  });
+
+  it("keeps the toggle and delete action outside the link", () => {
+    const onToggle = vi.fn();
+    renderCard(<AgentCard ag={AGENT} href="/agents/ag1" onToggle={onToggle} />);
+    const link = screen.getByRole("link", { name: "Security Reviewer" });
+    expect(within(link).queryByRole("button")).not.toBeInTheDocument();
+    expect(within(link).queryByRole("switch")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("switch", { name: "Enable Security Reviewer" }));
+    expect(onToggle).toHaveBeenCalledWith(false);
+  });
+
+  it("deletes only after the translated confirm is accepted", () => {
+    const confirm = vi.spyOn(window, "confirm").mockReturnValueOnce(false).mockReturnValueOnce(true);
+    renderCard(<AgentCard ag={AGENT} href="/agents/ag1" />);
+    const del = screen.getByRole("button", { name: "Delete agent" });
+
+    fireEvent.click(del);
+    expect(confirm).toHaveBeenCalledWith('Delete agent "Security Reviewer"? This cannot be undone.');
+    expect(mutateMock).not.toHaveBeenCalled();
+
+    fireEvent.click(del);
+    expect(mutateMock).toHaveBeenCalledWith("ag1");
   });
 });

@@ -1,1 +1,1 @@
-export { FindingsTab, FindingsTab as default } from "./FindingsTab";
+export { FindingsTab, type FindingsTabProps } from "./FindingsTab";

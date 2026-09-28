@@ -1,5 +1,3 @@
-import type { Severity } from "@devdigest/shared";
-
 /**
  * Hover-intent delay before the panel opens, in ms. Also the window in which
  * `onArm` fires — a cursor sweeping down a list of PR rows must not fire one
@@ -24,10 +22,3 @@ export const PANEL_WIDTH = 360;
 
 /** Above `Dropdown`'s z-index 40, so a popover opened from a dropdown row wins. */
 export const PANEL_Z = 60;
-
-/** Sort weight — CRITICAL first. Local on purpose: the popover owns its own ordering. */
-export const SEVERITY_RANK: Record<Severity, number> = {
-  CRITICAL: 0,
-  WARNING: 1,
-  SUGGESTION: 2,
-};

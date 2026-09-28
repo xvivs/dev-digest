@@ -4,6 +4,7 @@
 "use client";
 
 import React from "react";
+import { useTranslations } from "next-intl";
 
 type ToastKind = "success" | "error" | "info";
 interface Toast {
@@ -18,6 +19,9 @@ interface ToastApi {
   error: (m: string) => void;
   info: (m: string) => void;
 }
+
+/** How long a toast stays up before it dismisses itself. */
+export const TOAST_AUTO_DISMISS_MS = 4000;
 
 const ToastCtx = React.createContext<ToastApi | null>(null);
 
@@ -45,14 +49,14 @@ const COLORS: Record<ToastKind, { bg: string; border: string; icon: string }> = 
 };
 
 export function ToastProvider({ children }: { children: React.ReactNode }) {
+  const t = useTranslations("common");
   const [items, setItems] = React.useState<Toast[]>([]);
   const seq = React.useRef(1);
 
   const push = React.useCallback((message: string, kind: ToastKind = "info") => {
     const id = seq.current++;
     setItems((prev) => [...prev, { id, kind, message }]);
-    // auto-dismiss after 4s
-    setTimeout(() => setItems((prev) => prev.filter((t) => t.id !== id)), 4000);
+    setTimeout(() => setItems((prev) => prev.filter((toast) => toast.id !== id)), TOAST_AUTO_DISMISS_MS);
   }, []);
 
   const api = React.useMemo<ToastApi>(
@@ -90,11 +94,11 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
         role="status"
         aria-live="polite"
       >
-        {items.map((t) => {
-          const c = COLORS[t.kind];
+        {items.map((item) => {
+          const c = COLORS[item.kind];
           return (
             <div
-              key={t.id}
+              key={item.id}
               style={{
                 display: "flex",
                 alignItems: "center",
@@ -110,11 +114,11 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
               }}
             >
               <span style={{ color: c.border, fontWeight: 700 }}>{c.icon}</span>
-              <span style={{ flex: 1 }}>{t.message}</span>
+              <span style={{ flex: 1 }}>{item.message}</span>
               <button
-                onClick={() => setItems((prev) => prev.filter((x) => x.id !== t.id))}
+                onClick={() => setItems((prev) => prev.filter((x) => x.id !== item.id))}
                 style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", fontSize: 16 }}
-                aria-label="Dismiss"
+                aria-label={t("toast.dismiss")}
               >
                 ×
               </button>

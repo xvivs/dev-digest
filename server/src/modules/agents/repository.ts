@@ -1,58 +1,56 @@
-import { and, asc, desc, eq } from 'drizzle-orm';
+import { and, asc, count, desc, eq, inArray } from 'drizzle-orm';
 import type { Db } from '../../db/client.js';
 import * as t from '../../db/schema.js';
-import type { CiFailOn, Provider, ReviewStrategy } from '@devdigest/shared';
 import { DEFAULT_AGENT_DESCRIPTION, INITIAL_AGENT_VERSION } from './constants.js';
+import type { LinkableSkill, SkillLinkInput } from './domain.js';
 import { isConfigChange } from './helpers.js';
+import type { AgentStore, InsertAgent, UpdateAgent } from './ports.js';
 
 /**
  * A2 — agents data-access. Owns `agents`, `agent_versions`, and the
  * `agent_skills` link table (shared with A1's skills repository, but A2 owns the
  * agent side: link/reorder/list for an agent). Workspace-scoped throughout.
+ * Implements `AgentStore`; the service owns the transaction boundaries.
  */
 
 import type { AgentRow, AgentVersionRow } from '../../db/rows.js';
 export type { AgentRow, AgentVersionRow };
+export type { InsertAgent, UpdateAgent };
 
-export interface InsertAgent {
-  workspaceId: string;
-  name: string;
-  description?: string;
-  provider: Provider;
-  model: string;
-  systemPrompt: string;
-  outputSchema?: unknown;
-  strategy?: ReviewStrategy;
-  ciFailOn?: CiFailOn;
-  repoIntel?: boolean;
-  enabled?: boolean;
-  createdBy?: string | null;
-}
-
-export interface UpdateAgent {
-  name?: string;
-  description?: string;
-  provider?: Provider;
-  model?: string;
-  systemPrompt?: string;
-  outputSchema?: unknown;
-  strategy?: ReviewStrategy;
-  ciFailOn?: CiFailOn;
-  repoIntel?: boolean;
-  enabled?: boolean;
-}
+/** A Drizzle transaction handle — structurally a `Db` for queries. */
+type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
 
 /** A skill linked to an agent (with its order), joined from agent_skills. */
 export interface LinkedSkillRow {
   skill: typeof t.skills.$inferSelect;
   order: number;
+  enabled: boolean;
 }
 
-export class AgentsRepository {
-  constructor(private db: Db) {}
+export class AgentsRepository implements AgentStore {
+  constructor(private db: Db | Tx) {}
 
-  async list(workspaceId: string): Promise<AgentRow[]> {
-    return this.db.select().from(t.agents).where(eq(t.agents.workspaceId, workspaceId));
+  /** One aggregate query (LEFT JOIN + GROUP BY) — no N+1 for `skill_count`. */
+  async list(workspaceId: string): Promise<(AgentRow & { skillCount: number })[]> {
+    const rows = await this.db
+      .select({ agent: t.agents, skillCount: count(t.agentSkills.agentId) })
+      .from(t.agents)
+      .leftJoin(
+        t.agentSkills,
+        and(eq(t.agentSkills.agentId, t.agents.id), eq(t.agentSkills.enabled, true)),
+      )
+      .where(eq(t.agents.workspaceId, workspaceId))
+      .groupBy(t.agents.id);
+    return rows.map((r) => ({ ...r.agent, skillCount: Number(r.skillCount) }));
+  }
+
+  /** Count of ENABLED skill links for one agent (SPEC-02 `skill_count`). */
+  async skillCountFor(agentId: string): Promise<number> {
+    const [row] = await this.db
+      .select({ n: count(t.agentSkills.agentId) })
+      .from(t.agentSkills)
+      .where(and(eq(t.agentSkills.agentId, agentId), eq(t.agentSkills.enabled, true)));
+    return Number(row?.n ?? 0);
   }
 
   async listEnabled(workspaceId: string): Promise<AgentRow[]> {
@@ -146,7 +144,7 @@ export class AgentsRepository {
   }
 
   private async snapshotVersion(row: AgentRow, version: number): Promise<void> {
-    const skills = await this.skillIdsForAgent(row.id);
+    const links = await this.linkedSkills(row.id);
     await this.db
       .insert(t.agentVersions)
       .values({
@@ -160,7 +158,13 @@ export class AgentsRepository {
           strategy: row.strategy,
           ci_fail_on: row.ciFailOn,
           repo_intel: row.repoIntel,
-          skills,
+          skills: links.map((l) => l.skill.id),
+          // SPEC-02: full link state at snapshot time (AgentVersionConfig.skill_links).
+          skill_links: links.map((l) => ({
+            skill_id: l.skill.id,
+            enabled: l.enabled,
+            order: l.order,
+          })),
         },
       })
       .onConflictDoNothing();
@@ -191,46 +195,40 @@ export class AgentsRepository {
   /** Skills linked to an agent, in `order` ascending. */
   async linkedSkills(agentId: string): Promise<LinkedSkillRow[]> {
     const rows = await this.db
-      .select({ skill: t.skills, order: t.agentSkills.order })
+      .select({ skill: t.skills, order: t.agentSkills.order, enabled: t.agentSkills.enabled })
       .from(t.agentSkills)
       .innerJoin(t.skills, eq(t.agentSkills.skillId, t.skills.id))
       .where(eq(t.agentSkills.agentId, agentId))
       .orderBy(asc(t.agentSkills.order));
-    return rows.map((r) => ({ skill: r.skill, order: r.order }));
+    return rows.map((r) => ({ skill: r.skill, order: r.order, enabled: r.enabled }));
   }
 
-  async skillIdsForAgent(agentId: string): Promise<string[]> {
-    const links = await this.linkedSkills(agentId);
-    return links.map((l) => l.skill.id);
+  /** Skills of this workspace among `skillIds` (SPEC-02 link invariants). */
+  async findWorkspaceSkills(workspaceId: string, skillIds: string[]): Promise<LinkableSkill[]> {
+    if (skillIds.length === 0) return [];
+    return this.db
+      .select({ id: t.skills.id, enabled: t.skills.enabled, body: t.skills.body })
+      .from(t.skills)
+      .where(and(eq(t.skills.workspaceId, workspaceId), inArray(t.skills.id, skillIds)));
   }
 
-  /** Link a skill to an agent at a given order (idempotent: upserts order). */
-  async linkSkill(agentId: string, skillId: string, order: number): Promise<void> {
-    await this.db
-      .insert(t.agentSkills)
-      .values({ agentId, skillId, order })
-      .onConflictDoUpdate({
-        target: [t.agentSkills.agentId, t.agentSkills.skillId],
-        set: { order },
-      });
-  }
-
-  async unlinkSkill(agentId: string, skillId: string): Promise<void> {
-    await this.db
-      .delete(t.agentSkills)
-      .where(and(eq(t.agentSkills.agentId, agentId), eq(t.agentSkills.skillId, skillId)));
+  /** Delete + insert the agent's whole link set (order = array index). Not
+   *  atomic on its own — call it inside `transaction()`. */
+  async replaceSkillLinks(agentId: string, links: SkillLinkInput[]): Promise<void> {
+    await this.db.delete(t.agentSkills).where(eq(t.agentSkills.agentId, agentId));
+    if (links.length > 0) {
+      await this.db
+        .insert(t.agentSkills)
+        .values(links.map((l, i) => ({ agentId, skillId: l.skillId, order: i, enabled: l.enabled })));
+    }
   }
 
   /**
-   * Replace the full set of linked skills for an agent with `skillIds`, assigning
-   * order = index. Used by the "Skills" editor tab (attach/reorder). Skills not in
-   * the list are unlinked.
+   * Nested calls reuse the outer transaction (Drizzle opens a savepoint). Never
+   * hand a memoized container getter into this callback — it is bound to the
+   * root `db`.
    */
-  async setSkills(agentId: string, skillIds: string[]): Promise<void> {
-    await this.db.delete(t.agentSkills).where(eq(t.agentSkills.agentId, agentId));
-    if (skillIds.length === 0) return;
-    await this.db
-      .insert(t.agentSkills)
-      .values(skillIds.map((skillId, i) => ({ agentId, skillId, order: i })));
+  transaction<T>(work: (store: AgentStore) => Promise<T>): Promise<T> {
+    return this.db.transaction((tx) => work(new AgentsRepository(tx)));
   }
 }

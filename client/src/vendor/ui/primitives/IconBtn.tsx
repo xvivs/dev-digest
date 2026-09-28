@@ -20,6 +20,7 @@ export function IconBtn({
   const [h, setH] = React.useState(false);
   return (
     <button
+      type="button"
       title={label}
       aria-label={label}
       onClick={onClick}
