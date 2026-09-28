@@ -50,6 +50,8 @@ lives in the engineering-insights skill).
 
 - **A stretched-link row (absolute `inset: 0` span inside the title `<a>`) breaks every e2e click on that link — `agent-browser find text|role … click` reports `✗ Element not found` and never navigates, while RTL tests and a manual DOM hit-test (`elementFromPoint` lands on the span, inside the link) are both fine** — reproduced with agent-browser 0.27.0 against `PRRow`; removing only the span made the same command pass. 6 of 10 flows failed on it (every flow that opens a PR by title). `PRRow` now keeps the title as a plain `next/link` (keyboard, middle-click) plus a mouse-only row `onClick` → `router.push`, skipping clicks inside `a, button` (`client/src/app/repos/[repoId]/pulls/_components/PRRow/PRRow.tsx`). Don't reintroduce the overlay without re-running `./scripts/e2e.sh`. _(2026-09-28)_
 
+- **Gating a response schema behind `process.env.NODE_ENV !== "production"` does NOT drop zod from the production bundle** — the contract modules call `z.object(...)` at module top level and the vendored folder has no `sideEffects: false`, so webpack keeps them whatever the call site does. Measured with `next build` (Next 15.5): +15 kB First Load JS on every route once `src/lib/hooks/skills.ts` imports schemas, and 227 kB vs 226 kB for `/skills` with the NODE_ENV-gated variant. Every route pays it because every page imports the `@/lib/hooks` barrel. Only a `sideEffects` declaration or keeping schema-using hooks out of the barrel would change that. _(2026-09-29)_
+
 ## Codebase Patterns
 
 - Dynamic i18n key lookup — `t(\`namespace.${variable}\`)` — is an established,
@@ -160,6 +162,10 @@ lives in the engineering-insights skill).
 
 - **Skill/finding markdown shows `#` headings and `-` bullets as plain same-size paragraphs with no markers — Tailwind 4 preflight, not react-markdown.** `@import "tailwindcss"` in `client/src/vendor/ui/styles.css` resets `h1–h6` font size/weight and `list-style`, so react-markdown's default elements lose all block styling; every block element needs an explicit renderer (`client/src/vendor/ui/primitives/Markdown.tsx:40-45`). A CSS rule cannot restyle inline-styled `code` inside `pre` (inline style wins), so the `pre` renderer emits the raw text itself. _(2026-09-28)_
 
+- **Value imports of `@devdigest/shared` contract schemas now work in `next dev` and `next build`, because `client/next.config.mjs` sets `resolve.extensionAlias` `.js → [.ts, .tsx, .js]`** — the barrel's NodeNext `.js` specifiers used to 500 every route (see the older "Module not found … contracts/findings.js" entry, which this supersedes). Verified with `next build` and a live `next dev` render of `/skills/sk1?tab=versions`, where `src/lib/hooks/skills.ts:8` value-imports `SkillVersion`/`RestoreSkillVersionResult` from `@devdigest/shared/contracts/skill-impact`. Import the contract subpath, not the barrel, to keep the bundle to what you use. _(2026-09-29)_
+
+- **`screen.getByRole("status")` throws "multiple elements" in any test that wraps `<ToastProvider>`, because the toast host is itself a `role="status"` live region** (`client/src/lib/toast.tsx`). Query the text and assert the role on it instead: `expect(screen.getByText(/^Draft from v2\./)).toHaveAttribute("role", "status")` (`client/src/app/skills/[id]/_components/SkillEditor/_components/ConfigTab/ConfigTab.test.tsx`). _(2026-09-29)_
+
 ## Session Notes
 
 - Cost Badge (L01, client half): added `RunCostValue` + `formatCost`/`exactCost`
@@ -208,6 +214,11 @@ Executed all 6 waves of `client/specs/frontend-audit/README.md` with 8 Opus suba
 ### 2026-09-28 — client session (SPEC-02 Skills)
 Shipped `/skills` (list, Config/Preview, placeholder tabs, trust modal), the agent Skills tab with coalesced autosave, `.md`/`.zip` import on fflate, and skills tokens in the trace. Browser checks caught three bugs the tests missed (translucent vet modal, "1 agents", slug title wrapping), and review caught two more (name link bypassing the dirty guard, stale draft after vetting). Known gap: sidebar/breadcrumb links are not dirty-guarded.
 
+### 2026-09-29 — client session (skill Versions, Phase 1)
+Built the skill version hooks with contract response schemas and a Versions tab. It has a list with gaps for lost history, an inline jsdiff diff (lazy-loaded) and an Edit / Restore / Cancel popup. ConfigTab can open a snapshot as a draft through `?fromVersion=N` and has a "What changed" note. The server half was built in parallel by another agent. The browser pass ran against an in-memory mock API, because running migrations would have applied that agent's in-progress 0017 migration.
+
 ## Open Questions
 
 - **Conflict: does a `NextIntlClientProvider` missing a namespace throw or only log?** — the Recurring Errors entry dated 2026-09-19 says a single-namespace provider "throws on the first missing message", the Tool & Library entry dated 2026-09-28 observed only a logged `MISSING_MESSAGE` with a passing test (`client/src/test/smoke.test.tsx`). Possibly both true (missing key vs missing namespace, or a custom `onError`); needs a human to reconcile. _(2026-09-28)_
+
+- **The Recurring Errors entry "Module not found … contracts/findings.js" (2026-09-20) says to keep `import type` and re-derive runtime values. The 2026-09-29 extensionAlias entry supersedes that advice.** Prune the older entry in the next cleanup (`client/next.config.mjs`). _(2026-09-29)_
