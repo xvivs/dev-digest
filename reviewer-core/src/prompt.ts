@@ -41,12 +41,17 @@ const SKILLS_PREAMBLE =
  * Neutralize any attempt to open or close one of our prompt delimiters
  * (`<untrusted`, `</untrusted`, `<skills`, `</skills`) in skill text AND in
  * untrusted blocks (ADR 0012 Decision 3). Case-insensitive, tolerant of
- * whitespace and fullwidth / small-form `<` lookalikes. The tag becomes a
- * visibly different token (`[/untrusted]`), not an HTML entity — a model reads
- * `&lt;/skills` as a closing tag. The trailing lookahead keeps identifiers such
- * as `<SkillsTab>` in a diff untouched.
+ * whitespace, zero-width characters and fullwidth / small-form `<` and `>`
+ * lookalikes on both ends. The tag becomes a visibly different token
+ * (`[/untrusted]`), not an HTML entity — a model reads `&lt;/skills` as a
+ * closing tag. The trailing lookahead keeps identifiers such as `<SkillsTab>`
+ * in a diff untouched.
  */
-const DELIMITER_RE = /[<\uFF1C\uFE64]\s*(\/?)\s*(untrusted|skills)(?=[\s>/]|$)/giu;
+const GAP = '[\\s\\u200B-\\u200D\\u2060\\uFEFF]*';
+const DELIMITER_RE = new RegExp(
+  `[<\\uFF1C\\uFE64]${GAP}(\\/?)${GAP}(untrusted|skills)(?=[\\s>/\\uFF1E\\uFE65\\u200B-\\u200D\\u2060\\uFEFF]|$)`,
+  'giu',
+);
 
 export function neutralizeDelimiters(text: string): string {
   return text.replace(DELIMITER_RE, (_m, slash: string, tag: string) => `[${slash}${tag}]`);
