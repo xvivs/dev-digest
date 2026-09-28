@@ -19,3 +19,8 @@ export const DEFAULT_SKILL_DESCRIPTION = '';
  */
 export const INVISIBLE_CHARS_PATTERN =
   /[\u{E0000}-\u{E007F}\u{202A}-\u{202E}\u{2066}-\u{2069}\u{200B}-\u{200F}\u{2060}-\u{2064}\u{061C}\u{180E}\u{00AD}\u{FEFF}]/u;
+
+/** Stats tab windows (plan decision #11); the card always shows 30d. */
+export const STATS_WINDOW_DAYS = { '7d': 7, '30d': 30, '90d': 90 } as const;
+/** `GET /skills` → `runs_30d`. */
+export const LIST_RUNS_WINDOW_DAYS = 30;

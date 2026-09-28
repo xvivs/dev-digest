@@ -12,6 +12,8 @@ import { and, asc, count, desc, eq, ilike, inArray, or, sql } from 'drizzle-orm'
 import type { Db } from '../../db/client.js';
 import * as t from '../../db/schema.js';
 import {
+  isEffectiveSkill,
+  promptHashInput,
   SkillNameTakenError,
   SkillVersionStaleError,
   SkillVetStaleError,
@@ -34,7 +36,10 @@ export interface EffectiveSkill {
   name: string;
   version: number;
   body: string;
+  /** sha256(body) — what `vetted_body_hash` and trace `skills_used.sha256` hold. */
   sha256: string;
+  /** ADR 0017 sha256(name + "\n" + body) — the text the model actually sees. */
+  promptSha256: string;
 }
 
 const SKILLS_NAME_UQ = 'skills_workspace_name_uq';
@@ -305,8 +310,8 @@ export class SkillsRepository implements SkillStore {
 
   /**
    * Effective skills for a batch of agents (SPEC-02 D1), one query, ordered by
-   * `agent_skills.order`. Effective = `link.enabled && skill.enabled &&
-   * !skill.needs_vetting`. Agents with no effective skill are simply absent
+   * `agent_skills.order`. Effective = `isEffectiveSkill()` (domain.ts).
+   * Agents with no effective skill are simply absent
    * from the returned map.
    */
   async resolveEffectiveSkills(agentIds: string[]): Promise<Map<string, EffectiveSkill[]>> {
@@ -326,11 +331,11 @@ export class SkillsRepository implements SkillStore {
       .orderBy(asc(t.agentSkills.order));
 
     for (const row of rows) {
-      if (!row.linkEnabled || !row.skill.enabled || row.skill.needsVetting) continue;
       const sha256 = sha256Hex(row.skill.body);
-      // Defense in depth (ADR 0012): an imported skill must carry a vet that
-      // matches its CURRENT body, whatever the needs_vetting flag says.
-      if (row.skill.source !== 'manual' && row.skill.vettedBodyHash !== sha256) continue;
+      // One rule with the Stats tab ([F10]): link + skill enabled, not
+      // needs_vetting, and (ADR 0012 defense in depth) an imported skill's vet
+      // must match its CURRENT body.
+      if (!isEffectiveSkill(row.linkEnabled, row.skill, sha256)) continue;
       const list = result.get(row.agentId) ?? [];
       list.push({
         id: row.skill.id,
@@ -338,6 +343,7 @@ export class SkillsRepository implements SkillStore {
         version: row.skill.version,
         body: row.skill.body,
         sha256,
+        promptSha256: sha256Hex(promptHashInput(row.skill.name, row.skill.body)),
       });
       result.set(row.agentId, list);
     }
