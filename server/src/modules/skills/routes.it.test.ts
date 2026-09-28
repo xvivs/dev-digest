@@ -212,4 +212,11 @@ d('skills routes (Testcontainers pg)', () => {
     expect(rows[0]).toHaveProperty('agent_count');
     await app.close();
   });
+
+  it('GET /skills?q= longer than 200 chars is rejected with 422', async () => {
+    const app = await makeApp();
+    const res = await app.inject({ method: 'GET', url: `/skills?q=${'a'.repeat(201)}` });
+    expect(res.statusCode).toBe(422);
+    await app.close();
+  });
 });

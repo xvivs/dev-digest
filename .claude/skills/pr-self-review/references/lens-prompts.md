@@ -104,7 +104,7 @@ There is no skill file; this checklist is the rule set. `skill: "core-purity"`.
 | P1 | No I/O outside `reviewer-core/src/llm/**`: no `node:fs`, `node:net`, `node:http(s)`, `node:child_process`, `fetch`, DB clients, `octokit`, `process.env` reads | CRITICAL |
 | P2 | LLM calls go through the injected `LLMProvider` parameter. Code outside `src/llm/**` never constructs a provider or imports an SDK (`openai`, `@anthropic-ai/sdk`) | CRITICAL |
 | P3 | The grounding gate stays mandatory: findings reach the `Review` only after `groundFindings()`; nothing bypasses or weakens the citation check | CRITICAL |
-| P4 | Untrusted content (diff, repo map, skills, memory) enters the prompt only through `wrapUntrusted()` + `INJECTION_GUARD` | CRITICAL |
+| P4 | Untrusted content (diff, PR description, repo map, memory) enters the prompt only through `wrapUntrusted()` + `INJECTION_GUARD`. Skills are the one exception (ADR 0012): they go into the system message as `<skills>…</skills>`, each name and body passed through `neutralizeDelimiters()`, placed **before** `INJECTION_GUARD` so the guard has the last word. Flag a skill path only when one of these controls is missing or bypassed | CRITICAL |
 | P5 | Score/verdict is recomputed from surviving findings, never taken from model output | HIGH |
 | P6 | Contracts come from `@devdigest/shared`, not redefined locally | HIGH |
 | P7 | New logic has a hermetic vitest with a stubbed `LLMProvider` | MEDIUM |

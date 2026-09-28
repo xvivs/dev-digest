@@ -51,14 +51,12 @@ const CreateSkillBody = z
   })
   .strict();
 
-const UpdateSkillBody = z
-  .object({
-    name: SkillName.optional(),
-    description: SkillDescription.optional(),
-    type: SkillType.optional(),
-    body: SkillBody.optional(),
-    enabled: z.boolean().optional(),
-  })
+/** CreateSkillBody minus `source` (not updatable) plus `enabled` (not
+ *  creatable), all optional. `source` is omitted BEFORE `.partial()` so its
+ *  `.default('manual')` never leaks into an update. */
+const UpdateSkillBody = CreateSkillBody.omit({ source: true })
+  .partial()
+  .extend({ enabled: z.boolean().optional() })
   .strict();
 
 /** Public DTO (snake_case, ISO dates) — matches the frozen `Skill` contract. */
@@ -86,7 +84,7 @@ export default async function skillsRoutes(appBase: FastifyInstance) {
   const app = appBase.withTypeProvider<ZodTypeProvider>();
   const service = buildSkillsService(app.container);
 
-  app.get('/skills', { schema: { querystring: z.object({ q: z.string().optional() }) } }, async (req) => {
+  app.get('/skills', { schema: { querystring: z.object({ q: z.string().max(200).optional() }) } }, async (req) => {
     const { workspaceId } = await getContext(app.container, req);
     const rows = await service.list(workspaceId, req.query.q);
     return rows.map(toListDto);
