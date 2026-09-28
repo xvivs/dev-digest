@@ -20,6 +20,7 @@ const COMMON = {
   specs: ['# Security baseline\nNo secrets in code.'],
   diff: '@@ -1 +1 @@\n+stripeKey',
   task: "Review PR #482 'rate limit'",
+  nonce: 'testnonce1',
 } as const;
 
 describe('assemblePrompt + callers digest', () => {
@@ -30,7 +31,7 @@ describe('assemblePrompt + callers digest', () => {
     const user = messages[1]!.content;
 
     // Section is present, with the correct delimiter and the wrapped content.
-    expect(user).toContain('## Callers of changed symbols\n<untrusted source="callers">');
+    expect(user).toContain('## Callers of changed symbols\n<untrusted-testnonce1 source="callers">');
     expect(user).toContain('function handler(req)');
 
     // Ordering: Project context comes BEFORE Callers; Callers comes BEFORE Diff.
@@ -73,9 +74,10 @@ describe('assemblePrompt + callers digest', () => {
     const { messages } = assemblePrompt({
       system: 'sys',
       diff: 'D',
+      nonce: 'testnonce1',
     });
     const user = messages[1]!.content;
-    expect(user.endsWith('</untrusted>')).toBe(true);
+    expect(user.endsWith('</untrusted-testnonce1>')).toBe(true);
     expect(user).toContain('## Diff to review');
     expect(user).not.toContain('## Callers of changed symbols');
     expect(user).not.toContain('## Project context');

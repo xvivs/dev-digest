@@ -189,13 +189,18 @@ describe('reviewPullRequest — skills reach the system message (SPEC-02)', () =
     });
 
     const system = seen[0]!;
-    expect(system).toContain('<skills>');
+    // reviewPullRequest generates a fresh per-assembly nonce (ADR 0013); we
+    // don't control it here, so capture it from the rendered opening tag.
+    const nonceMatch = system.match(/<skills-([a-z0-9]+)>/);
+    expect(nonceMatch).not.toBeNull();
+    const nonce = nonceMatch![1]!;
+    expect(system).toContain(`<skills-${nonce}>`);
     expect(system).toContain('### branch-coverage-gate');
     expect(system).toContain('Flag any new branch that has no covering test.');
 
-    // ADR 0012: the <skills> block must precede the injection guard, which
+    // ADR 0012: the <skills-N> block must precede the injection guard, which
     // always has the last word over what skills may claim.
-    const skillsIdx = system.indexOf('<skills>');
+    const skillsIdx = system.indexOf(`<skills-${nonce}>`);
     const guardIdx = system.indexOf('SECURITY — read carefully');
     expect(skillsIdx).toBeGreaterThanOrEqual(0);
     expect(guardIdx).toBeGreaterThan(skillsIdx);

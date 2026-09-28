@@ -16,11 +16,11 @@ function systemOf(parts: Parameters<typeof assemblePrompt>[0]): string {
 }
 
 describe('assemblePrompt — shared injection guard (server + CI)', () => {
-  const sys = systemOf({ system: 'AGENT-SYS', diff: 'DIFF' });
+  const sys = systemOf({ system: 'AGENT-SYS', diff: 'DIFF', nonce: 'testnonce1' });
 
   it('appends the guard to the agent system prompt', () => {
     expect(sys.startsWith('AGENT-SYS')).toBe(true);
-    expect(sys).toMatch(/<untrusted>.*DATA to be analyzed/s);
+    expect(sys).toMatch(/<untrusted-testnonce1>.*DATA to be analyzed/s);
   });
 
   it('forbids "intentional/test/demo" claims from descoping the review', () => {
@@ -38,10 +38,11 @@ describe('assemblePrompt — ## PR description', () => {
       system: 'sys',
       diff: 'DIFF',
       prDescription: 'Adds rate limiting to the public /api endpoints.',
+      nonce: 'testnonce1',
     });
     const user = messages[1]!.content;
     expect(user).toContain('## PR description');
-    expect(user).toContain('<untrusted source="pr-description">');
+    expect(user).toContain('<untrusted-testnonce1 source="pr-description">');
     expect(user).toContain('Adds rate limiting to the public /api endpoints.');
     expect(user.indexOf('## PR description')).toBeLessThan(user.indexOf('## Diff to review'));
     expect(assembly.pr_description).toContain('Adds rate limiting');
