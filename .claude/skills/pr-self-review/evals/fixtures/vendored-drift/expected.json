@@ -1,0 +1,6 @@
+{
+  "verdict": "BLOCK",
+  "why": "Only the server copy of @devdigest/shared changed.",
+  "deterministic": { "mustFail": ["vendored-shared"], "mustPass": ["typecheck:server", "typecheck:reviewer-core"] },
+  "lensFindings": []
+}

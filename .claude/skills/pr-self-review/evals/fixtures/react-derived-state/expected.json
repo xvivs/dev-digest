@@ -1,0 +1,6 @@
+{
+  "verdict": "BLOCK",
+  "why": "Derived value stored in state and re-synced in an effect: react-best-practices 'Derive, Don't Store' (CRITICAL).",
+  "deterministic": { "mustFail": [], "mustPass": ["typecheck:client", "unit:client"] },
+  "lensFindings": [{ "lens": "client-arch", "file": "client/src/components/eval-full-name/EvalFullName.tsx", "severity": "CRITICAL", "ruleMatches": "derive|derived|effect" }]
+}

@@ -1,0 +1,6 @@
+{
+  "verdict": "PASS",
+  "why": "A pure helper in reviewer-core. A MEDIUM for a missing test (P7) is fine; no CRITICAL may appear.",
+  "deterministic": { "mustFail": [], "mustPass": ["typecheck:reviewer-core", "unit:reviewer-core", "typecheck:server"] },
+  "lensFindings": []
+}

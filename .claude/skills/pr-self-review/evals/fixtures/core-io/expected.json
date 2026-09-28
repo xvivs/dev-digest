@@ -1,0 +1,6 @@
+{
+  "verdict": "BLOCK",
+  "why": "Filesystem I/O inside the pure review engine: core-purity P1 (CRITICAL).",
+  "deterministic": { "mustFail": [], "mustPass": ["typecheck:reviewer-core", "unit:reviewer-core", "typecheck:server"] },
+  "lensFindings": [{ "lens": "core-purity", "file": "reviewer-core/src/eval-io.ts", "severity": "CRITICAL", "ruleMatches": "P1|I/O|fs" }]
+}
