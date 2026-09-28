@@ -4,8 +4,7 @@
  * service unit test implements it in memory.
  */
 import type { CiFailOn, Provider, ReviewStrategy } from '@devdigest/shared';
-import type { AgentRow, AgentVersionRow } from '../../db/rows.js';
-import type { LinkableSkill, SkillLinkInput } from './domain.js';
+import type { AgentRecord, AgentVersionRecord, LinkableSkill, SkillLinkInput } from './domain.js';
 
 export interface InsertAgent {
   workspaceId: string;
@@ -43,14 +42,14 @@ export interface LinkedSkill {
 }
 
 export interface AgentStore {
-  list(workspaceId: string): Promise<(AgentRow & { skillCount: number })[]>;
+  list(workspaceId: string): Promise<(AgentRecord & { skillCount: number })[]>;
   skillCountFor(agentId: string): Promise<number>;
-  getById(workspaceId: string, id: string): Promise<AgentRow | undefined>;
+  getById(workspaceId: string, id: string): Promise<AgentRecord | undefined>;
   deleteById(workspaceId: string, id: string): Promise<boolean>;
-  insert(values: InsertAgent): Promise<AgentRow>;
-  update(workspaceId: string, id: string, patch: UpdateAgent): Promise<AgentRow | undefined>;
-  listVersions(agentId: string): Promise<AgentVersionRow[]>;
-  getVersion(agentId: string, version: number): Promise<AgentVersionRow | undefined>;
+  insert(values: InsertAgent): Promise<AgentRecord>;
+  update(workspaceId: string, id: string, patch: UpdateAgent): Promise<AgentRecord | undefined>;
+  listVersions(agentId: string): Promise<AgentVersionRecord[]>;
+  getVersion(agentId: string, version: number): Promise<AgentVersionRecord | undefined>;
   linkedSkills(agentId: string): Promise<LinkedSkill[]>;
   /** Skills of `workspaceId` among `skillIds` — foreign ids are simply absent. */
   findWorkspaceSkills(workspaceId: string, skillIds: string[]): Promise<LinkableSkill[]>;

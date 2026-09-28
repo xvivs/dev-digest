@@ -10,9 +10,8 @@
 import { describe, it, expect } from 'vitest';
 import type { Container } from '../../platform/container.js';
 import { AppError, NotFoundError } from '../../platform/errors.js';
-import type { AgentRow } from '../../db/rows.js';
 import { AGENT_SKILLS_BODY_BUDGET_BYTES } from './constants.js';
-import type { LinkableSkill, SkillLinkInput } from './domain.js';
+import type { AgentRecord, LinkableSkill, SkillLinkInput } from './domain.js';
 import type { AgentStore, LinkedSkill } from './ports.js';
 import { AgentsService } from './service.js';
 
@@ -25,7 +24,7 @@ interface StoredSkill extends LinkableSkill {
 }
 
 class InMemoryAgentStore implements AgentStore {
-  agents = [{ id: AGENT, workspaceId: WS } as AgentRow];
+  agents = [{ id: AGENT, workspaceId: WS } as AgentRecord];
   skills: StoredSkill[] = [];
   links: (SkillLinkInput & { agentId: string; order: number })[] = [];
   replaceCalls = 0;

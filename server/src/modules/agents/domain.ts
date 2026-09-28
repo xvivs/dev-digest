@@ -1,13 +1,44 @@
 /**
  * DOMAIN — the core ring of the `agents` module. Pure: no I/O, no container,
- * no Drizzle, no Fastify. Only the error taxonomy in `platform/errors.ts`.
+ * no Drizzle, no Fastify. Only `import type` from `@devdigest/shared` and the
+ * error taxonomy in `platform/errors.ts`.
  *
- * Encodes the SPEC-02 invariants for `PUT /agents/:id/skills`: every linked
+ * Holds the record shapes the `AgentStore` port speaks in, and encodes the SPEC-02 invariants for `PUT /agents/:id/skills`: every linked
  * skill belongs to the agent's workspace (AC-31), and the enabled skills stay
  * within the per-agent body budget.
  */
+import type { CiFailOn, Provider, ReviewStrategy } from '@devdigest/shared';
 import { AppError, NotFoundError } from '../../platform/errors.js';
 import { AGENT_SKILLS_BODY_BUDGET_BYTES } from './constants.js';
+
+/** What the service reads: an agent's persisted config. Not a Drizzle row
+ *  (the repository's row satisfies it structurally), not an HTTP DTO. */
+export interface AgentRecord {
+  id: string;
+  workspaceId: string;
+  name: string;
+  description: string;
+  provider: Provider;
+  model: string;
+  systemPrompt: string;
+  outputSchema: unknown;
+  strategy: ReviewStrategy;
+  ciFailOn: CiFailOn;
+  repoIntel: boolean;
+  enabled: boolean;
+  version: number;
+  createdBy: string | null;
+  createdAt: Date;
+}
+
+/** An immutable config snapshot. `configJson` is untyped until the mapper
+ *  parses it through `AgentVersionConfig`. */
+export interface AgentVersionRecord {
+  agentId: string;
+  version: number;
+  configJson: unknown;
+  createdAt: Date;
+}
 
 /** One requested link — order is the array index. */
 export interface SkillLinkInput {
