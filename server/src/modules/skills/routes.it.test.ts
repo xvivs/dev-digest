@@ -38,7 +38,8 @@ d('skills routes (Testcontainers pg)', () => {
   }
 
   const createBody = (over: Partial<Record<string, unknown>> = {}) => ({
-    name: 'branch-coverage-gate',
+    // Not a seeded skill name: seed() adds branch-coverage-gate & co (SPEC-02).
+    name: 'it-coverage-gate',
     description: 'Flag untested branches.',
     type: 'rubric',
     body: 'Check every new conditional has a test.',

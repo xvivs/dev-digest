@@ -14,6 +14,7 @@ import { seed } from '../src/db/seed.js';
 import { MockLLMProvider, MockEmbedder, MockGitClient } from '../src/adapters/mocks.js';
 import * as t from '../src/db/schema.js';
 import type { Review } from '@devdigest/shared';
+import { estimateTokens } from '@devdigest/reviewer-core';
 
 const hasDocker = await dockerAvailable();
 const d = hasDocker ? describe : describe.skip;
@@ -164,7 +165,14 @@ d('ReviewRunExecutor resolves effective skills (Testcontainers pg)', () => {
     expect(used.map((s) => s.id)).toEqual([effective1.id, effective2.id]);
     expect(used.every((s) => s.version === 1)).toBe(true);
     expect(used.every((s) => /^[0-9a-f]{64}$/.test(s.sha256))).toBe(true);
-    expect(trace.prompt_assembly.skills_tokens).toBe(used.reduce((sum, s) => sum + s.tokens, 0));
+    // skills_tokens estimates the whole rendered block (preamble + <skills> tags +
+    // headings), so it is at least the sum of the per-skill body estimates.
+    expect(trace.prompt_assembly.skills_tokens).toBe(
+      estimateTokens(String(trace.prompt_assembly.skills)),
+    );
+    expect(trace.prompt_assembly.skills_tokens).toBeGreaterThanOrEqual(
+      used.reduce((sum, s) => sum + s.tokens, 0),
+    );
 
     // The names of the excluded skills never reached the prompt.
     expect(String(trace.prompt_assembly.skills ?? '')).not.toContain(disabledLinkSkill.name);
