@@ -74,8 +74,11 @@ describe("C2 TraceBody — Skills prompt block (SPEC-02 AC-27..29)", () => {
     expect(screen.getByText("old-rubric")).toBeInTheDocument();
     expect(screen.getByText("v1 · ≈500 tokens")).toBeInTheDocument();
     expect(screen.getByText("deleted")).toBeInTheDocument();
-    // Only the skill missing from the live catalog is marked deleted.
-    expect(screen.getByText("branch-coverage-gate").closest("div")?.textContent).not.toContain("deleted");
+    // Only the skill missing from the live catalog ("old-rubric") is marked
+    // deleted: exactly one "deleted" label across both rows proves the live
+    // skill's row ("branch-coverage-gate") carries none — an unambiguous,
+    // accessible check given the fixture has only these two skills.
+    expect(screen.getAllByText("deleted")).toHaveLength(1);
   });
 
   it("renders a trace that predates skills_tokens/skills_used unchanged", () => {
