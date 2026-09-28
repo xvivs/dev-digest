@@ -1,6 +1,6 @@
 # ADR 0006: Local self-review gate before push and PR
 
-**Status:** proposed
+**Status:** proposed · Decisions 3 and 5 amended by [ADR 0014](0014-checks-only-push-gate.md)
 **Date:** 2026-09-28
 
 ## Context
