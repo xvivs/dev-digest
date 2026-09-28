@@ -1,51 +1,24 @@
 import { and, asc, count, desc, eq, inArray } from 'drizzle-orm';
 import type { Db } from '../../db/client.js';
 import * as t from '../../db/schema.js';
-import type { CiFailOn, Provider, ReviewStrategy } from '@devdigest/shared';
-import { NotFoundError, AppError } from '../../platform/errors.js';
-import {
-  AGENT_SKILLS_BODY_BUDGET_BYTES,
-  DEFAULT_AGENT_DESCRIPTION,
-  INITIAL_AGENT_VERSION,
-} from './constants.js';
+import { DEFAULT_AGENT_DESCRIPTION, INITIAL_AGENT_VERSION } from './constants.js';
+import type { LinkableSkill, SkillLinkInput } from './domain.js';
 import { isConfigChange } from './helpers.js';
+import type { AgentStore, InsertAgent, UpdateAgent } from './ports.js';
 
 /**
  * A2 — agents data-access. Owns `agents`, `agent_versions`, and the
  * `agent_skills` link table (shared with A1's skills repository, but A2 owns the
  * agent side: link/reorder/list for an agent). Workspace-scoped throughout.
+ * Implements `AgentStore`; the service owns the transaction boundaries.
  */
 
 import type { AgentRow, AgentVersionRow } from '../../db/rows.js';
 export type { AgentRow, AgentVersionRow };
+export type { InsertAgent, UpdateAgent };
 
-export interface InsertAgent {
-  workspaceId: string;
-  name: string;
-  description?: string;
-  provider: Provider;
-  model: string;
-  systemPrompt: string;
-  outputSchema?: unknown;
-  strategy?: ReviewStrategy;
-  ciFailOn?: CiFailOn;
-  repoIntel?: boolean;
-  enabled?: boolean;
-  createdBy?: string | null;
-}
-
-export interface UpdateAgent {
-  name?: string;
-  description?: string;
-  provider?: Provider;
-  model?: string;
-  systemPrompt?: string;
-  outputSchema?: unknown;
-  strategy?: ReviewStrategy;
-  ciFailOn?: CiFailOn;
-  repoIntel?: boolean;
-  enabled?: boolean;
-}
+/** A Drizzle transaction handle — structurally a `Db` for queries. */
+type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
 
 /** A skill linked to an agent (with its order), joined from agent_skills. */
 export interface LinkedSkillRow {
@@ -54,8 +27,8 @@ export interface LinkedSkillRow {
   enabled: boolean;
 }
 
-export class AgentsRepository {
-  constructor(private db: Db) {}
+export class AgentsRepository implements AgentStore {
+  constructor(private db: Db | Tx) {}
 
   /** One aggregate query (LEFT JOIN + GROUP BY) — no N+1 for `skill_count`. */
   async list(workspaceId: string): Promise<(AgentRow & { skillCount: number })[]> {
@@ -230,62 +203,32 @@ export class AgentsRepository {
     return rows.map((r) => ({ skill: r.skill, order: r.order, enabled: r.enabled }));
   }
 
+  /** Skills of this workspace among `skillIds` (SPEC-02 link invariants). */
+  async findWorkspaceSkills(workspaceId: string, skillIds: string[]): Promise<LinkableSkill[]> {
+    if (skillIds.length === 0) return [];
+    return this.db
+      .select({ id: t.skills.id, enabled: t.skills.enabled, body: t.skills.body })
+      .from(t.skills)
+      .where(and(eq(t.skills.workspaceId, workspaceId), inArray(t.skills.id, skillIds)));
+  }
+
+  /** Delete + insert the agent's whole link set (order = array index). Not
+   *  atomic on its own — call it inside `transaction()`. */
+  async replaceSkillLinks(agentId: string, links: SkillLinkInput[]): Promise<void> {
+    await this.db.delete(t.agentSkills).where(eq(t.agentSkills.agentId, agentId));
+    if (links.length > 0) {
+      await this.db
+        .insert(t.agentSkills)
+        .values(links.map((l, i) => ({ agentId, skillId: l.skillId, order: i, enabled: l.enabled })));
+    }
+  }
+
   /**
-   * Replace the full set of linked skills for an agent (SPEC-02 `PUT
-   * /agents/:id/skills`), atomically:
-   *   1. every `skill_id` must exist in this workspace, else 404 (cross-tenant
-   *      guard — AC-31) — checked and thrown BEFORE any write.
-   *   2. the enabled-skills body budget must not be exceeded, else 422.
-   *   3. delete + insert the whole link set (order = array index).
-   * All three steps run in ONE transaction: a budget/tenancy failure leaves
-   * the existing links untouched (no partial write).
+   * Nested calls reuse the outer transaction (Drizzle opens a savepoint). Never
+   * hand a memoized container getter into this callback — it is bound to the
+   * root `db`.
    */
-  async setSkillLinks(
-    workspaceId: string,
-    agentId: string,
-    links: { skillId: string; enabled: boolean }[],
-  ): Promise<LinkedSkillRow[]> {
-    return this.db.transaction(async (tx) => {
-      const skillIds = links.map((l) => l.skillId);
-      if (skillIds.length > 0) {
-        const rows = await tx
-          .select({ id: t.skills.id, enabled: t.skills.enabled, body: t.skills.body })
-          .from(t.skills)
-          .where(and(eq(t.skills.workspaceId, workspaceId), inArray(t.skills.id, skillIds)));
-        if (rows.length !== new Set(skillIds).size) {
-          throw new NotFoundError('One or more skills were not found in this workspace');
-        }
-        const byId = new Map(rows.map((r) => [r.id, r]));
-        const budgetBytes = links.reduce((sum, l) => {
-          if (!l.enabled) return sum;
-          const skill = byId.get(l.skillId);
-          if (!skill || !skill.enabled) return sum;
-          return sum + Buffer.byteLength(skill.body, 'utf8');
-        }, 0);
-        if (budgetBytes > AGENT_SKILLS_BODY_BUDGET_BYTES) {
-          throw new AppError(
-            'agent_skills_budget_exceeded',
-            `Enabled skills total ${budgetBytes} bytes, exceeding the ${AGENT_SKILLS_BODY_BUDGET_BYTES}-byte budget`,
-            422,
-            { budget_bytes: budgetBytes, limit_bytes: AGENT_SKILLS_BODY_BUDGET_BYTES },
-          );
-        }
-      }
-
-      await tx.delete(t.agentSkills).where(eq(t.agentSkills.agentId, agentId));
-      if (links.length > 0) {
-        await tx
-          .insert(t.agentSkills)
-          .values(links.map((l, i) => ({ agentId, skillId: l.skillId, order: i, enabled: l.enabled })));
-      }
-
-      const rows = await tx
-        .select({ skill: t.skills, order: t.agentSkills.order, enabled: t.agentSkills.enabled })
-        .from(t.agentSkills)
-        .innerJoin(t.skills, eq(t.agentSkills.skillId, t.skills.id))
-        .where(eq(t.agentSkills.agentId, agentId))
-        .orderBy(asc(t.agentSkills.order));
-      return rows.map((r) => ({ skill: r.skill, order: r.order, enabled: r.enabled }));
-    });
+  transaction<T>(work: (store: AgentStore) => Promise<T>): Promise<T> {
+    return this.db.transaction((tx) => work(new AgentsRepository(tx)));
   }
 }

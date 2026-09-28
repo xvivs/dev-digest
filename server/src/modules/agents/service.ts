@@ -8,8 +8,14 @@ import type {
   Provider,
   ReviewStrategy,
 } from '@devdigest/shared';
-import { AgentsRepository } from './repository.js';
+import {
+  assertSkillsInWorkspace,
+  assertWithinSkillsBudget,
+  enabledSkillsBodyBytes,
+  type SkillLinkInput,
+} from './domain.js';
 import { toAgentDto, toAgentVersionDto } from './helpers.js';
+import type { AgentStore } from './ports.js';
 
 /**
  * A2 — agents service. Business logic for the Agents tab + Agent Editor.
@@ -17,6 +23,7 @@ import { toAgentDto, toAgentVersionDto } from './helpers.js';
  *
  * An Agent = provider + model + system_prompt + linked skills + output_schema +
  * enabled. Config changes are versioned via `agent_versions` (repository).
+ * Depends on the `AgentStore` port; `wiring.ts` plugs in the Drizzle store.
  */
 
 // Re-exported for backwards compatibility; implementation lives in ./helpers.
@@ -49,11 +56,10 @@ export interface UpdateAgentInput {
 }
 
 export class AgentsService {
-  private repo: AgentsRepository;
-
-  constructor(private container: Container) {
-    this.repo = new AgentsRepository(container.db);
-  }
+  constructor(
+    private readonly repo: AgentStore,
+    private readonly container: Pick<Container, 'llm'>,
+  ) {}
 
   /** One aggregate query for `skill_count` — see `AgentsRepository.list`. */
   async list(workspaceId: string): Promise<Agent[]> {
@@ -154,29 +160,39 @@ export class AgentsService {
 
   /**
    * Replace the agent's whole set of linked skills (SPEC-02 `PUT
-   * /agents/:id/skills`; order = array index). Returns undefined only when
-   * the AGENT isn't in this workspace (route → 404); a bad `skill_id` or an
-   * over-budget request throws (NotFoundError / AppError 422 — the route lets
-   * those propagate, since they aren't "agent not found").
+   * /agents/:id/skills`; order = array index), in ONE transaction: the
+   * tenancy and budget checks run against the same snapshot the write lands
+   * on, and a failure leaves the existing links untouched. Returns undefined
+   * only when the AGENT isn't in this workspace (route → 404); a bad
+   * `skill_id` or an over-budget request throws (NotFoundError / AppError 422
+   * — the route lets those propagate, since they aren't "agent not found").
    */
-  async setSkillLinks(
+  setSkillLinks(
     workspaceId: string,
     agentId: string,
     links: { skill_id: string; enabled: boolean }[],
   ): Promise<AgentSkillLink[] | undefined> {
-    const agent = await this.repo.getById(workspaceId, agentId);
-    if (!agent) return undefined;
-    const rows = await this.repo.setSkillLinks(
-      workspaceId,
-      agentId,
-      links.map((l) => ({ skillId: l.skill_id, enabled: l.enabled })),
-    );
-    return rows.map((r) => ({
-      agent_id: agentId,
-      skill_id: r.skill.id,
-      order: r.order,
-      enabled: r.enabled,
-    }));
+    const input: SkillLinkInput[] = links.map((l) => ({ skillId: l.skill_id, enabled: l.enabled }));
+    return this.repo.transaction(async (tx) => {
+      const agent = await tx.getById(workspaceId, agentId);
+      if (!agent) return undefined;
+
+      const skills = await tx.findWorkspaceSkills(
+        workspaceId,
+        input.map((l) => l.skillId),
+      );
+      assertSkillsInWorkspace(input, skills);
+      assertWithinSkillsBudget(enabledSkillsBodyBytes(input, skills));
+
+      await tx.replaceSkillLinks(agentId, input);
+      const rows = await tx.linkedSkills(agentId);
+      return rows.map((r) => ({
+        agent_id: agentId,
+        skill_id: r.skill.id,
+        order: r.order,
+        enabled: r.enabled,
+      }));
+    });
   }
 
   /**

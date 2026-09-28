@@ -29,20 +29,6 @@
   },
   {
     "type": "dependency",
-    "from": "src/modules/agents/service.ts",
-    "to": "src/modules/agents/repository.ts",
-    "unresolvedTo": "./repository.js",
-    "dependencyTypes": [
-      "local",
-      "import"
-    ],
-    "rule": {
-      "severity": "error",
-      "name": "application-no-infra"
-    }
-  },
-  {
-    "type": "dependency",
     "from": "src/modules/repo-intel/service.ts",
     "to": "src/modules/repo-intel/pipeline/full.ts",
     "unresolvedTo": "./pipeline/full.js",
