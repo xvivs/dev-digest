@@ -36,6 +36,12 @@ vi.mock("@/lib/hooks/trace", () => ({
 vi.mock("@/lib/hooks/reviews", () => ({
   useRunEvents: () => ({ events: [], running: false }),
 }));
+// TraceBody reads this to tell a deleted skill from a live one (SPEC-02
+// AC-27); this fixture's trace predates skills_used, so the value is unused
+// here — mocked only so the test stays hermetic (no real fetch).
+vi.mock("@/lib/hooks/skills", () => ({
+  useSkills: () => ({ data: [], isLoading: false }),
+}));
 
 import { RunTraceDrawer } from "./RunTraceDrawer";
 
