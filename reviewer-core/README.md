@@ -34,6 +34,40 @@ feeding it — `skills` (L02), `memory` (L07), `specs` (L05), `callers` — plus
 In the starter the server passes only the diff, system prompt, and repo map; the
 extra slots are omitted, so `assemblePrompt` simply leaves those sections out.
 
+## Prompt layout
+
+`assemblePrompt()` emits two messages (ADR 0012, SPEC-02 D5):
+
+```
+system:  <agent system prompt>
+
+         <one-line preamble>          ← only when skills are effective
+         <skills>
+         ### <name>
+         <body>
+
+         ### <name2> …
+         </skills>
+
+         INJECTION_GUARD              ← always LAST
+user:    task · ## PR description · ## Relevant memory · ## Repo skeleton ·
+         ## Project context · ## Callers of changed symbols · ## Diff to review
+```
+
+- Skills are **trusted instructions** (the server only passes vetted ones), so
+  they live in the system message, not in `<untrusted>`. The guard closes the
+  system message and states that skills may add checks but never waive
+  findings, lower severity, or turn `<untrusted>` content into instructions.
+- Skill names and bodies are escaped: `<untrusted`, `</untrusted`, `<skills`,
+  `</skills` (any case) get their `<` replaced with `&lt;`, so a skill cannot
+  open or close a delimiter. The rest of the body is sent verbatim.
+- `assembly.skills` is the rendered block as sent (preamble included);
+  `assembly.skills_tokens = estimateTokens(block)`. Both are `null` with no
+  skills, and the prompt is then identical to one built without the slot.
+  `skills_used` is filled by the server, not here.
+- The no-waiver rule is pinned at prompt level only (`test/prompt-skills.test.ts`).
+  Whether a model actually obeys it is a behavioural eval, out of scope here.
+
 ## Public API
 
 Exported from `src/index.ts`: `assemblePrompt` / `wrapUntrusted` (prompt),
