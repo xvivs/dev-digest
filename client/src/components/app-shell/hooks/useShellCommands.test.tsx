@@ -41,6 +41,7 @@ describe("useShellCommands", () => {
     const { result } = mount();
     expect(result.current.map((c) => [c.id, c.label])).toEqual([
       ["pulls", "Go to Pull Requests"],
+      ["skills", "Go to Skills"],
       ["agents", "Go to Agents"],
       ["settings", "Go to Settings"],
       ["toggle-theme", "Switch to light theme"],

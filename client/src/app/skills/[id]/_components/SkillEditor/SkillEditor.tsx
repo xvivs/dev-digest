@@ -1,0 +1,42 @@
+/* SkillEditor — tab bar + the active tab's body (SPEC-02 D3). Tab switches
+   route through the dirty-form navigation guard (AC-8); the skill's own
+   editing state (ConfigTab's draft) is not lifted here — that tab reports its
+   dirty flag through the guard instead (see ../../../navigation-guard). */
+"use client";
+
+import { useTranslations } from "next-intl";
+import { Tabs } from "@devdigest/ui";
+import type { Skill } from "@devdigest/shared";
+import { useNavigationGuard } from "@/app/skills/navigation-guard";
+import { SKILL_EDITOR_TABS } from "../../constants";
+import { ConfigTab } from "./_components/ConfigTab";
+import { PreviewTab } from "./_components/PreviewTab";
+import { PlaceholderTab } from "./_components/PlaceholderTab";
+import { s } from "./styles";
+
+export function SkillEditor({ skill, tab, onTab }: { skill: Skill; tab: string; onTab: (t: string) => void }) {
+  const t = useTranslations("skills");
+  const guard = useNavigationGuard();
+  const tabs = SKILL_EDITOR_TABS.map((tb) => ({ key: tb.key, label: t(tb.labelKey), icon: tb.icon }));
+
+  return (
+    <div style={s.wrap}>
+      <div style={s.tabsBar}>
+        <Tabs tabs={tabs} value={tab} onChange={(k) => guard.confirmNavigation(() => onTab(k))} pad="0 24px" />
+      </div>
+      <div style={s.body}>
+        {tab === "config" && <ConfigTab skill={skill} />}
+        {tab === "preview" && <PreviewTab body={skill.body} />}
+        {tab === "evals" && (
+          <PlaceholderTab titleKey="placeholder.evals.title" bodyKey="placeholder.evals.body" />
+        )}
+        {tab === "stats" && (
+          <PlaceholderTab titleKey="placeholder.stats.title" bodyKey="placeholder.stats.body" />
+        )}
+        {tab === "versions" && (
+          <PlaceholderTab titleKey="placeholder.versions.title" bodyKey="placeholder.versions.body" />
+        )}
+      </div>
+    </div>
+  );
+}
