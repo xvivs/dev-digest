@@ -26,6 +26,7 @@ const h = vi.hoisted(() => ({
   skills: [] as unknown[],
   versions: [] as unknown[],
   snapshot: undefined as unknown,
+  statsWindow: null as string | null,
 }));
 
 vi.mock("next/navigation", () => ({
@@ -54,6 +55,23 @@ vi.mock("@/lib/hooks", async (importOriginal) => {
       isError: false,
     }),
     useRestoreSkillVersion: () => ({ mutate: vi.fn(), reset: vi.fn(), isPending: false, isError: false }),
+    useSkillStats: (_id: string, window: string) => {
+      h.statsWindow = window;
+      return {
+        data: {
+          skill_id: "sk1",
+          window,
+          usage: { runs: 0, agents: [] },
+          cost: { tokens: 0, cost_usd: null, cost_source: null },
+          by_version: [],
+          impact: null,
+        },
+        isLoading: false,
+        isError: false,
+        isPlaceholderData: false,
+        refetch: vi.fn(),
+      };
+    },
   };
 });
 
@@ -88,6 +106,7 @@ beforeEach(() => {
   h.skill = { data: SKILL, isLoading: false, isError: false, error: null, refetch: vi.fn() };
   h.versions = [];
   h.snapshot = undefined;
+  h.statsWindow = null;
 });
 afterEach(cleanup);
 
@@ -210,6 +229,48 @@ describe("SkillEditorView", () => {
       h.snapshot = snap(2, "# Rule v2");
       renderView();
       expect(screen.queryByDisplayValue("# Rule v2")).not.toBeInTheDocument();
+    });
+  });
+  describe("Stats window (?window=)", () => {
+    const cost = { exact: "", estimated: "", missing: { pending: "", failed: "", no_price: "", default: "" } };
+    const renderStats = () =>
+      renderWithProviders(
+        <ToastProvider>
+          <SkillEditorView id="sk1" />
+        </ToastProvider>,
+        { namespaces: { skills: messages, shell: shellMessages, common, cost } },
+      );
+
+    it("reads the window from the URL and defaults to 30d", () => {
+      h.search = "tab=stats";
+      renderStats();
+      expect(h.statsWindow).toBe("30d");
+      cleanup();
+      h.search = "tab=stats&window=90d";
+      renderStats();
+      expect(h.statsWindow).toBe("90d");
+      expect(screen.getByRole("button", { name: "90d" })).toHaveAttribute("aria-pressed", "true");
+    });
+
+    it("writes a window change to the URL, keeping the tab", () => {
+      h.search = "tab=stats";
+      renderStats();
+      fireEvent.click(screen.getByRole("button", { name: "7d" }));
+      expect(h.replace).toHaveBeenCalledWith("/skills/sk1?tab=stats&window=7d");
+    });
+
+    it("keeps the window across a tab switch", () => {
+      h.search = "tab=stats&window=7d";
+      renderStats();
+      fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+      expect(h.replace).toHaveBeenCalledWith("/skills/sk1?tab=preview&window=7d");
+    });
+
+    it("the Impact CTA opens the Evals tab", () => {
+      h.search = "tab=stats";
+      renderStats();
+      fireEvent.click(screen.getByRole("button", { name: "Run evals" }));
+      expect(h.replace).toHaveBeenCalledWith("/skills/sk1?tab=evals");
     });
   });
 });

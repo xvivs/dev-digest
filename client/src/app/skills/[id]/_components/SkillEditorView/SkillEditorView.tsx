@@ -20,8 +20,16 @@ import { SkillsListPane } from "@/app/skills/_components/SkillsListPane";
 import { CreateSkillModal } from "@/app/skills/_components/CreateSkillModal";
 import { ImportSkillDrawer } from "@/app/skills/_components/ImportSkillDrawer";
 import { SkillEditor } from "../SkillEditor";
-import { DIRTY_GUARD_MODAL_WIDTH, FROM_VERSION_PARAM, HEADER_ICON_SIZE, SKELETON_BODY_HEIGHT, SKELETON_TITLE } from "./constants";
-import { editorQuery, parseFromVersion, resolveTab } from "./helpers";
+import type { SkillStatsWindow } from "@devdigest/shared";
+import {
+  DIRTY_GUARD_MODAL_WIDTH,
+  FROM_VERSION_PARAM,
+  HEADER_ICON_SIZE,
+  SKELETON_BODY_HEIGHT,
+  SKELETON_TITLE,
+  STATS_WINDOW_PARAM,
+} from "./constants";
+import { editorQuery, parseFromVersion, parseStatsWindow, resolveTab, statsWindowQuery } from "./helpers";
 import { s } from "./styles";
 
 export function SkillEditorView({ id }: { id: string }) {
@@ -36,8 +44,13 @@ export function SkillEditorView({ id }: { id: string }) {
 
   const tab = resolveTab(search.get("tab"));
   const fromVersion = tab === "config" ? parseFromVersion(search.get(FROM_VERSION_PARAM)) : null;
+  const statsWindow = parseStatsWindow(search.get(STATS_WINDOW_PARAM));
+  const replaceQuery = (query: string) => router.replace(`${SKILLS_HREF}/${encodeURIComponent(id)}?${query}`);
   const navigate = (next: string, version: number | null = null) =>
-    router.replace(`${SKILLS_HREF}/${encodeURIComponent(id)}?${editorQuery(search.toString(), next, version)}`);
+    replaceQuery(editorQuery(search.toString(), next, version));
+  // Stats window in `?window=`: survives reloads and shared links, and tab
+  // switches keep it (editorQuery preserves unrelated params).
+  const setStatsWindow = (w: SkillStatsWindow) => replaceQuery(statsWindowQuery(search.toString(), w));
   // Not guarded here — SkillEditor's Tabs already route every change through
   // `guard.confirmNavigation` before calling this. Any tab change drops
   // `fromVersion`, so the restore draft seeds Config once.
@@ -149,6 +162,8 @@ export function SkillEditorView({ id }: { id: string }) {
                   fromVersion={fromVersion}
                   onEditVersion={editFromVersion}
                   onDraftSaved={clearFromVersion}
+                  statsWindow={statsWindow}
+                  onStatsWindow={setStatsWindow}
                 />
               </div>
             </div>

@@ -117,10 +117,6 @@
     "evals": {
       "title": "Evals",
       "body": "Comes with the evals lesson."
-    },
-    "stats": {
-      "title": "Stats",
-      "body": "Comes with the stats lesson."
     }
   },
   "versions": {
@@ -252,5 +248,79 @@
     "unknown": "Unknown",
     "stale": "stale",
     "staleTitle": "The skill or its carrier agent changed since this eval ran"
+  },
+  "stats": {
+    "title": "Stats",
+    "caption": "How much this skill is used, what it costs, and whether it helps.",
+    "loadError": "Could not load stats for this skill.",
+    "window": {
+      "label": "Time window",
+      "7d": "7d",
+      "30d": "30d",
+      "90d": "90d",
+      "7dTitle": "Last 7 days",
+      "30dTitle": "Last 30 days",
+      "90dTitle": "Last 90 days"
+    },
+    "impact": {
+      "title": "Impact",
+      "unknownBody": "No evals yet. An ablation eval runs a carrier agent with and without this skill to tell whether it helps.",
+      "runEvals": "Run evals",
+      "rerunEvals": "Re-run evals",
+      "carrier": "Carrier: {name}",
+      "carrierDeleted": "Carrier agent deleted",
+      "mode": {
+        "quick": "Quick",
+        "full": "Full"
+      },
+      "running": "Eval in progress ({done}/{total} jobs).",
+      "failed": "The latest eval did not finish.",
+      "passing": "{passing}/{total} passing",
+      "passRateAria": "{percent}% of cases pass with the skill",
+      "breakdown": "+{caught} caught · {regressed} regressed · {flaky} flaky",
+      "deltaUnexpected": "Δunexpected {value}",
+      "deltaUnexpectedTitle": "Unexpected findings per case, with the skill minus without it",
+      "indicativeNote": "Indicative only: a Quick run, or fewer than 5 stable cases. Run a Full eval for a verdict.",
+      "staleNote": "The skill or the carrier agent changed since this eval ran, so the verdict may no longer hold."
+    },
+    "usage": {
+      "title": "Usage",
+      "runs": "Runs",
+      "effectiveAgents": "Agents using it",
+      "effectiveOf": "{effective}/{total}",
+      "agentsLabel": "Agents linking this skill",
+      "agent": "Agent",
+      "status": "Status",
+      "agentRuns": "Runs",
+      "noAgents": "No agent links this skill yet.",
+      "statuses": {
+        "effective": "Effective",
+        "link_disabled": "Link disabled",
+        "skill_disabled": "Skill disabled",
+        "blocked_by_vetting": "Blocked by vetting"
+      },
+      "statusTitles": {
+        "effective": "The skill goes into this agent's prompt.",
+        "link_disabled": "This agent's link to the skill is switched off.",
+        "skill_disabled": "The skill itself is disabled.",
+        "blocked_by_vetting": "The skill needs review and trust before agents use it."
+      }
+    },
+    "cost": {
+      "title": "Cost",
+      "caption": "Skill tokens × completed runs, priced at each run's model.",
+      "tokens": "Skill tokens",
+      "cost": "Cost"
+    },
+    "byVersion": {
+      "title": "By version",
+      "label": "Runs by skill version",
+      "version": "Version",
+      "runs": "Runs",
+      "tokens": "Tokens",
+      "cost": "Cost",
+      "current": "current",
+      "empty": "No completed runs used this skill in this window."
+    }
   }
 }

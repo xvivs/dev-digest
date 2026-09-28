@@ -6,12 +6,13 @@
 
 import { useTranslations } from "next-intl";
 import { Tabs } from "@devdigest/ui";
-import type { Skill } from "@devdigest/shared";
+import type { Skill, SkillStatsWindow } from "@devdigest/shared";
 import { useNavigationGuard } from "@/app/skills/navigation-guard";
 import { SKILL_EDITOR_TABS } from "../../constants";
 import { ConfigTab } from "./_components/ConfigTab";
 import { PreviewTab } from "./_components/PreviewTab";
 import { PlaceholderTab } from "./_components/PlaceholderTab";
+import { StatsTab } from "./_components/StatsTab";
 import { VersionsTab } from "./_components/VersionsTab";
 import { s } from "./styles";
 
@@ -22,6 +23,8 @@ export function SkillEditor({
   fromVersion = null,
   onEditVersion,
   onDraftSaved,
+  statsWindow = "30d",
+  onStatsWindow,
 }: {
   skill: Skill;
   tab: string;
@@ -32,6 +35,9 @@ export function SkillEditor({
   onEditVersion?: (version: number) => void;
   /** Config saved the draft that came from `fromVersion`. */
   onDraftSaved?: () => void;
+  /** Stats tab window, from `?window=` (skill-impact decision 11). */
+  statsWindow?: SkillStatsWindow;
+  onStatsWindow?: (w: SkillStatsWindow) => void;
 }) {
   const t = useTranslations("skills");
   const guard = useNavigationGuard();
@@ -49,7 +55,12 @@ export function SkillEditor({
           <PlaceholderTab titleKey="placeholder.evals.title" bodyKey="placeholder.evals.body" />
         )}
         {tab === "stats" && (
-          <PlaceholderTab titleKey="placeholder.stats.title" bodyKey="placeholder.stats.body" />
+          <StatsTab
+            skill={skill}
+            window={statsWindow}
+            onWindowChange={(w) => onStatsWindow?.(w)}
+            onRunEvals={() => guard.confirmNavigation(() => onTab("evals"))}
+          />
         )}
         {tab === "versions" && (
           <VersionsTab

@@ -1,4 +1,4 @@
-/* PlaceholderTab — the shared empty state for Evals/Stats/Versions (SPEC-02
+/* PlaceholderTab — the empty state for tabs not built yet, now only Evals (SPEC-02
    D3, AC-11): these tabs render as a placeholder naming the lesson that
    fills them, not fake data. */
 "use client";
