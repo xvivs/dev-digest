@@ -8,9 +8,14 @@ import {
   primaryKey,
   timestamp,
   uniqueIndex,
+  check,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { now } from "./_shared";
 import { workspaces } from "./core";
+
+/** One list for the Drizzle enum type AND the DB CHECK, so they can't drift. */
+const SKILL_SOURCES = ["manual", "imported", "imported_url", "extracted", "community"] as const;
 
 export const skills = pgTable(
   "skills",
@@ -24,9 +29,7 @@ export const skills = pgTable(
     type: text("type", {
       enum: ["rubric", "convention", "security", "custom"],
     }).notNull(),
-    source: text("source", {
-      enum: ["manual", "imported", "imported_url", "extracted", "community"],
-    }).notNull(),
+    source: text("source", { enum: SKILL_SOURCES }).notNull(),
     body: text("body").notNull(),
     enabled: boolean("enabled").notNull().default(true),
     version: integer("version").notNull().default(1),
@@ -42,6 +45,11 @@ export const skills = pgTable(
   },
   (t) => ({
     nameUq: uniqueIndex("skills_workspace_name_uq").on(t.workspaceId, t.name),
+    // The column is `text`; without this only Drizzle types and zod guard it.
+    sourceCheck: check(
+      "skills_source_check",
+      sql`${t.source} IN (${sql.raw(SKILL_SOURCES.map((v) => `'${v}'`).join(", "))})`,
+    ),
   }),
 );
 

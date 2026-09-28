@@ -1,0 +1,1 @@
+ALTER TABLE "skills" ADD CONSTRAINT "skills_source_check" CHECK ("skills"."source" IN ('manual', 'imported', 'imported_url', 'extracted', 'community'));

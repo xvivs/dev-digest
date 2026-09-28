@@ -92,6 +92,13 @@
       "when": 1790610801495,
       "tag": "0012_milky_puppet_master",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1790621202189,
+      "tag": "0013_fixed_human_torch",
+      "breakpoints": true
     }
   ]
 }
