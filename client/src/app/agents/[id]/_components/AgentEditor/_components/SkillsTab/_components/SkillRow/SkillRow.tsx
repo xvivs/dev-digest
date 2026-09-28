@@ -8,7 +8,7 @@ import React from "react";
 import { useTranslations } from "next-intl";
 import { Checkbox, Badge, RowAction, Icon } from "@devdigest/ui";
 import { ROW_ICON_SIZE } from "../../constants";
-import type { SkillRow as SkillRowModel } from "../../helpers";
+import { mutedReason, type SkillRow as SkillRowModel } from "../../helpers";
 import { s } from "../../styles";
 
 export function SkillRow({
@@ -29,7 +29,7 @@ export function SkillRow({
   onDrop: () => void;
 }) {
   const t = useTranslations("agents");
-  const reason = !row.skill.enabled ? "disabled" : row.skill.needs_vetting ? "needsVetting" : null;
+  const reason = mutedReason(row.skill);
   const draggable = row.linked;
 
   return (

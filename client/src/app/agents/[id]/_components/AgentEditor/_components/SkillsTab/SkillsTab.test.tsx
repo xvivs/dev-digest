@@ -128,12 +128,15 @@ afterEach(() => {
 
 describe("C2 SkillsTab — ordering and the enabled counter", () => {
   it("lists linked skills first (by order), then the rest by name, and shows N of M enabled", async () => {
-    const { container } = setup();
+    setup();
     await settle();
 
-    // Name spans only — the type badge is also `.mono` (kept mono for its own reasons).
-    const names = Array.from(container.querySelectorAll("span.mono[title]")).map((el) => el.textContent);
-    expect(names).toEqual(["alpha-rubric", "beta-convention", "yankee-skill", "zulu-skill"]);
+    // Each row's checkbox is named "Enable {name} for this agent" (SkillRow.tsx);
+    // DOM order of the checkboxes is the row order.
+    const expected = ["alpha-rubric", "beta-convention", "yankee-skill", "zulu-skill"].map((name) =>
+      screen.getByRole("checkbox", { name: `Enable ${name} for this agent` }),
+    );
+    expect(screen.getAllByRole("checkbox")).toEqual(expected);
     // alpha is linked+enabled; beta is linked but its link is disabled — only alpha counts.
     expect(screen.getByText("1 of 4 enabled")).toBeInTheDocument();
   });

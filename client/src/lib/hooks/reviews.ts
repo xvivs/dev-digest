@@ -22,12 +22,6 @@ const RUN_POLL_INTERVAL_MS = 4000;
 /** SSE `event:` names a run stream emits (besides default `message` frames). */
 const RUN_EVENT_KINDS = ["info", "tool", "result", "error"] as const;
 
-// Query keys shared by the run queries below and the invalidation that follows
-// a run starting, being cancelled or settling. One definition so they can't drift.
-const activeRunsKey = (prId: string | null | undefined) => ["pr-active-runs", prId] as const;
-const runHistoryKey = (prId: string | null | undefined) => ["pr-runs", prId] as const;
-const reviewsKey = (prId: string | null | undefined) => ["reviews", prId] as const;
-
 // ---- Active (in-flight) runs — server-side source of truth ----
 export interface ActiveRun {
   run_id: string;
@@ -40,7 +34,7 @@ export interface ActiveRun {
    Survives reloads/devices; polls while anything is running so it self-clears. */
 export function usePrActiveRuns(prId: string | null | undefined) {
   return useQuery({
-    queryKey: activeRunsKey(prId),
+    queryKey: ["pr-active-runs", prId],
     queryFn: () => api.get<ActiveRun[]>(`/pulls/${prId}/runs/active`),
     enabled: !!prId,
     refetchInterval: (query) =>
@@ -53,7 +47,7 @@ export function usePrActiveRuns(prId: string | null | undefined) {
    reload (DB-backed). Polls while anything is running so it self-updates. */
 export function usePrRuns(prId: string | null | undefined) {
   return useQuery({
-    queryKey: runHistoryKey(prId),
+    queryKey: ["pr-runs", prId],
     queryFn: () => api.get<RunSummary[]>(`/pulls/${prId}/runs`),
     enabled: !!prId,
     refetchInterval: (query) =>
@@ -67,7 +61,7 @@ export function usePrReviews(
   opts?: { enabled?: boolean },
 ) {
   return useQuery({
-    queryKey: reviewsKey(prId),
+    queryKey: ["reviews", prId],
     queryFn: () => api.get<ReviewRecord[]>(`/pulls/${prId}/reviews`),
     // `opts.enabled` lets a hover surface defer the fetch until it is actually
     // needed. The key is unchanged on purpose: hovering a row in the PR list
@@ -84,8 +78,8 @@ export function useDeleteRun(prId: string | null | undefined) {
     // Deleting a run also deletes the review it produced (server-side), so drop
     // both the timeline and the Review Runs list from cache.
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: runHistoryKey(prId) });
-      qc.invalidateQueries({ queryKey: reviewsKey(prId) });
+      qc.invalidateQueries({ queryKey: ["pr-runs", prId] });
+      qc.invalidateQueries({ queryKey: ["reviews", prId] });
     },
   });
 }
@@ -100,9 +94,9 @@ export function useRefreshRunState(prId: string | null | undefined): () => void 
   const qc = useQueryClient();
   return React.useCallback(() => {
     if (!prId) return;
-    qc.invalidateQueries({ queryKey: activeRunsKey(prId) });
-    qc.invalidateQueries({ queryKey: runHistoryKey(prId) });
-    qc.invalidateQueries({ queryKey: reviewsKey(prId) });
+    qc.invalidateQueries({ queryKey: ["pr-active-runs", prId] });
+    qc.invalidateQueries({ queryKey: ["pr-runs", prId] });
+    qc.invalidateQueries({ queryKey: ["reviews", prId] });
   }, [qc, prId]);
 }
 
@@ -118,8 +112,8 @@ export function useCancelRun(prId?: string | null) {
     mutationFn: (runId: string) => api.post<{ ok: boolean }>(`/runs/${runId}/cancel`),
     onSettled: () => {
       if (!prId) return;
-      qc.invalidateQueries({ queryKey: activeRunsKey(prId) });
-      qc.invalidateQueries({ queryKey: runHistoryKey(prId) });
+      qc.invalidateQueries({ queryKey: ["pr-active-runs", prId] });
+      qc.invalidateQueries({ queryKey: ["pr-runs", prId] });
     },
   });
 }
@@ -129,7 +123,7 @@ export function useDeleteReview(prId: string | null | undefined) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (reviewId: string) => api.del<{ ok: boolean }>(`/reviews/${reviewId}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: reviewsKey(prId) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["reviews", prId] }),
   });
 }
 
@@ -185,9 +179,9 @@ export function useRunReview() {
         ...(all ? { all } : {}),
       }),
     onSuccess: (_d, { prId }) => {
-      qc.invalidateQueries({ queryKey: reviewsKey(prId) });
-      qc.invalidateQueries({ queryKey: activeRunsKey(prId) });
-      qc.invalidateQueries({ queryKey: runHistoryKey(prId) });
+      qc.invalidateQueries({ queryKey: ["reviews", prId] });
+      qc.invalidateQueries({ queryKey: ["pr-active-runs", prId] });
+      qc.invalidateQueries({ queryKey: ["pr-runs", prId] });
     },
   });
 }
@@ -212,7 +206,7 @@ export function useFindingAction() {
         reply ? { reply } : undefined,
       ),
     onSuccess: (_d, { prId }) => {
-      if (prId) qc.invalidateQueries({ queryKey: reviewsKey(prId) });
+      if (prId) qc.invalidateQueries({ queryKey: ["reviews", prId] });
       // The PR list shows a severity tally derived from these same findings;
       // without this it stays stale until the next 60s poll.
       qc.invalidateQueries({ queryKey: ["pulls"] });

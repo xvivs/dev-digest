@@ -7,7 +7,7 @@ import { useTranslations } from "next-intl";
 import { Badge } from "@devdigest/ui";
 import type { RunTrace, FindingRecord } from "@devdigest/shared";
 import { RunCostValue } from "@/components/run-cost-value";
-import { useSkills } from "@/lib/hooks/skills";
+import { useSkills } from "@/lib/hooks";
 import { PROMPT_COLORS } from "../../constants";
 import { formatApproxTokens, formatSeconds, formatTokens } from "../../helpers";
 import { s } from "../../styles";

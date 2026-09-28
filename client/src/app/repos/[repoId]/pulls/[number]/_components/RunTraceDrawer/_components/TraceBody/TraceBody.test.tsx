@@ -10,7 +10,7 @@ import { renderWithProviders } from "@/test/render";
 // to tell a live one from a deleted one (SPEC-02 AC-27) — mock so the test
 // controls exactly which ids are "still there" without a real fetch.
 const knownSkills = vi.fn();
-vi.mock("@/lib/hooks/skills", () => ({
+vi.mock("@/lib/hooks", () => ({
   useSkills: () => knownSkills(),
 }));
 
