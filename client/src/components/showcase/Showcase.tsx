@@ -230,6 +230,14 @@ export function Gallery() {
         </div>
       </Group>
 
+      <Group title="Markdown (safe — untrusted skill bodies, ADR 0012)">
+        <div style={s.w420}>
+          <Markdown safe>
+            {"An imported skill with a [link](https://example.com) and an image:\n\n![diagram](https://example.com/diagram.png)"}
+          </Markdown>
+        </div>
+      </Group>
+
       <Group title="Form controls (real, controlled)">
         <div style={s.w280}>
           <FormField label="API key" hint="Stored locally." required>
