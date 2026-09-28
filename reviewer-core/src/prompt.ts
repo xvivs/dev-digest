@@ -88,9 +88,19 @@ const SKILLS_PREAMBLE =
  * default-ignorable characters (zero-width, soft hyphen, …) or combining marks
  * anywhere around or INSIDE the tag word. The tag becomes a visibly different
  * token (`[/untrusted]`), not an HTML entity — a model reads `&lt;/skills` as
- * a closing tag. The trailing lookahead keeps identifiers such as
- * `<SkillsTab>` in a diff untouched. The rest of the text is never altered, so
- * cited diff lines still match for grounding.
+ * a closing tag. The trailing lookahead also accepts `-`/`－` (fullwidth
+ * hyphen), so a suffixed look-alike of our own nonce-suffixed delimiters
+ * (`<untrusted-xyz …>`, `</untrusted-xyz>`, `<skills-xyz>`) is caught too —
+ * only the `<`/`</` + tag-name prefix is rewritten, so it becomes
+ * `[untrusted]-xyz …` / `[/untrusted]-xyz>` / `[skills]-xyz>`, still visibly
+ * inert. Trade-off: a diff containing an unrelated custom element that
+ * happens to start with `skills-` or `untrusted-` (e.g. `<skills-list>`) gets
+ * that token rewritten to `[skills]-list>` too — grounding is unaffected
+ * because it checks file/line ranges, not text. The lookahead otherwise keeps
+ * identifiers such as `<SkillsTab>` in a diff untouched. The rest of the text
+ * is never altered, so cited diff lines still match for grounding. Our own
+ * real nonce-suffixed tags are added by `wrapUntrusted`/`renderSkillsBlock`
+ * AFTER this function runs, so they are never themselves rewritten.
  */
 const INVISIBLE = '\\p{Default_Ignorable_Code_Point}\\p{M}';
 const GAP = `[\\s${INVISIBLE}]*`;
@@ -100,7 +110,7 @@ const letter = (c: string) =>
 const word = (w: string) => [...w].map(letter).join('');
 const DELIMITER_RE = new RegExp(
   `[<\\uFF1C\\uFE64]${GAP}([/\\uFF0F]?)${GAP}(${word('untrusted')}|${word('skills')})` +
-    `(?=[\\s>/\\uFF0F\\uFF1E\\uFE65${INVISIBLE}]|$)`,
+    `(?=[\\s>/\\uFF0F\\uFF1E\\uFE65\\-\\uFF0D${INVISIBLE}]|$)`,
   'giu',
 );
 const INVISIBLE_RE = new RegExp(`[${INVISIBLE}]`, 'gu');
