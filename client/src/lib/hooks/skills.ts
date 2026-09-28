@@ -10,8 +10,7 @@ export function useSkills(q?: string) {
   const query = q?.trim() ?? "";
   return useQuery({
     queryKey: ["skills", query],
-    queryFn: () =>
-      api.get<SkillListItem[]>(query ? `/skills?q=${encodeURIComponent(query)}` : "/skills"),
+    queryFn: () => api.get<SkillListItem[]>(query ? `/skills?q=${encodeURIComponent(query)}` : "/skills"),
   });
 }
 
@@ -63,7 +62,9 @@ export function useUpdateSkill() {
 export function useVetSkill() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => api.post<Skill>(`/skills/${id}/vet`),
+    // `version` = the body version the person reviewed; the server refuses
+    // (409) if the body changed since, so nobody vets text they never saw.
+    mutationFn: ({ id, version }: { id: string; version: number }) => api.post<Skill>(`/skills/${id}/vet`, { version }),
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ["skills"] });
       qc.setQueryData(["skill", data.id], data);

@@ -4,8 +4,8 @@
    the same route tree, so this sits at app/skills/_components/, not promoted).
 
    The skill name is a real <Link>: the keyboard, middle-click and prefetch
-   path. The rest of the card is a mouse-only convenience that pushes the same
-   href, gated by the dirty-form navigation guard (see ../../navigation-guard).
+   path. A plain same-tab click on it, and on the rest of the card, pushes the
+   href through the dirty-form navigation guard (see ../../navigation-guard).
    Mirrors AgentCard (client/src/components/agent-card/AgentCard.tsx) — no
    stretched-link overlay, for the same agent-browser click reason. */
 "use client";
@@ -59,11 +59,7 @@ export function SkillCard({
         style={s.card(!!active, skill.enabled, !!href)}
         onClick={(e) => {
           // The link, toggle and vet modal handle their own clicks.
-          if (
-            !href ||
-            (e.target as Element).closest("a, button, input, [role='switch']")
-          )
-            return;
+          if (!href || (e.target as Element).closest("a, button, input, [role='switch']")) return;
           guard.confirmNavigation(() => router.push(href));
         }}
       >
@@ -74,6 +70,13 @@ export function SkillCard({
               aria-current={active ? "page" : undefined}
               className="mono"
               style={s.nameLink}
+              onClick={(e) => {
+                // New-tab/window opens stay native; a same-tab navigation
+                // goes through the dirty-form guard like the card body (AC-8).
+                if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
+                e.preventDefault();
+                guard.confirmNavigation(() => router.push(href));
+              }}
             >
               {skill.name}
             </Link>
@@ -89,9 +92,7 @@ export function SkillCard({
             label={t("card.enabledToggle", { name: skill.name })}
           />
         </div>
-        <div style={s.description}>
-          {skill.description || t("card.noDescription")}
-        </div>
+        <div style={s.description}>{skill.description || t("card.noDescription")}</div>
         <div style={s.metaRow}>
           <Badge color="var(--text-secondary)">{t(`type.${skill.type}`)}</Badge>
           <span style={s.sourceLabel}>{t(`source.${skill.source}`)}</span>
@@ -100,20 +101,14 @@ export function SkillCard({
           </Badge>
           {skill.needs_vetting && (
             <span title={t("card.vettingTitle")}>
-              <Badge
-                color="var(--warn)"
-                bg="var(--warn-bg)"
-                icon="AlertTriangle"
-              >
+              <Badge color="var(--warn)" bg="var(--warn-bg)" icon="AlertTriangle">
                 {t("card.needsVetting")}
               </Badge>
             </span>
           )}
         </div>
       </div>
-      {vetting && (
-        <VetSkillModal skill={skill} onClose={() => setVetting(false)} />
-      )}
+      {vetting && <VetSkillModal skill={skill} onClose={() => setVetting(false)} />}
     </>
   );
 }

@@ -67,6 +67,18 @@ export class SkillNameTakenError extends AppError {
   }
 }
 
+/** The body changed after the person opened "Review & trust" (ADR 0012). */
+export class SkillVetStaleError extends AppError {
+  constructor(expected: number, actual: number) {
+    super(
+      'skill_vet_stale',
+      'The skill changed while you were reviewing it. Review the current body again.',
+      409,
+      { expected_version: expected, current_version: actual },
+    );
+  }
+}
+
 export class SkillNotVettedError extends AppError {
   constructor() {
     super('skill_not_vetted', 'Skill must be vetted first', 409);

@@ -243,7 +243,7 @@ export async function parseZipSkill(file: File): Promise<ParsedImportResult> {
     entryCount += 1;
     if (entryCount > ZIP_MAX_ENTRIES) {
       aborted = new ImportParseError("tooManyEntries", "Archive has more than 200 entries.");
-      return;
+      throw aborted; // stop push() now instead of walking the rest of the archive
     }
 
     const name = entry.name;
@@ -276,12 +276,14 @@ export async function parseZipSkill(file: File): Promise<ParsedImportResult> {
       if (aborted) return;
       if (err) {
         aborted = new ImportParseError("readFailed", "Could not decompress archive.");
-        return;
+        throw aborted;
       }
       totalInflated += data.length;
       if (totalInflated > ZIP_MAX_INFLATED_BYTES) {
         aborted = new ImportParseError("bomb", "Archive expands past 5 MB once decompressed.");
-        return;
+        // Throwing out of the callback unwinds fflate's synchronous push(), so a
+        // bomb stops inflating at the limit instead of freezing the tab.
+        throw aborted;
       }
       if (matchedTarget !== null) chunks.push(data);
     };

@@ -11,7 +11,7 @@ import { createHash } from 'node:crypto';
 import { and, asc, count, eq, ilike, inArray, or, sql } from 'drizzle-orm';
 import type { Db } from '../../db/client.js';
 import * as t from '../../db/schema.js';
-import { SkillNameTakenError, type NewSkill, type Skill, type SkillListItem } from './domain.js';
+import { SkillNameTakenError, SkillVetStaleError, type NewSkill, type Skill, type SkillListItem } from './domain.js';
 import type { SkillStore, SkillWritePatch } from './ports.js';
 
 /** A Drizzle transaction handle — structurally a `Db` for queries. */
@@ -157,19 +157,32 @@ export class SkillsRepository implements SkillStore {
     }
   }
 
-  async vet(workspaceId: string, id: string): Promise<Skill | undefined> {
-    const existing = await this.findById(workspaceId, id);
-    if (!existing) return undefined;
+  /**
+   * Vet the body the person actually reviewed: one atomic UPDATE guarded by
+   * `version` (which bumps on every body edit), with the hash computed by
+   * Postgres from the row being updated. A concurrent body edit makes the
+   * guard miss → SkillVetStaleError, never a vetted unseen body.
+   */
+  async vet(workspaceId: string, id: string, version: number): Promise<Skill | undefined> {
     const [row] = await this.db
       .update(t.skills)
       .set({
-        vettedBodyHash: sha256Hex(existing.body),
+        vettedBodyHash: sql`encode(sha256(convert_to(${t.skills.body}, 'UTF8')), 'hex')`,
         needsVetting: false,
         updatedAt: new Date(),
       })
-      .where(and(eq(t.skills.workspaceId, workspaceId), eq(t.skills.id, id)))
+      .where(
+        and(
+          eq(t.skills.workspaceId, workspaceId),
+          eq(t.skills.id, id),
+          eq(t.skills.version, version),
+        ),
+      )
       .returning();
-    return row ? toSkill(row) : undefined;
+    if (row) return toSkill(row);
+    const existing = await this.findById(workspaceId, id);
+    if (!existing) return undefined;
+    throw new SkillVetStaleError(version, existing.version);
   }
 
   async deleteById(workspaceId: string, id: string): Promise<boolean> {
@@ -215,13 +228,17 @@ export class SkillsRepository implements SkillStore {
 
     for (const row of rows) {
       if (!row.linkEnabled || !row.skill.enabled || row.skill.needsVetting) continue;
+      const sha256 = sha256Hex(row.skill.body);
+      // Defense in depth (ADR 0012): an imported skill must carry a vet that
+      // matches its CURRENT body, whatever the needs_vetting flag says.
+      if (row.skill.source !== 'manual' && row.skill.vettedBodyHash !== sha256) continue;
       const list = result.get(row.agentId) ?? [];
       list.push({
         id: row.skill.id,
         name: row.skill.name,
         version: row.skill.version,
         body: row.skill.body,
-        sha256: sha256Hex(row.skill.body),
+        sha256,
       });
       result.set(row.agentId, list);
     }

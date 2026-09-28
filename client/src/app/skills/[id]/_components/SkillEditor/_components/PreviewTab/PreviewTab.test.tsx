@@ -7,7 +7,8 @@ import { PreviewTab } from "./PreviewTab";
 
 afterEach(cleanup);
 
-const renderTab = (body: string) => renderWithProviders(<PreviewTab body={body} />, { namespaces: { skills: messages } });
+const renderTab = (body: string) =>
+  renderWithProviders(<PreviewTab body={body} />, { namespaces: { skills: messages } });
 
 describe("PreviewTab", () => {
   it("renders the body as markdown by default, with the receiving-agent caption", () => {
@@ -18,7 +19,8 @@ describe("PreviewTab", () => {
 
   it("renders an image as a link and opens links in a new tab (Markdown safe)", () => {
     renderTab("![diagram](https://example.com/d.png) and a [link](https://example.com)");
-    const img = screen.getByRole("link", { name: "diagram" });
+    // Safe mode shows the real destination next to the alt text.
+    const img = screen.getByRole("link", { name: "diagram (https://example.com/d.png)" });
     expect(img.tagName).toBe("A");
     expect(img).toHaveAttribute("href", "https://example.com/d.png");
     const link = screen.getByRole("link", { name: "link" });
@@ -31,7 +33,9 @@ describe("PreviewTab", () => {
     fireEvent.click(screen.getByRole("button", { name: "Source" }));
     const mark = screen.getByTitle("U+200B");
     expect(mark.tagName).toBe("MARK");
-    expect(screen.getByText("This body contains invisible or bidirectional characters, marked below.")).toBeInTheDocument();
+    expect(
+      screen.getByText("This body contains invisible or bidirectional characters, marked below."),
+    ).toBeInTheDocument();
   });
 
   it("Source view warns about an HTML comment, hidden from Rendered", () => {

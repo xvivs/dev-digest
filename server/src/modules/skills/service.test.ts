@@ -82,9 +82,10 @@ class InMemorySkillStore implements SkillStore {
     return row;
   }
 
-  async vet(workspaceId: string, id: string): Promise<Skill | undefined> {
+  async vet(workspaceId: string, id: string, version: number): Promise<Skill | undefined> {
     const row = this.rows.find((r) => r.workspaceId === workspaceId && r.id === id);
     if (!row) return undefined;
+    if (row.version !== version) throw new Error(`stale vet: ${version} != ${row.version}`);
     row.vettedBodyHash = `sha256(${row.body})`;
     row.needsVetting = false;
     return row;
@@ -171,7 +172,7 @@ describe('SkillsService — update (ADR 0012 vetting gate)', () => {
     const store = new InMemorySkillStore();
     const service = new SkillsService(store);
     const created = await service.create(WS, manualInput({ source: 'imported' }));
-    await service.vet(WS, created.id);
+    await service.vet(WS, created.id, created.version);
     const vetted = await service.get(WS, created.id);
     expect(vetted?.needsVetting).toBe(false);
     expect(vetted?.vettedBodyHash).not.toBeNull();
@@ -185,7 +186,7 @@ describe('SkillsService — update (ADR 0012 vetting gate)', () => {
     const store = new InMemorySkillStore();
     const service = new SkillsService(store);
     const created = await service.create(WS, manualInput({ source: 'imported' }));
-    await service.vet(WS, created.id);
+    await service.vet(WS, created.id, created.version);
     const same = await service.update(WS, created.id, { body: created.body, description: 'tweak' });
     expect(same?.needsVetting).toBe(false);
   });
@@ -203,7 +204,7 @@ describe('SkillsService — update (ADR 0012 vetting gate)', () => {
     const store = new InMemorySkillStore();
     const service = new SkillsService(store);
     const created = await service.create(WS, manualInput({ source: 'imported' }));
-    await service.vet(WS, created.id);
+    await service.vet(WS, created.id, created.version);
     const enabled = await service.update(WS, created.id, { enabled: true });
     expect(enabled?.enabled).toBe(true);
   });
@@ -212,7 +213,7 @@ describe('SkillsService — update (ADR 0012 vetting gate)', () => {
     const store = new InMemorySkillStore();
     const service = new SkillsService(store);
     const created = await service.create(WS, manualInput({ source: 'imported' }));
-    await service.vet(WS, created.id); // vetted against the ORIGINAL body
+    await service.vet(WS, created.id, created.version); // vetted against the ORIGINAL body
     await expect(
       service.update(WS, created.id, { body: 'edited after vetting', enabled: true }),
     ).rejects.toBeInstanceOf(SkillNotVettedError);

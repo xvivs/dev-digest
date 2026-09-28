@@ -9,6 +9,7 @@ import common from "../../../../../../../../messages/en/common.json";
 
 const h = vi.hoisted(() => ({
   updateMutate: vi.fn(),
+  updateMutateAsync: vi.fn().mockResolvedValue(undefined),
   deleteMutate: vi.fn(),
   vetMutateAsync: vi.fn().mockResolvedValue(undefined),
   pushMock: vi.fn(),
@@ -16,7 +17,13 @@ const h = vi.hoisted(() => ({
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: h.pushMock }) }));
 vi.mock("@/lib/hooks", () => ({
-  useUpdateSkill: () => ({ mutate: h.updateMutate, isPending: false, isSuccess: false, data: undefined }),
+  useUpdateSkill: () => ({
+    mutate: h.updateMutate,
+    mutateAsync: h.updateMutateAsync,
+    isPending: false,
+    isSuccess: false,
+    data: undefined,
+  }),
   useDeleteSkill: () => ({ mutate: h.deleteMutate, isPending: false }),
   useVetSkill: () => ({ mutateAsync: h.vetMutateAsync, isPending: false }),
 }));
@@ -46,6 +53,7 @@ function renderTab(skill: Skill = SKILL) {
 
 beforeEach(() => {
   h.updateMutate.mockReset();
+  h.updateMutateAsync.mockReset().mockResolvedValue(undefined);
   h.deleteMutate.mockReset();
   h.vetMutateAsync.mockReset().mockResolvedValue(undefined);
   h.pushMock.mockReset();
@@ -99,6 +107,23 @@ describe("ConfigTab", () => {
     renderTab({ ...SKILL, enabled: false, needs_vetting: true });
     fireEvent.click(screen.getByRole("switch"));
     expect(screen.getByRole("dialog", { name: "Review & trust" })).toBeInTheDocument();
+    expect(screen.queryByText("unsaved")).not.toBeInTheDocument();
+  });
+
+  it("after Trust & enable the draft follows: toggle on, not dirty, Save won't re-disable", async () => {
+    const unvetted = { ...SKILL, source: "imported" as const, enabled: false, needs_vetting: true };
+    const view = renderTab(unvetted);
+    fireEvent.click(screen.getByRole("switch"));
+    fireEvent.click(screen.getByRole("button", { name: "Trust & enable" }));
+    await vi.waitFor(() => expect(h.updateMutateAsync).toHaveBeenCalledWith({ id: "sk1", patch: { enabled: true } }));
+    expect(h.vetMutateAsync).toHaveBeenCalledWith({ id: "sk1", version: 1 });
+    // The cache update lands as a new `skill` prop.
+    view.rerender(
+      <ToastProvider>
+        <ConfigTab skill={{ ...unvetted, enabled: true, needs_vetting: false }} />
+      </ToastProvider>,
+    );
+    expect(screen.getByRole("switch")).toHaveAttribute("aria-checked", "true");
     expect(screen.queryByText("unsaved")).not.toBeInTheDocument();
   });
 

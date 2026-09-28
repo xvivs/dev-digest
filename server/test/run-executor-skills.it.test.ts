@@ -199,7 +199,7 @@ d('ReviewRunExecutor resolves effective skills (Testcontainers pg)', () => {
     ).json();
     expect(beforeTrace.prompt_assembly.skills_used ?? null).toBeNull();
 
-    await app.inject({ method: 'POST', url: `/skills/${imported.id}/vet` });
+    await app.inject({ method: 'POST', url: `/skills/${imported.id}/vet`, payload: { version: imported.version } });
     await app.inject({ method: 'PUT', url: `/skills/${imported.id}`, payload: { enabled: true } });
 
     const after = await app.inject({ method: 'POST', url: `/pulls/${pr.id}/review`, payload: { agentId: agent.id } });

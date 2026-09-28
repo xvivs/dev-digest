@@ -13,7 +13,11 @@ const h = vi.hoisted(() => ({
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: h.pushMock }) }));
 vi.mock("@/lib/hooks", () => ({
-  useUpdateSkill: () => ({ mutate: h.updateMutate, mutateAsync: h.updateMutate, isPending: false }),
+  useUpdateSkill: () => ({
+    mutate: h.updateMutate,
+    mutateAsync: h.updateMutate,
+    isPending: false,
+  }),
   useVetSkill: () => ({ mutateAsync: h.vetMutateAsync, isPending: false }),
 }));
 
@@ -33,7 +37,9 @@ const SKILL: SkillListItem = {
 };
 
 const renderCard = (ui: React.ReactElement) =>
-  renderWithProviders(ui, { namespaces: { skills: messages, shell: shellMessages } });
+  renderWithProviders(ui, {
+    namespaces: { skills: messages, shell: shellMessages },
+  });
 
 beforeEach(() => {
   h.updateMutate.mockReset();
@@ -65,7 +71,10 @@ describe("SkillCard", () => {
   it("toggling an already-vetted skill enables it directly", () => {
     renderCard(<SkillCard skill={{ ...SKILL, enabled: false }} />);
     fireEvent.click(screen.getByRole("switch", { name: "Enable branch-coverage-gate" }));
-    expect(h.updateMutate).toHaveBeenCalledWith({ id: "sk1", patch: { enabled: true } });
+    expect(h.updateMutate).toHaveBeenCalledWith({
+      id: "sk1",
+      patch: { enabled: true },
+    });
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
@@ -80,24 +89,39 @@ describe("SkillCard", () => {
     renderCard(<SkillCard skill={{ ...SKILL, enabled: false, needs_vetting: true }} />);
     fireEvent.click(screen.getByRole("switch", { name: "Enable branch-coverage-gate" }));
     fireEvent.click(screen.getByRole("button", { name: "Trust & enable" }));
-    await vi.waitFor(() => expect(h.vetMutateAsync).toHaveBeenCalledWith("sk1"));
-    expect(h.updateMutate).toHaveBeenCalledWith({ id: "sk1", patch: { enabled: true } });
+    await vi.waitFor(() => expect(h.vetMutateAsync).toHaveBeenCalledWith({ id: "sk1", version: 1 }));
+    expect(h.updateMutate).toHaveBeenCalledWith({
+      id: "sk1",
+      patch: { enabled: true },
+    });
   });
 
   it("turning an unvetted skill off never opens the modal", () => {
     renderCard(<SkillCard skill={{ ...SKILL, enabled: true, needs_vetting: true }} />);
     fireEvent.click(screen.getByRole("switch", { name: "Enable branch-coverage-gate" }));
-    expect(h.updateMutate).toHaveBeenCalledWith({ id: "sk1", patch: { enabled: false } });
+    expect(h.updateMutate).toHaveBeenCalledWith({
+      id: "sk1",
+      patch: { enabled: false },
+    });
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
-  it("a click on the card body opens the skill; the name link is left to itself", () => {
+  it("a click on the card body opens the skill", () => {
     renderCard(<SkillCard skill={SKILL} href="/skills/sk1?tab=config" />);
     fireEvent.click(screen.getByText("Flags untested branches on new conditionals."));
     expect(h.pushMock).toHaveBeenCalledWith("/skills/sk1?tab=config");
+  });
 
-    h.pushMock.mockReset();
+  it("a plain click on the name link also goes through the guard (AC-8)", () => {
+    renderCard(<SkillCard skill={SKILL} href="/skills/sk1?tab=config" />);
     fireEvent.click(screen.getByRole("link", { name: "branch-coverage-gate" }));
+    expect(h.pushMock).toHaveBeenCalledTimes(1);
+    expect(h.pushMock).toHaveBeenCalledWith("/skills/sk1?tab=config");
+  });
+
+  it("a modifier-click on the name link is left to the browser (new tab)", () => {
+    renderCard(<SkillCard skill={SKILL} href="/skills/sk1?tab=config" />);
+    fireEvent.click(screen.getByRole("link", { name: "branch-coverage-gate" }), { metaKey: true });
     expect(h.pushMock).not.toHaveBeenCalled();
   });
 

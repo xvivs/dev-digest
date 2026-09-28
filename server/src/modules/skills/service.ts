@@ -82,8 +82,8 @@ export class SkillsService {
   }
 
   /** ADR 0012: records `vetted_body_hash = sha256(body)`, clears `needs_vetting`. */
-  vet(workspaceId: string, id: string): Promise<Skill | undefined> {
-    return this.store.vet(workspaceId, id);
+  vet(workspaceId: string, id: string, version: number): Promise<Skill | undefined> {
+    return this.store.vet(workspaceId, id, version);
   }
 
   /** Hard delete (D9): `agent_skills` links cascade; old traces keep their snapshot. */

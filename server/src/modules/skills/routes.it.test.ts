@@ -137,7 +137,15 @@ d('skills routes (Testcontainers pg)', () => {
     });
     expect(blocked.statusCode).toBe(409);
 
-    const vetted = await app.inject({ method: 'POST', url: `/skills/${created.id}/vet` });
+    // Missing version → 422 (validation); a stale version → 409; the reviewed version → 200.
+    expect((await app.inject({ method: 'POST', url: `/skills/${created.id}/vet`, payload: {} })).statusCode).toBe(422);
+    const stale = { version: created.version + 1 };
+    expect((await app.inject({ method: 'POST', url: `/skills/${created.id}/vet`, payload: stale })).statusCode).toBe(409);
+    const vetted = await app.inject({
+      method: 'POST',
+      url: `/skills/${created.id}/vet`,
+      payload: { version: created.version },
+    });
     expect(vetted.statusCode).toBe(200);
     expect(vetted.json().needs_vetting).toBe(false);
 

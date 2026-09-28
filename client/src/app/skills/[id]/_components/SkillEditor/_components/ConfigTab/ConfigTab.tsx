@@ -44,7 +44,10 @@ export function ConfigTab({ skill }: { skill: Skill }) {
   const draft = { name, description, type, body, enabled };
   const dirty = isSkillDirty(skill, draft);
   const tokens = estimateTokens(body);
-  const typeOptions = SKILL_TYPE_OPTIONS.map((v) => ({ value: v, label: t(`type.${v}`) }));
+  const typeOptions = SKILL_TYPE_OPTIONS.map((v) => ({
+    value: v,
+    label: t(`type.${v}`),
+  }));
 
   // Report the dirty flag to the ancestor editor (a mutable ref there, not
   // state — see navigation-guard.ts) so a card click or tab switch elsewhere
@@ -68,8 +71,8 @@ export function ConfigTab({ skill }: { skill: Skill }) {
 
   const onEnabledToggle = (next: boolean) => {
     // Turning ON an unvetted skill opens "Review & trust" instead (AC-5, ADR
-    // 0012); the modal vets and enables it directly, so the draft toggle stays
-    // off until that lands through the next `skill` prop.
+    // 0012); the modal vets and enables it server-side, then `onVetted` syncs
+    // the draft so a later Save doesn't send the stale `enabled: false`.
     if (next && skill.needs_vetting) {
       setVetting(true);
       return;
@@ -80,7 +83,9 @@ export function ConfigTab({ skill }: { skill: Skill }) {
   const save = () =>
     update.mutate(
       { id: skill.id, patch: { name, description, type, body, enabled } },
-      { onSuccess: (data) => toast.success(t("config.savedToast", { version: data.version })) },
+      {
+        onSuccess: (data) => toast.success(t("config.savedToast", { version: data.version })),
+      },
     );
 
   const onDelete = () => {
@@ -122,7 +127,7 @@ export function ConfigTab({ skill }: { skill: Skill }) {
       >
         <div style={s.bodyFrame}>
           <div className="mono" style={s.bodyFileHeader}>
-            {(name || skill.name)}.md
+            {name || skill.name}.md
           </div>
           <Textarea value={body} onChange={setBody} rows={16} mono />
         </div>
@@ -145,7 +150,7 @@ export function ConfigTab({ skill }: { skill: Skill }) {
         </Button>
       </div>
 
-      {vetting && <VetSkillModal skill={skill} onClose={() => setVetting(false)} />}
+      {vetting && <VetSkillModal skill={skill} onClose={() => setVetting(false)} onVetted={() => setEnabled(true)} />}
 
       {confirmingDelete && (
         <Modal

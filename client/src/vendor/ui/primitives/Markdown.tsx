@@ -41,7 +41,10 @@ export function Markdown({ children, safe }: { children?: string | null; safe?: 
               href={href}
               target={safe ? "_blank" : undefined}
               rel={safe ? "noopener noreferrer" : undefined}
-              style={{ color: "var(--accent-text)", textDecoration: "underline" }}
+              style={{
+                color: "var(--accent-text)",
+                textDecoration: "underline",
+              }}
             >
               {children}
             </a>
@@ -54,9 +57,18 @@ export function Markdown({ children, safe }: { children?: string | null; safe?: 
                     target="_blank"
                     rel="noopener noreferrer"
                     className="mono"
-                    style={{ color: "var(--accent-text)", textDecoration: "underline" }}
+                    style={{
+                      color: "var(--accent-text)",
+                      textDecoration: "underline",
+                    }}
                   >
-                    {alt || (typeof src === "string" ? src : "image")}
+                    {/* Show the real destination next to the alt text, so an
+                        imported body can't hide where the link points. */}
+                    {alt
+                      ? `${alt} (${typeof src === "string" ? src : "image"})`
+                      : typeof src === "string"
+                        ? src
+                        : "image"}
                   </a>
                 ),
               }

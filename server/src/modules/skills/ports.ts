@@ -26,7 +26,8 @@ export interface SkillStore {
   findById(workspaceId: string, id: string): Promise<Skill | undefined>;
   insert(input: NewSkill): Promise<Skill>;
   update(workspaceId: string, id: string, patch: SkillWritePatch): Promise<Skill | undefined>;
-  vet(workspaceId: string, id: string): Promise<Skill | undefined>;
+  /** Vet the body at exactly `version` (the one the person reviewed). */
+  vet(workspaceId: string, id: string, version: number): Promise<Skill | undefined>;
   deleteById(workspaceId: string, id: string): Promise<boolean>;
   /**
    * Run `work` atomically. The store handed to `work` is bound to the

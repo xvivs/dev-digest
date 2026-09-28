@@ -131,9 +131,12 @@ export default async function skillsRoutes(appBase: FastifyInstance) {
     return { ok: true };
   });
 
-  app.post('/skills/:id/vet', { schema: { params: IdParams } }, async (req) => {
+  // `version` = the version the person reviewed; a mismatch is 409 (ADR 0012).
+  const VetSkillBody = z.object({ version: z.number().int().positive() }).strict();
+
+  app.post('/skills/:id/vet', { schema: { params: IdParams, body: VetSkillBody } }, async (req) => {
     const { workspaceId } = await getContext(app.container, req);
-    const skill = await service.vet(workspaceId, req.params.id);
+    const skill = await service.vet(workspaceId, req.params.id, req.body.version);
     if (!skill) throw new NotFoundError('Skill not found');
     return toDto(skill);
   });

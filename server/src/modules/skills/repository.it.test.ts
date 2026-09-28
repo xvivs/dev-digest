@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 /**
  * Repository contract test — real Postgres via testcontainers. Proves the SQL:
  * tenancy scoping, the unique-name constraint mapped to a domain error, the
@@ -125,9 +126,27 @@ d('SkillsRepository (Testcontainers pg)', () => {
       newSkill({ name: `vet-${Date.now()}`, source: 'imported', enabled: false, needsVetting: true }),
     );
     expect(created.vettedBodyHash).toBeNull();
-    const vetted = await repo.vet(wsA, created.id);
+    const vetted = await repo.vet(wsA, created.id, created.version);
     expect(vetted?.needsVetting).toBe(false);
-    expect(vetted?.vettedBodyHash).toMatch(/^[0-9a-f]{64}$/);
+    // Postgres-side hash must equal the Node-side sha256 the run resolver compares against.
+    expect(vetted?.vettedBodyHash).toBe(createHash('sha256').update(created.body, 'utf8').digest('hex'));
+  });
+
+  it('vet: a stale version (body edited after review) is refused and changes nothing', async () => {
+    const created = await repo.insert(
+      newSkill({ name: `vet-stale-${Date.now()}`, source: 'imported', enabled: false, needsVetting: true }),
+    );
+    await expect(repo.vet(wsA, created.id, created.version + 1)).rejects.toMatchObject({ statusCode: 409 });
+    const after = await repo.findById(wsA, created.id);
+    expect(after?.needsVetting).toBe(true);
+    expect(after?.vettedBodyHash).toBeNull();
+  });
+
+  it('vet: another workspace cannot vet the skill', async () => {
+    const created = await repo.insert(
+      newSkill({ name: `vet-tenant-${Date.now()}`, source: 'imported', enabled: false, needsVetting: true }),
+    );
+    expect(await repo.vet(wsB, created.id, created.version)).toBeUndefined();
   });
 
   it('delete cascades: agent_skills links are removed with the skill', async () => {

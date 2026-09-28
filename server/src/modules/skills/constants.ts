@@ -13,7 +13,9 @@ export const DEFAULT_SKILL_DESCRIPTION = '';
 /**
  * ADR 0012 input hygiene: Unicode tag characters (used for tag-based prompt
  * injection), bidi overrides (visually reorder text to hide intent), and
- * zero-width characters (invisible smuggling) are rejected outright.
+ * zero-width characters, word joiners, direction marks and soft hyphens
+ * (invisible smuggling) are rejected outright. Mirrored in
+ * client/src/app/skills/helpers.ts (INVISIBLE_CHAR_SOURCE) — keep in sync.
  */
 export const INVISIBLE_CHARS_PATTERN =
-  /[\u{E0000}-\u{E007F}\u{202A}-\u{202E}\u{2066}-\u{2069}\u{200B}-\u{200D}\u{FEFF}]/u;
+  /[\u{E0000}-\u{E007F}\u{202A}-\u{202E}\u{2066}-\u{2069}\u{200B}-\u{200F}\u{2060}-\u{2064}\u{061C}\u{180E}\u{00AD}\u{FEFF}]/u;

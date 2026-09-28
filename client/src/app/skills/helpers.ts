@@ -13,7 +13,9 @@ export function skillEditorHref(id: string, tab: string = DEFAULT_EDITOR_TAB): s
  * Ranges: zero-width space/ZWNJ/ZWJ, BOM, bidi embedding/override controls,
  * bidi isolates, and Unicode tag characters (used for invisible prompt smuggling).
  */
-const INVISIBLE_CHAR_SOURCE = "[\\u200B-\\u200D\\uFEFF\\u202A-\\u202E\\u2066-\\u2069\\u{E0000}-\\u{E007F}]";
+// Mirrors server/src/modules/skills/constants.ts INVISIBLE_CHARS_PATTERN — keep in sync.
+const INVISIBLE_CHAR_SOURCE =
+  "[\\u200B-\\u200F\\u2060-\\u2064\\u061C\\u180E\\u00AD\\uFEFF\\u202A-\\u202E\\u2066-\\u2069\\u{E0000}-\\u{E007F}]";
 
 /** One printable run, or one flagged invisible character with its code point label. */
 export interface SourceSegment {

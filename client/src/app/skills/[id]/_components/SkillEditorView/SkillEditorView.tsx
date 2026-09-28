@@ -141,9 +141,7 @@ export function SkillEditorView({ id }: { id: string }) {
         </div>
       </NavigationGuardContext.Provider>
 
-      {pendingProceed && (
-        <DirtyGuardModal onDiscard={discardAndProceed} onCancel={() => setPendingProceed(null)} />
-      )}
+      {pendingProceed && <DirtyGuardModal onDiscard={discardAndProceed} onCancel={() => setPendingProceed(null)} />}
     </AppShell>
   );
 }

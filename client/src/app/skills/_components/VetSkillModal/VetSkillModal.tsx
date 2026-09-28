@@ -16,9 +16,12 @@ import { s } from "./styles";
 export function VetSkillModal({
   skill,
   onClose,
+  onVetted,
 }: {
-  skill: { id: string; name: string; body: string };
+  skill: { id: string; name: string; body: string; version: number };
   onClose: () => void;
+  /** Runs after vet + enable succeed — lets a form sync its local draft. */
+  onVetted?: () => void;
 }) {
   const t = useTranslations("skills");
   const tShell = useTranslations("shell");
@@ -27,8 +30,13 @@ export function VetSkillModal({
   const busy = vet.isPending || update.isPending;
 
   const confirm = async () => {
-    await vet.mutateAsync(skill.id);
-    update.mutate({ id: skill.id, patch: { enabled: true } });
+    try {
+      await vet.mutateAsync({ id: skill.id, version: skill.version });
+      await update.mutateAsync({ id: skill.id, patch: { enabled: true } });
+    } catch {
+      return; // the global MutationCache toast reports it (ADR 0011); keep the modal open
+    }
+    onVetted?.();
     onClose();
   };
 
