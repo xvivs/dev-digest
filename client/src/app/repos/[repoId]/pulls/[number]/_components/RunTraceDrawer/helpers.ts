@@ -26,3 +26,13 @@ export function formatSeconds(ms: number): string {
 export function formatTokens(tokensIn: number, tokensOut: number): string {
   return `${(tokensIn / 1000).toFixed(0)}k→${(tokensOut / 1000).toFixed(1)}k`;
 }
+
+/**
+ * One approximate token count (D4: `ceil(chars / 4)`, always an estimate — the
+ * "≈" is load-bearing, not decoration). Used for the Skills prompt block's
+ * header total and each `skills_used` entry's own count (SPEC-02 AC-27).
+ */
+export function formatApproxTokens(n: number): string {
+  if (n < 1000) return `≈${n} tokens`;
+  return `≈${(n / 1000).toFixed(1)}k tokens`;
+}

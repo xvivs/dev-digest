@@ -13,7 +13,21 @@ import { PROMPT_COPIED_FEEDBACK_MS, PROMPT_MODAL_WIDTH } from "../../constants";
 import { s } from "../../styles";
 import { PromptModalBody } from "../PromptModalBody";
 
-export function PromptBlock({ label, text, color }: { label: string; text: string; color: string }) {
+export function PromptBlock({
+  label,
+  text,
+  color,
+  meta,
+  extra,
+}: {
+  label: string;
+  text: string;
+  color: string;
+  /** Short readout shown in the header next to the label, e.g. "≈2.3k tokens" (SPEC-02 AC-27). */
+  meta?: React.ReactNode;
+  /** Extra content rendered above the raw text, inside the collapsible body (e.g. the skills_used list). */
+  extra?: React.ReactNode;
+}) {
   const t = useTranslations("runs");
   const tShell = useTranslations("shell");
   const [full, setFull] = React.useState(false);
@@ -38,6 +52,7 @@ export function PromptBlock({ label, text, color }: { label: string; text: strin
           <>
             <span style={s.promptDot(color)} />
             <span style={s.promptLabel}>{label}</span>
+            {meta && <span style={s.promptMeta}>{meta}</span>}
             <span style={s.promptToggle}>{open ? t("trace.collapse") : t("trace.expand")}</span>
           </>
         )}
@@ -64,6 +79,7 @@ export function PromptBlock({ label, text, color }: { label: string; text: strin
           </span>
         }
       >
+        {extra}
         <pre className="mono" style={s.promptPre}>
           {text || t("trace.empty")}
         </pre>

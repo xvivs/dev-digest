@@ -10,8 +10,9 @@ export interface EditorTab {
 
 /**
  * Editor tabs — shared by AgentEditor (renders them) and AgentEditorView (validates `?tab=`).
- * Part-0 ships Config only; later lessons add the rest.
+ * SPEC-02 adds Skills; later lessons add Evals/Stats/CI.
  */
 export const EDITOR_TABS: readonly EditorTab[] = [
   { key: DEFAULT_EDITOR_TAB, labelKey: "editor.tabs.config", icon: "Settings" },
+  { key: "skills", labelKey: "editor.tabs.skills", icon: "Sparkles" },
 ];

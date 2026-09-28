@@ -87,6 +87,7 @@ export function AgentsListView() {
                 key={a.id}
                 ag={a}
                 href={agentEditorHref(a.id)}
+                skillCount={a.skill_count ?? undefined}
                 onToggle={(enabled) => update.mutate({ id: a.id, patch: { enabled } })}
               />
             ))}

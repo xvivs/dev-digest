@@ -45,6 +45,8 @@
     "prompt": {
       "system": "System",
       "skills": "Skills (dynamic)",
+      "skillsUsedVersion": "v{version}",
+      "skillsUsedDeleted": "deleted",
       "memory": "Memory (dynamic)",
       "repoMap": "Repo skeleton — repo-intel (dynamic)",
       "specs": "Project context (dynamic)",

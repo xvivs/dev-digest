@@ -84,6 +84,7 @@ export function AgentEditorView({ id }: { id: string }) {
                 ag={a}
                 active={a.id === id}
                 href={agentEditorHref(a.id, tab)}
+                skillCount={a.skill_count ?? undefined}
                 onToggle={(enabled) => update.mutate({ id: a.id, patch: { enabled } })}
               />
             ))}

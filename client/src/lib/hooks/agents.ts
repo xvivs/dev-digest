@@ -1,8 +1,10 @@
 /* hooks/agents.ts — React Query hooks for the A2 Agents tab + Agent Editor. */
 "use client";
 
+import { useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
+import type { MutationHookOptions } from "../query-client";
 import type {
   Agent,
   AgentSkillLink,
@@ -112,12 +114,30 @@ export interface SetAgentSkillsInput {
   links: { skill_id: string; enabled: boolean }[];
 }
 
-export function useSetAgentSkills() {
+/**
+ * The Skills tab (SPEC-02) autosaves on a debounce, so two `mutate()` calls
+ * from the SAME `useSetAgentSkills()` instance can be in flight at once (a
+ * slow save, then a newer one right after). TanStack Query only invokes a
+ * per-call `mutate(vars, { onSuccess })` for whichever dispatch its observer
+ * currently tracks (the latest one) — an older, superseded dispatch's
+ * per-call callback silently never fires. The hook-level `onSuccess` below is
+ * NOT subject to that: it fires once per dispatch regardless, which is
+ * exactly why `onMutate`'s generation counter has to guard IT — otherwise a
+ * slow, superseded response still wins the cache write if it resolves last.
+ * `options.meta` lets a caller opt into ADR 0011's local error surface, same
+ * as `useAddRepo`/`useTestConnection`. See SkillsTab.tsx for the rest of the
+ * autosave flow (immediate optimistic UI feedback, rollback, coalescing).
+ */
+export function useSetAgentSkills(options?: MutationHookOptions) {
   const qc = useQueryClient();
+  const genRef = useRef(0);
   return useMutation({
+    meta: options?.meta,
     mutationFn: ({ agentId, links }: SetAgentSkillsInput) =>
       api.put<AgentSkillLink[]>(`/agents/${agentId}/skills`, { links }),
-    onSuccess: (data, { agentId }) => {
+    onMutate: () => ({ gen: ++genRef.current }),
+    onSuccess: (data, { agentId }, context) => {
+      if (context && context.gen !== genRef.current) return; // superseded by a newer dispatch; this response is stale
       qc.setQueryData(["agent-skills", agentId], data);
       qc.invalidateQueries({ queryKey: ["agents"] });
     },

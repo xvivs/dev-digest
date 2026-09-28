@@ -55,6 +55,7 @@ export const s = {
   promptHead: { gap: 10, padding: "8px 12px" } satisfies CSSProperties,
   promptDot: (color: string): CSSProperties => ({ width: 7, height: 7, borderRadius: 2, background: color }),
   promptLabel: { fontSize: 13, fontWeight: 600 } satisfies CSSProperties,
+  promptMeta: { fontSize: 11.5, color: "var(--text-muted)" } satisfies CSSProperties,
   promptToggle: { marginLeft: "auto", fontSize: 12, color: "var(--text-muted)" } satisfies CSSProperties,
   promptActions: { display: "flex", alignItems: "center", gap: 8 } satisfies CSSProperties,
   miniBtn: {
@@ -124,6 +125,20 @@ export const s = {
   } satisfies CSSProperties,
   statLabel: { fontSize: 12, color: "var(--text-muted)", fontWeight: 600 } satisfies CSSProperties,
   statVal: { fontSize: 16, fontWeight: 700, marginTop: 4 } satisfies CSSProperties,
+
+  // ---- Skills used (PromptBlock extra, SPEC-02 AC-27) ----
+  skillsUsedList: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 4,
+    padding: "10px 14px",
+    borderTop: "1px solid var(--border)",
+    background: "var(--bg-surface)",
+  } satisfies CSSProperties,
+  skillsUsedRow: { display: "flex", alignItems: "baseline", gap: 8, fontSize: 12 } satisfies CSSProperties,
+  skillsUsedName: { color: "var(--text-primary)" } satisfies CSSProperties,
+  skillsUsedMeta: { color: "var(--text-muted)" } satisfies CSSProperties,
+  skillsUsedDeleted: { color: "var(--warn)" } satisfies CSSProperties,
 
   // ---- TraceBody ----
   configList: { display: "flex", flexDirection: "column", gap: 10, fontSize: 13 } satisfies CSSProperties,
