@@ -54,6 +54,8 @@ lives in the engineering-insights skill).
 
 - **Two `/pr-self-review` runs over the same unchanged files disagree wildly (client-arch: 3 findings, then 17) and a lens reports that its `lens-<name>.json` was overwritten mid-run — the lens forked subagents.** Lens and skeptic agents inherit the global `~/.claude/CLAUDE.md` "orchestrate by default" rules, so a lens split its file list into 8 forks, each of which re-reviewed all 250 files and wrote the shared output path; the result depends on which copy wrote last and the forks' tokens are missing from `--tokens`. Fix: the explicit "Do not spawn subagents, forks or workflows" line in `.claude/skills/pr-self-review/references/lens-prompts.md:34` (it also invalidates the lens cache once). _(2026-09-28)_
 
+- **A `/pr-self-review` finding keeps reappearing after it was fixed — the per-file lens cache replays it because the fix landed in a file the lens never reads.** The cache key is (lens, file content, lens prompt), so a P7 "no test for `reviewer-core/src/review/run.ts`" finding survives a commit that only adds `reviewer-core/test/run.test.ts` (test files outside `client/` are not routed to any lens); it clears only when `run.ts` itself or `.claude/skills/pr-self-review/references/lens-prompts.md` changes. Don't hand-edit `.devdigest/self-review/cache/`; say in the report that the finding is stale and point at the commit that fixed it. _(2026-09-28)_
+
 ## Session Notes
 
 ### 2026-09-19 — repo-wide session
