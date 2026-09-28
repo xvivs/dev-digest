@@ -28,7 +28,7 @@ export function CommentCard({ c }: { c: PrReviewComment }) {
         )}
       </div>
       <div style={cs.mdBody}>
-        <Markdown>{c.body}</Markdown>
+        <Markdown safe>{c.body}</Markdown>
       </div>
     </Card>
   );

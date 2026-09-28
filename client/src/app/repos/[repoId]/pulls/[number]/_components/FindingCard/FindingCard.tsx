@@ -86,13 +86,13 @@ export function FindingCard({
       >
         <div style={s.body}>
           <div style={s.prose}>
-            <Markdown>{f.rationale}</Markdown>
+            <Markdown safe>{f.rationale}</Markdown>
           </div>
           {f.suggestion && (
             <div style={s.suggestionWrap}>
               <div style={s.suggestionLabel}>{t("finding.suggestedFix")}</div>
               <div style={s.prose}>
-                <Markdown>{f.suggestion}</Markdown>
+                <Markdown safe>{f.suggestion}</Markdown>
               </div>
             </div>
           )}

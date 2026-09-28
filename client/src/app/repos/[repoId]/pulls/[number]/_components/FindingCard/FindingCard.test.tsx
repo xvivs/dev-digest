@@ -87,3 +87,29 @@ describe("FindingCard disclosure header", () => {
     expect(toggle()).toHaveAttribute("aria-expanded", "false");
   });
 });
+
+describe("FindingCard markdown hardening", () => {
+  it("renders rationale/suggestion markdown in safe mode: no auto-loading image, link shows the URL", () => {
+    renderCard(
+      <FindingCard
+        f={{
+          ...FINDING,
+          rationale: "See ![x](https://evil.test/p.png) for context.",
+          suggestion: "Also linked: [docs](https://example.test/fix)",
+        }}
+        defaultExpanded
+        onAction={() => {}}
+      />,
+    );
+
+    expect(screen.queryByRole("img")).not.toBeInTheDocument();
+    const imgLink = screen.getByRole("link", { name: /x \(https:\/\/evil\.test\/p\.png\)/ });
+    expect(imgLink).toHaveAttribute("target", "_blank");
+    expect(imgLink).toHaveAttribute("rel", "noopener noreferrer");
+
+    const docsLink = screen.getByRole("link", { name: "docs" });
+    expect(docsLink).toHaveAttribute("href", "https://example.test/fix");
+    expect(docsLink).toHaveAttribute("target", "_blank");
+    expect(docsLink).toHaveAttribute("rel", "noopener noreferrer");
+  });
+});
