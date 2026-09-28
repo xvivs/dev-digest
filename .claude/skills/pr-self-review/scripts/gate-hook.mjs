@@ -156,18 +156,18 @@ function main() {
   if (!existsSync(stampPath))
     block(
       `немає PASS-вердикту для поточного diff гілки ${branch} (diffHash ${diff.diffHash.slice(0, 12)}). ` +
-        'Запусти скіл /pr-self-review. Після PASS повтори цю саму команду.',
+        'Запусти /pr-self-review вручну (автовиклик вимкнено). Після PASS повтори цю саму команду.',
     );
   let stamp;
   try {
     stamp = JSON.parse(readFileSync(stampPath, 'utf8'));
   } catch {
-    block(`штамп ${stampPath} пошкоджений. Запусти /pr-self-review ще раз.`);
+    block(`штамп ${stampPath} пошкоджений. Запусти /pr-self-review ще раз вручну (автовиклик вимкнено).`);
   }
-  if (stamp.diffHash !== diff.diffHash) block('штамп не відповідає поточному diff. Запусти /pr-self-review ще раз.');
+  if (stamp.diffHash !== diff.diffHash) block('штамп не відповідає поточному diff. Запусти /pr-self-review ще раз вручну (автовиклик вимкнено).');
   if (stamp.verdict !== 'PASS') {
     const list = (stamp.blocking ?? []).slice(0, 10).map((b) => `  - ${b}`).join('\n');
-    block(`останній self-review дав BLOCK (${stamp.criticals} critical). Виправ, закоміть і запусти /pr-self-review знову.\n${list}`);
+    block(`останній self-review дав BLOCK (${stamp.criticals} critical). Виправ, закоміть і запусти /pr-self-review знову вручну (автовиклик вимкнено).\n${list}`);
   }
   process.exit(0);
 }

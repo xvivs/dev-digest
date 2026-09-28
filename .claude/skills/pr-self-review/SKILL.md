@@ -1,6 +1,7 @@
 ---
 name: pr-self-review
-description: "Local pre-PR gate for DevDigest: reviews the branch's committed diff with the project's architecture and stack skills (frontend-architecture, react, next, onion-architecture, fastify, drizzle, postgres, zod, security, reviewer-core purity) plus typecheck, unit tests and arch:check, and blocks git push / gh pr create on any CRITICAL. Use on /pr-self-review, when the pr-self-review gate hook blocks a push or PR, or when asked to self-review changes before opening a PR."
+disable-model-invocation: true
+description: "Local pre-PR gate for DevDigest: reviews the branch's committed diff with the project's architecture and stack skills (frontend-architecture, react, next, onion-architecture, fastify, drizzle, postgres, zod, security, reviewer-core purity) plus typecheck, unit tests and arch:check, and blocks git push / gh pr create on any CRITICAL. Use on /pr-self-review or when asked to self-review changes before opening a PR."
 ---
 
 # PR Self-Review
