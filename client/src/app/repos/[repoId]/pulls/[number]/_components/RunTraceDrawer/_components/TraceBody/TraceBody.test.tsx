@@ -91,7 +91,7 @@ describe("C2 TraceBody — Skills prompt block (SPEC-02 AC-27..29)", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /^Skills \(dynamic\)/ }));
 
-    expect(document.body.textContent).toContain("some-skill");
+    expect(screen.getByText(/some-skill/)).toBeInTheDocument();
     expect(screen.queryByText(/^≈/)).not.toBeInTheDocument();
     expect(screen.queryByText("deleted")).not.toBeInTheDocument();
   });
