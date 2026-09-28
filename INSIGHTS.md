@@ -52,6 +52,8 @@ lives in the engineering-insights skill).
 
 - **`pnpm install` in `reviewer-core/` deletes its `node_modules` and then fails with `ERR_PNPM_NO_LOCKFILE`.** reviewer-core (and e2e) are npm packages: the lockfile is `reviewer-core/package-lock.json` and CI runs `npm ci` (`.github/workflows/reviewer-core.yml:45`). pnpm prints `Recreating …/reviewer-core/node_modules` before it discovers there is no `pnpm-lock.yaml`, so the attempt leaves the package with no dependencies at all, which breaks `server` typecheck too. Use `cd reviewer-core && npm ci`. _(2026-09-28)_
 
+- **Two `/pr-self-review` runs over the same unchanged files disagree wildly (client-arch: 3 findings, then 17) and a lens reports that its `lens-<name>.json` was overwritten mid-run — the lens forked subagents.** Lens and skeptic agents inherit the global `~/.claude/CLAUDE.md` "orchestrate by default" rules, so a lens split its file list into 8 forks, each of which re-reviewed all 250 files and wrote the shared output path; the result depends on which copy wrote last and the forks' tokens are missing from `--tokens`. Fix: the explicit "Do not spawn subagents, forks or workflows" line in `.claude/skills/pr-self-review/references/lens-prompts.md:34` (it also invalidates the lens cache once). _(2026-09-28)_
+
 ## Session Notes
 
 ### 2026-09-19 — repo-wide session

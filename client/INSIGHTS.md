@@ -158,6 +158,8 @@ lives in the engineering-insights skill).
 
 - **A `Modal` rendered inside a dimmed element (`opacity < 1`) comes out translucent, backdrop included, and its clicks bubble into the parent's handler** — `opacity` applies to the whole subtree and `position: fixed` does not escape it; the Review & trust modal sat inside a disabled `SkillCard` (`opacity: 0.6`), so the list showed through it. Render the modal as a sibling of the dimmed element, as `client/src/app/skills/_components/SkillCard/SkillCard.tsx:53-57` now does; unit tests cannot catch this, it only showed up in the browser. _(2026-09-28)_
 
+- **Skill/finding markdown shows `#` headings and `-` bullets as plain same-size paragraphs with no markers — Tailwind 4 preflight, not react-markdown.** `@import "tailwindcss"` in `client/src/vendor/ui/styles.css` resets `h1–h6` font size/weight and `list-style`, so react-markdown's default elements lose all block styling; every block element needs an explicit renderer (`client/src/vendor/ui/primitives/Markdown.tsx:40-45`). A CSS rule cannot restyle inline-styled `code` inside `pre` (inline style wins), so the `pre` renderer emits the raw text itself. _(2026-09-28)_
+
 ## Session Notes
 
 - Cost Badge (L01, client half): added `RunCostValue` + `formatCost`/`exactCost`
