@@ -19,11 +19,15 @@ lives in the engineering-insights skill).
 
 - **A `drizzle-kit generate --custom` backfill can be tested without a partial-migration harness: replay the SQL file inside an `*.it.test.ts`** — testcontainers applies every migration to an empty DB (`test/helpers/pg.ts:41`), so the DML in `0016_skill_versions_backfill.sql` never touches a row there. `test/skills-versions.it.test.ts` inserts the legacy shape (skill without snapshot, snapshot with NULL metadata), splits the file on `--> statement-breakpoint`, runs each piece with `db.execute(sql.raw(stmt))` twice, and asserts the result, which also proves idempotence. _(2026-09-29)_
 
+- **Prove "no N+1" by counting queries with a second drizzle instance over the fixture's postgres-js client** — `drizzle(pg.handle.sql, { schema, logger: { logQuery: () => void queries++ } })` and a repository built on it (`test/skills-stats.it.test.ts:231`). Compare 1 skill vs 6 skills: both must log exactly 1 query. No app, no container, no postgres-js debug hook needed. _(2026-09-29)_
+
 ## What Doesn't Work
 
 - **Running `pnpm db:migrate` against the shared `devdigest-postgres` docker container can fail with "column already exists"** — every worktree/branch on this course points at the SAME long-lived container (`docker ps` shows one `devdigest-postgres` regardless of branch), so its `__drizzle_migrations` history can be far ahead of this branch's local `src/db/migrations/*.sql` (e.g. `agent_runs.cost_usd` already existed there from another lesson's branch, but without `cost_source`). Check first with `docker exec devdigest-postgres psql -U devdigest -d devdigest -c '\d <table>'`; validate a new migration via the testcontainers-backed `*.it.test.ts` suite (fresh throwaway Postgres per run, `test/helpers/pg.ts`) instead of assuming the shared dev DB is safe to ALTER. _(2026-09-19)_
 
 - **Guarding a seed backfill with `isNull(<column>)` strands every column added to that backfill later** — the review→run pass in `src/db/seed.ts` used `WHERE run_id IS NULL`, which passes once and blocks forever after. Adding `agentId` alongside `runId` then did nothing on any already-seeded database, and the Review-runs card kept rendering the literal "Agent" while the timeline row right above it named the reviewer. Values re-derived from a deterministic lookup should be rewritten unconditionally — the UPDATE is a no-op when they already match. _(2026-09-20)_
+
+- **A correlated scalar subquery for a per-skill run count in `GET /skills` re-scans the whole time window once per skill** — EXPLAIN ANALYZE on 55 skills / 20k runs / 40k `run_skills` showed `SubPlan … loops=55` over `agent_runs` and 64 ms. A grouped derived table (`run_skills ⋈ agent_runs … GROUP BY skill_id`, LEFT JOINed once, `src/modules/skills/repository.ts:135`) scans the window once: 6.3 ms, same totals. _(2026-09-29)_
 
 ## Codebase Patterns
 
@@ -36,6 +40,8 @@ lives in the engineering-insights skill).
 - **No production code uses `db.transaction(` — multi-step writes are non-atomic** — e.g. `server/src/modules/reviews/repository/run.repo.ts:92-105` (`deleteAgentRun`) deletes `reviews` then `agentRuns` in two independent queries although its comment requires both. A Drizzle `tx` is structurally a `Db`, so `new ReviewRepository(tx)` inside `db.transaction` works, but never use `container.reviewRepo` there: it memoizes a `db`-bound instance (`server/src/platform/container.ts:99-100`). _(2026-09-28)_
 
 - **The pgvector extension is created by the migrate script, not by a migration file** — `server/src/db/migrate.ts:23` runs `CREATE EXTENSION IF NOT EXISTS vector` before migrations; grepping only `src/db/migrations/` gives a false "extension missing". _(2026-09-28)_
+
+- **Trace `skills_used.sha256` hashes the skill BODY only, not name + body** — `resolveEffectiveSkills` sets `sha256 = sha256Hex(row.skill.body)` (`src/modules/skills/repository.ts:415`), the same value as `vetted_body_hash`. ADR 0017's `prompt_sha256 = sha256(name + "\n" + body)` is a separate field (`EffectiveSkill.promptSha256`, `run_skills.prompt_sha256`); old traces cannot yield it directly, so the backfill (`src/db/backfill-run-skills.ts`) recovers it only when the `skill_versions` body at the traced version hashes to the traced sha256, and leaves NULL otherwise. _(2026-09-29)_
 
 ## Tool & Library Notes
 
@@ -56,6 +62,8 @@ lives in the engineering-insights skill).
 - **Changing an exported TypeScript shape can leave `tsc --noEmit -p tsconfig.json` green while `server/test/**` breaks: the server tsconfig includes only `src/**/*.ts` (`server/tsconfig.json:28`), and vitest strips types without checking them** — changing `PromptParts.skills` from `string[]` to `SkillInput[]` broke `test/prompt-structured.test.ts` and `test/prompt-callers.test.ts` with no type error, only failing assertions (`### undefined`). After any contract change, run the full `vitest run`, or grep `test/` for the old shape; typecheck alone proves nothing about `test/`. `reviewer-core/tsconfig.json:28` has the same `src/**` include. _(2026-09-28)_
 
 - **`arch:check` green locally but CI fails with `presentation-no-db: src/modules/*/routes.ts → node_modules/drizzle-orm/index.cjs` on already-baselined routes** — `.dependency-cruiser-known-violations.json` stores the *resolved* `to` path, so a baseline made on a pnpm `isolated` install (`node_modules/.pnpm/drizzle-orm@0.38.4_postgres@3.4.9/…`, check `nodeLinker` in `node_modules/.modules.yaml`; worktree installs can ignore `server/.npmrc` `node-linker=hoisted`) never matches CI's hoisted `node_modules/drizzle-orm/…`. Fixed with `preserveSymlinks: true` in `server/.dependency-cruiser.cjs:184` so paths are layout-independent; after any rule/option change regenerate with `pnpm arch:baseline`. _(2026-09-29)_
+
+- **Reading a run's trace right after `waitForPrRuns` races the executor: `agent_runs` turns terminal before `run_traces` is written, so under full-suite load `/runs/:id/trace` comes back empty (`Cannot read properties of undefined (reading 'skills_used')`)** — `completeAgentRun` runs before `saveRunTrace` in `src/modules/reviews/run-executor.ts`, and `test/helpers/runs.ts` polls status only. The test passed alone and failed 2 of 3 full runs. Fix: poll for the `run_traces` row (`waitForTrace`, `test/run-executor-skills.it.test.ts:113`); `run_skills` is written just before the trace, so the trace also implies those rows. _(2026-09-29)_
 
 ## Session Notes
 
@@ -82,6 +90,9 @@ Added the `skills` module (ports/wiring, first production `db.transaction`), tra
 
 ### 2026-09-29 — server session (skill versions, Phase 1)
 `skill_versions` now snapshots name/description/type/body plus `change_note` (migration 0015 + `--custom` backfill 0016), `SkillsRepository.insert` writes v1 in a savepoint, and any content change bumps the version while `enabled` does not. Added `GET /skills/:id/versions`, `GET /skills/:id/versions/:version` and the version-guarded `POST …/restore` (409 `skill_version_stale`, 200 no-op, ADR 0012 limits re-checked, vetting via `resolveVettingOnBodyEdit`). Seeded skills get a v1 snapshot. 33 files / 269 tests green. Left: Phase 2 stats, Phase 3 evals.
+
+### 2026-09-29 — server session (skill stats, Phase 2)
+Added `run_skills` (migration 0017, PK run_id+skill_id, index skill_id+run_id), written best-effort before `saveRunTrace` on all three executor paths, a resumable batched backfill (`pnpm db:backfill:run-skills`), one `skillUsageStatus`/`isEffectiveSkill` rule in `skills/domain.ts` shared by the resolver and stats, `GET /skills/:id/stats?window=` (422 outside the enum) and `runs_30d` + `latest_verdict: null` on `GET /skills` in one query. 37 files / 288 tests green. Left: Phase 3 fills `latest_verdict` and `impact`; the backfill was not run against the shared dev DB.
 
 ## Open Questions
 
