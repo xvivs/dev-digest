@@ -23,6 +23,7 @@ them, and reviews that single commit (`--base` = the snapshot commit).
 ```sh
 bash .claude/skills/pr-self-review/evals/hook-cases.sh    # hook allow/block matrix
 bash .claude/skills/pr-self-review/evals/run-fixtures.sh  # routing + checks for every fixture
+bash .claude/skills/pr-self-review/evals/incremental-cases.sh  # incremental base, per-lens cache key
 ```
 
 `run-fixtures.sh` asserts `deterministic.mustFail` / `mustPass`, that no other
@@ -32,6 +33,12 @@ through `collect --checks-only` → `check` → `merge` → `finalize` end to en
 LLM, since a checks-only run spawns no lens or skeptic), asserting `level:
 "checks"` (from `collect`'s own output and the report's level line), a PASS
 verdict, and that no per-file lens cache file was written.
+
+`incremental-cases.sh` (ADR 0015) commits `clean`, writes a synthetic stamp
+for it, commits `core-io`, and asserts that only a full PASS on an ancestor
+narrows the lenses to the delta (not a `checks` PASS, a BLOCK, an unknown head,
+`--no-incremental` or `--full`). It also asserts that editing the `core-purity`
+block in `lens-prompts.md` changes only that lens's cache-key input.
 
 `hook-cases.sh` also covers the `checks`/`full` stamp levels: a `checks` stamp
 opens `git push` but not `gh pr create`; a `full` or legacy (no `level` field)

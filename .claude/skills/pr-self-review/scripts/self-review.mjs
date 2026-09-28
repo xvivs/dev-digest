@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // pr-self-review: the deterministic half of the skill.
 //
-//   node self-review.mjs collect  [--base <ref>] [--full | --checks-only] [--no-fetch]
+//   node self-review.mjs collect  [--base <ref>] [--full | --checks-only] [--no-incremental] [--no-fetch]
 //   node self-review.mjs check    --run <runDir>
 //   node self-review.mjs merge    --run <runDir>
 //   node self-review.mjs finalize --run <runDir> [--tokens <n>]
@@ -9,7 +9,9 @@
 // collect  → runDir/collect.json: diff, routing, cache hits. Exit 3 on a dirty tree.
 //            `--checks-only` records `level: "checks"` and routes zero files to
 //            any lens (only the deterministic `check` runs); otherwise `level`
-//            is `"full"`. `--checks-only` with `--full` is an error.
+//            is `"full"`. `--checks-only` with `--full` is an error. A full run
+//            is incremental when an earlier full PASS of this branch is an
+//            ancestor of HEAD: lenses get only files changed since it (ADR 0015).
 // check    → runDir/checks.json: typecheck, unit tests, arch:check, static rules.
 // merge    → runDir/merged.json: lens outputs + cache, capped, deduped; prints the skeptic queue.
 // finalize → stamp, cache, refuted.jsonl, report.md, pr-body.md; prints the report.
@@ -31,8 +33,10 @@ import {
   changedFiles,
   currentBranch,
   dirtyPackageFiles,
+  findIncrementalBase,
   git,
   lensRulesHash,
+  pathsChangedBetween,
   readAt,
   readAtHead,
   readJson,
@@ -116,9 +120,23 @@ function collect(opts) {
   const files = changedFiles(root, diff.mergeBase);
   const runDir = join(stateDir(root), 'runs', diff.diffHash);
   const cacheDir = join(stateDir(root), 'cache');
+  const branch = currentBranch(root);
+
+  // Incremental full review (ADR 0015): lenses see only files changed since the
+  // nearest earlier full PASS on this branch. Checks still run on the whole diff.
+  // `--full` asks for more coverage (advisory lenses), so it reviews everything.
+  const incremental =
+    checksOnly || full || opts['no-incremental'] ? undefined : findIncrementalBase(root, { base, branch, head: diff.head });
+  const delta = incremental ? pathsChangedBetween(root, incremental.head, diff.head) : undefined;
+  if (incremental)
+    warnings.push(
+      `інкрементальний прогін: лінзи дивляться лише файли, змінені після full PASS на ${incremental.head.slice(0, 7)} ` +
+        `(${incremental.distance} коміт(ів) тому); повний прогін: --no-incremental`,
+    );
 
   const lenses = {};
   const excluded = [];
+  const carried = [];
   let anyRoutable = false;
   for (const f of files) {
     if (f.status === 'D') {
@@ -136,6 +154,10 @@ function collect(opts) {
       excluded.push({ path: f.path, reason: 'лінзи вимкнено (--checks-only)' });
       continue;
     }
+    if (delta && !delta.has(f.path)) {
+      carried.push(f.path);
+      continue;
+    }
     const blob = sha256(content);
     for (const { lens, skills } of routes) {
       const cacheKey = sha256([lens, f.path, blob, lensRulesHash(root, lens, skills, SKILL_DIR)].join('\u0000'));
@@ -150,13 +172,13 @@ function collect(opts) {
 
   const totalLines = files.reduce((n, f) => n + f.added + f.deleted, 0);
   const large = files.length > LARGE_DIFF.files || totalLines > LARGE_DIFF.lines;
-  if (large)
+  if (large && !incremental)
     warnings.push(`великий diff (${files.length} файлів, ${totalLines} рядків): перевіряється повністю, але прогін буде довгим і дорогим`);
 
   const data = {
     startedAt,
     root,
-    branch: currentBranch(root),
+    branch,
     base,
     mergeBase: diff.mergeBase,
     head: diff.head,
@@ -168,6 +190,7 @@ function collect(opts) {
     stats: { files: files.length, lines: totalLines, large },
     files,
     excluded,
+    incremental: incremental ? { fromDiffHash: incremental.diffHash, fromHead: incremental.head, carried } : undefined,
     lenses,
     warnings,
   };
@@ -181,6 +204,7 @@ function collect(opts) {
     empty: data.empty,
     docsOnly: data.docsOnly,
     stats: data.stats,
+    incremental: incremental ? { fromHead: incremental.head, carried: carried.length } : undefined,
     lensesToRun: Object.fromEntries(
       Object.entries(lenses)
         .filter(([, l]) => l.files.length)
@@ -548,6 +572,7 @@ function finalize(opts) {
     head: c.head,
     branch: c.branch,
     level: c.level ?? 'full',
+    ...(c.incremental ? { incrementalFrom: { diffHash: c.incremental.fromDiffHash, head: c.incremental.fromHead } } : {}),
     verdict,
     criticals: blocking.length,
     blocking,
@@ -581,6 +606,8 @@ function skippedLine(c, checks = []) {
   const parts = ['server/**/*.it.test.ts (потрібен Docker/Postgres)'];
   for (const r of checks.filter((x) => x.skipped)) parts.push(`${r.name}: ${r.detail}`);
   if (c.excluded.length) parts.push(`${c.excluded.length} файлів поза лінзами (видалені, lockfile, міграції, vendored, md, не-TS)`);
+  if (c.incremental?.carried.length)
+    parts.push(`${c.incremental.carried.length} файлів лінзи не дивились: без змін після full PASS на ${c.incremental.fromHead.slice(0, 7)}`);
   if (c.level === 'checks') parts.push('усі LLM-лінзи пропущено через --checks-only');
   else if (!c.full) parts.push('advisory-лінзи ts-advisory і react-perf (без --full)');
   return parts.join('; ');
@@ -595,7 +622,10 @@ function renderReport(c, checks, findings, lensStatus, stamp) {
     `Self-review: ${stamp.verdict} (${stamp.criticals} блокуючих; ${stamp.counts.CRITICAL} critical, ${stamp.counts.HIGH} high, ${stamp.counts.MEDIUM} medium)  ` +
       `base=${c.base}@${c.mergeBase.slice(0, 7)}  head=${c.head.slice(0, 7)}  files=${c.stats.files}`,
   );
-  lines.push(`рівень: ${stamp.level === 'checks' ? 'лише детерміновані перевірки' : 'повний (з лінзами)'}`);
+  lines.push(
+    `рівень: ${stamp.level === 'checks' ? 'лише детерміновані перевірки' : 'повний (з лінзами)'}` +
+      (c.incremental ? `, інкрементальний від ${c.incremental.fromHead.slice(0, 7)}` : ''),
+  );
   lines.push(
     `Час: ${Math.round(stamp.cost.ms / 1000)} с · лінзи: ${lensCount} (${cachedLenses} повністю з кешу, ${cachedFiles} файл-лінз з кешу)` +
       (stamp.cost.tokens ? ` · токени: ~${stamp.cost.tokens}` : ' · токени: не виміряно'),

@@ -7,7 +7,7 @@
 
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 export const DEFAULT_BASE = 'origin/main';
@@ -199,10 +199,26 @@ export function capSeverity(finding) {
   return 'HIGH';
 }
 
+// The part of lens-prompts.md one lens depends on: everything except the
+// "Lens-specific blocks" section, plus that lens's own `### ` block. Editing
+// one lens's block must not invalidate every other lens's cache (ADR 0015).
+export function lensPromptPart(text, lens) {
+  const start = text.indexOf('\n## Lens-specific blocks');
+  if (start === -1) return text;
+  const next = text.indexOf('\n## ', start + 1);
+  const end = next === -1 ? text.length : next;
+  const common = text.slice(0, start) + text.slice(end);
+  const own = text
+    .slice(start, end)
+    .split(/\n(?=### )/)
+    .filter((block) => block.startsWith('### ') && block.split('\n')[0].includes(`\`${lens}\``));
+  return [common, ...own].join('\u0000');
+}
+
 // Everything a lens's verdict depends on besides the file itself. If any of it
 // changes, cached findings for that lens are stale.
 export function lensRulesHash(root, lens, skills, skillDir) {
-  const parts = [lens, readFileSafe(join(skillDir, 'references', 'lens-prompts.md'))];
+  const parts = [lens, lensPromptPart(readFileSafe(join(skillDir, 'references', 'lens-prompts.md')), lens)];
   for (const skill of [...skills].sort()) {
     parts.push(skill, readFileSafe(join(root, '.claude', 'skills', skill, 'SKILL.md')));
   }
@@ -223,6 +239,36 @@ export function readJson(path, fallback) {
   } catch {
     return fallback;
   }
+}
+
+// Incremental full review (ADR 0015): the nearest earlier full PASS of this
+// branch whose head is an ancestor of HEAD. Files unchanged since that head were
+// already reviewed by the lenses and are not sent to them again. Returns
+// undefined when there is no such stamp (first run, rebase, other base).
+export function findIncrementalBase(root, { base, branch, head }) {
+  const dir = stateDir(root);
+  if (!existsSync(dir)) return undefined;
+  let best;
+  for (const name of readdirSync(dir)) {
+    if (!/^[0-9a-f]{64}\.json$/.test(name)) continue;
+    const stamp = readJson(join(dir, name), undefined);
+    if (!stamp || stamp.verdict !== 'PASS' || stampLevel(stamp) !== 'full') continue;
+    if (stamp.base !== base || stamp.branch !== branch || typeof stamp.head !== 'string') continue;
+    let distance;
+    try {
+      git(root, ['merge-base', '--is-ancestor', stamp.head, head]);
+      distance = Number(git(root, ['rev-list', '--count', `${stamp.head}..${head}`]).trim());
+    } catch {
+      continue; // not an ancestor (rebased, amended) or the commit is gone
+    }
+    if (!best || distance < best.distance) best = { diffHash: stamp.diffHash, head: stamp.head, at: stamp.at, distance };
+  }
+  return best;
+}
+
+// Paths whose content differs between two commits (renames count as a new path).
+export function pathsChangedBetween(root, from, to) {
+  return new Set(git(root, ['diff', '--name-only', '--no-renames', '--no-color', from, to]).split('\n').filter(Boolean));
 }
 
 // A stamp written before the checks-only mode existed has no `level` field.

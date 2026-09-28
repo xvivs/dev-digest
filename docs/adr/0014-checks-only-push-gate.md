@@ -2,7 +2,7 @@
 
 **Status:** accepted
 **Date:** 2026-09-29
-**Amends:** ADR 0006, Decisions 3 and 5
+**Amends:** ADR 0006, Decisions 3 and 5 · amended by [ADR 0015](0015-incremental-lens-review.md)
 
 ## Context
 

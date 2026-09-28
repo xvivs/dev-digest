@@ -18,8 +18,9 @@ changing the code or by the skeptic refuting it. The verdict is computed by
 `scripts/self-review.mjs`, never by you. Report text is **Ukrainian**; skill,
 rule and code names stay in English.
 
-Decision records: `docs/adr/0006-local-self-review-gate.md` (the gate itself)
-and `docs/adr/0014-checks-only-push-gate.md` (the `checks`/`full` split).
+Decision records: `docs/adr/0006-local-self-review-gate.md` (the gate itself),
+`docs/adr/0014-checks-only-push-gate.md` (the `checks`/`full` split) and
+`docs/adr/0015-incremental-lens-review.md` (incremental lenses, per-lens cache key).
 Routing and severity mapping: [references/routing.md](references/routing.md).
 Subagent prompts: [references/lens-prompts.md](references/lens-prompts.md).
 
@@ -34,6 +35,10 @@ Subagent prompts: [references/lens-prompts.md](references/lens-prompts.md).
   `gh pr create`. Errors if combined with `--full`. Never downgrades an
   existing `full` PASS stamp for the same diff — a stronger stamp already on
   disk is left alone.
+- `--no-incremental`: review every file with the lenses. Without it a full run
+  is **incremental** when an earlier full PASS of this branch (same base) is an
+  ancestor of HEAD: lenses get only files changed since that stamp's head, the
+  checks still cover the whole diff (ADR 0015). `--full` also disables it.
 - `--fix`: after the report, apply unambiguous fixes for HIGH/MEDIUM (see step 7).
 - `--base <ref>`: review against another base. The stamp is **not** written as a
   gate key then (the hook always diffs against `origin/main`); say so.
@@ -42,7 +47,9 @@ Subagent prompts: [references/lens-prompts.md](references/lens-prompts.md).
 
 ## Steps
 
-1. **Collect.** `node $S collect [--full | --checks-only] [--base <ref>]`
+1. **Collect.** `node $S collect [--full | --checks-only] [--no-incremental] [--base <ref>]`
+   - `incremental` in the output names the base stamp's head and how many files
+     were carried; the files are already out of `lensesToRun`, nothing to do.
    - Exit 3 `dirty`: the listed files under `client/ server/ reviewer-core/ e2e/`
      are uncommitted. Show the list and stop. Do not commit, stash or discard
      them yourself; the user decides (commit, or a WIP commit; never bare `git stash`).
@@ -139,6 +146,7 @@ Subagent prompts: [references/lens-prompts.md](references/lens-prompts.md).
 node --check .claude/skills/pr-self-review/scripts/*.mjs
 bash .claude/skills/pr-self-review/evals/hook-cases.sh      # hook allow/block matrix, no LLM
 bash .claude/skills/pr-self-review/evals/run-fixtures.sh    # deterministic half on each fixture
+bash .claude/skills/pr-self-review/evals/incremental-cases.sh # incremental base + per-lens cache key
 ```
 
 Then run the full skill on at least one BLOCK fixture and the clean fixture
