@@ -2,14 +2,17 @@
    we render the provider/model + skill count here. Shared leaf: rendered by
    the /agents list and the /agents/[id] editor's side list.
 
-   The whole card opens the agent: a stretched <Link> covers it. The toggle and
-   the delete action sit ABOVE that link as siblings, never inside it — a button
-   nested in a link is invalid HTML and gives screen readers one control with
-   three meanings. */
+   The agent name is a real <Link>: the keyboard, middle-click and prefetch
+   path. The rest of the card is a mouse-only convenience that pushes the same
+   href. A stretched-link overlay was dropped for the same reason as in PRRow
+   (client/INSIGHTS.md): agent-browser cannot click a link whose box includes
+   such an overlay. The toggle and delete action stay siblings of the link,
+   never inside it: a button nested in a link is invalid HTML. */
 "use client";
 
 import React from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { Icon, Badge, Toggle, RowAction } from "@devdigest/ui";
 import type { Agent } from "@devdigest/shared";
@@ -33,21 +36,32 @@ export function AgentCard({
   onToggle?: (enabled: boolean) => void;
 }) {
   const t = useTranslations("agents");
+  const router = useRouter();
   const del = useDeleteAgent();
   const color = modelColor(ag.model);
   const onDelete = () => {
     if (window.confirm(t("card.deleteConfirm", { name: ag.name }))) del.mutate(ag.id);
   };
   return (
-    <div style={s.card(!!active, ag.enabled, !!href)}>
-      {href && (
-        <Link href={href} aria-label={ag.name} aria-current={active ? "page" : undefined} style={s.stretchedLink} />
-      )}
+    <div
+      style={s.card(!!active, ag.enabled, !!href)}
+      onClick={(e) => {
+        // The link, toggle and delete handle their own clicks.
+        if (!href || (e.target as Element).closest("a, button, input, [role='switch']")) return;
+        router.push(href);
+      }}
+    >
       <div style={s.headerRow}>
         <div style={s.iconBox}>
           <Icon.Cpu size={CARD_ICON_SIZE} />
         </div>
-        <span style={s.name}>{ag.name}</span>
+        {href ? (
+          <Link href={href} aria-current={active ? "page" : undefined} style={s.nameLink}>
+            {ag.name}
+          </Link>
+        ) : (
+          <span style={s.name}>{ag.name}</span>
+        )}
         <div style={s.controls}>
           {onToggle && (
             <Toggle

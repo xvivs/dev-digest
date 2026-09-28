@@ -4,7 +4,8 @@ import type { Agent } from "@devdigest/shared";
 import { renderWithProviders } from "@/test/render";
 import messages from "../../../messages/en/agents.json";
 
-const { mutateMock } = vi.hoisted(() => ({ mutateMock: vi.fn() }));
+const { mutateMock, pushMock } = vi.hoisted(() => ({ mutateMock: vi.fn(), pushMock: vi.fn() }));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push: pushMock }) }));
 vi.mock("@/lib/hooks", () => ({
   useDeleteAgent: () => ({ mutate: mutateMock, isPending: false }),
 }));
@@ -15,7 +16,10 @@ afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
 });
-beforeEach(() => mutateMock.mockReset());
+beforeEach(() => {
+  mutateMock.mockReset();
+  pushMock.mockReset();
+});
 
 const AGENT: Agent = {
   id: "ag1",
@@ -58,6 +62,25 @@ describe("AgentCard", () => {
   it("marks the active card as the current page", () => {
     renderCard(<AgentCard ag={AGENT} href="/agents/ag1" active />);
     expect(screen.getByRole("link", { name: "Security Reviewer" })).toHaveAttribute("aria-current", "page");
+  });
+
+  it("a click on the card body opens the agent; the name link is left to itself", () => {
+    renderCard(<AgentCard ag={AGENT} href="/agents/ag1" />);
+    fireEvent.click(screen.getByText("Flags secrets and injection"));
+    expect(pushMock).toHaveBeenCalledTimes(1);
+    expect(pushMock).toHaveBeenCalledWith("/agents/ag1");
+
+    pushMock.mockReset();
+    fireEvent.click(screen.getByRole("link", { name: "Security Reviewer" }));
+    expect(pushMock).not.toHaveBeenCalled();
+  });
+
+  it("toggle and delete never open the agent", () => {
+    vi.spyOn(window, "confirm").mockReturnValue(false);
+    renderCard(<AgentCard ag={AGENT} href="/agents/ag1" onToggle={() => {}} />);
+    fireEvent.click(screen.getByRole("switch", { name: "Enable Security Reviewer" }));
+    fireEvent.click(screen.getByRole("button", { name: "Delete agent" }));
+    expect(pushMock).not.toHaveBeenCalled();
   });
 
   it("renders no link when it has nowhere to go", () => {

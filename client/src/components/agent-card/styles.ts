@@ -3,7 +3,6 @@ import type { CSSProperties } from "react";
 /** Co-located styles for AgentCard (extracted from inline styles). */
 export const s = {
   card: (active: boolean, enabled: boolean, linked: boolean): CSSProperties => ({
-    position: "relative",
     padding: 14,
     borderRadius: 8,
     cursor: linked ? "pointer" : "default",
@@ -12,12 +11,7 @@ export const s = {
     opacity: enabled ? 1 : 0.6,
     marginBottom: 10,
   }),
-  /** Invisible link over the whole card; painted above the static content. */
-  stretchedLink: { position: "absolute", inset: 0, borderRadius: 8, zIndex: 0 } satisfies CSSProperties,
-  /** Toggle + delete: lifted above the stretched link so they receive their own clicks. */
   controls: {
-    position: "relative",
-    zIndex: 1,
     display: "flex",
     alignItems: "center",
     gap: 10,
@@ -40,6 +34,17 @@ export const s = {
     whiteSpace: "nowrap",
     overflow: "hidden",
     textOverflow: "ellipsis",
+  } satisfies CSSProperties,
+  /** The agent name when the card navigates: same look as `name`, but a link. */
+  nameLink: {
+    fontSize: 14,
+    fontWeight: 600,
+    flex: 1,
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    color: "inherit",
+    textDecoration: "none",
   } satisfies CSSProperties,
   description: {
     fontSize: 13,
