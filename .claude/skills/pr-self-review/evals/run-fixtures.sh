@@ -59,4 +59,54 @@ NODE
     trap - EXIT
   fi
 done
+echo "-- checks-only end-to-end (clean fixture, no LLM): collect --checks-only -> check -> merge -> finalize"
+if [ "$KEEP" = 0 ]; then
+  make_eval_worktree
+  trap drop_eval_worktree EXIT
+  cp -R "$HERE/fixtures/clean/files/." "$EVAL_WT/"
+  eval_commit "eval: checks-only clean"
+
+  co_collect="$(cd "$EVAL_WT" && node "$SKILL_SCRIPTS/self-review.mjs" collect --no-fetch --base "$EVAL_BASE" --checks-only)"
+  co_run_dir="$(node -e 'console.log(JSON.parse(process.argv[1]).runDir)' "$co_collect")"
+  co_level="$(node -e 'console.log(JSON.parse(process.argv[1]).level)' "$co_collect")"
+
+  (cd "$EVAL_WT" && node "$SKILL_SCRIPTS/self-review.mjs" check --run "$co_run_dir" >/dev/null)
+  (cd "$EVAL_WT" && node "$SKILL_SCRIPTS/self-review.mjs" merge --run "$co_run_dir" >/dev/null)
+  set +e
+  co_report="$(cd "$EVAL_WT" && node "$SKILL_SCRIPTS/self-review.mjs" finalize --run "$co_run_dir")"
+  co_finalize_code=$?
+  set -e
+
+  # NOTE: this harness always overrides --base (to the skills-snapshot commit,
+  # not origin/main), so finalize's `if (c.base === DEFAULT_BASE)` never fires
+  # here and no <diffHash>.json gate stamp is written to disk (same as every
+  # other fixture in this file — see the "Full run (LLM)" note in README.md).
+  # The in-memory stamp this run computed is still fully exercised: its
+  # `level` surfaces in collect's own JSON (`co_level`, checked above) and in
+  # the report's level line (checked below). The per-file lens cache, in
+  # contrast, is NOT base-gated, so checking the real cache dir on disk is a
+  # faithful check that a checks-only run wrote none.
+  co_cache_dir="$EVAL_WT/.devdigest/self-review/cache"
+  co_cache_files=0
+  [ -d "$co_cache_dir" ] && co_cache_files="$(find "$co_cache_dir" -type f | wc -l | tr -d ' ')"
+
+  co_problems=()
+  [ "$co_finalize_code" = 0 ] || co_problems+=("finalize exit $co_finalize_code, want 0 (PASS)")
+  [ "$co_level" = "checks" ] || co_problems+=("collect level=$co_level, want checks")
+  [ "$co_cache_files" = 0 ] || co_problems+=("$co_cache_files lens cache file(s) written, want 0")
+  grep -q 'рівень: лише детерміновані перевірки' <<<"$co_report" || co_problems+=("report missing checks-only level line")
+  grep -q '^Self-review: PASS' <<<"$co_report" || co_problems+=("report verdict is not PASS")
+
+  if [ ${#co_problems[@]} -eq 0 ]; then
+    echo "ok   checks-only end-to-end (level=$co_level, cache files=$co_cache_files)"
+  else
+    echo "FAIL checks-only end-to-end"
+    for p in "${co_problems[@]}"; do echo "    $p"; done
+    fails=$((fails + 1))
+  fi
+
+  drop_eval_worktree
+  trap - EXIT
+fi
+
 [ "$fails" = 0 ] || { echo "$fails fixture(s) failed"; exit 1; }

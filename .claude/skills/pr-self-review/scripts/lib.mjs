@@ -224,3 +224,10 @@ export function readJson(path, fallback) {
     return fallback;
   }
 }
+
+// A stamp written before the checks-only mode existed has no `level` field.
+// It was always a full run (lenses + checks), so it counts as `full`. The hook
+// and `finalize`'s no-downgrade check both need this same rule.
+export function stampLevel(stamp) {
+  return stamp?.level ?? 'full';
+}

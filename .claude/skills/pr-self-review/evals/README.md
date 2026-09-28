@@ -27,7 +27,15 @@ bash .claude/skills/pr-self-review/evals/run-fixtures.sh  # routing + checks for
 
 `run-fixtures.sh` asserts `deterministic.mustFail` / `mustPass`, that no other
 CRITICAL check fails, and that every expected lens finding's file is routed to
-that lens.
+that lens. It then runs one extra, self-contained case: the `clean` fixture
+through `collect --checks-only` → `check` → `merge` → `finalize` end to end (no
+LLM, since a checks-only run spawns no lens or skeptic), asserting `level:
+"checks"` (from `collect`'s own output and the report's level line), a PASS
+verdict, and that no per-file lens cache file was written.
+
+`hook-cases.sh` also covers the `checks`/`full` stamp levels: a `checks` stamp
+opens `git push` but not `gh pr create`; a `full` or legacy (no `level` field)
+stamp opens both; a BLOCK stamp of either level opens neither.
 
 ## Full run (LLM)
 

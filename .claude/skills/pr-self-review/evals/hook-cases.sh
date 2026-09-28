@@ -26,13 +26,17 @@ expect() { # $1 = expected exit, $2 = command, $3 = optional stderr substring
   fi
 }
 
-stamp() { # $1 = verdict
+stamp() { # $1 = verdict, $2 = level ("checks" | "full" | omitted = legacy, no level field)
+  local verdict="$1" level="${2:-}" level_line=""
+  if [ -n "$level" ]; then level_line="s.level = '$level';"; fi
   (cd "$EVAL_WT" && node --input-type=module -e "
     import { branchDiff, stateDir } from '$SKILL_SCRIPTS/lib.mjs';
     import { mkdirSync, writeFileSync } from 'node:fs';
     const d = branchDiff(process.cwd());
     mkdirSync(stateDir(process.cwd()), { recursive: true });
-    writeFileSync(stateDir(process.cwd()) + '/' + d.diffHash + '.json', JSON.stringify({ diffHash: d.diffHash, verdict: '$1', criticals: 1, blocking: ['[eval] fake critical'] }));
+    const s = { diffHash: d.diffHash, verdict: '$verdict', criticals: '$verdict' === 'PASS' ? 0 : 1, blocking: '$verdict' === 'PASS' ? [] : ['[eval] fake critical'] };
+    $level_line
+    writeFileSync(stateDir(process.cwd()) + '/' + d.diffHash + '.json', JSON.stringify(s));
   ")
 }
 
@@ -70,6 +74,31 @@ echo "-- new commit after PASS"
 echo "export const EVAL_HOOK_2 = 2;" >> "$EVAL_WT/reviewer-core/src/eval-hook.ts"
 eval_commit "eval: change after pass"
 expect 2 "git push" "/pr-self-review"
+
+echo "-- checks-only stamp"
+stamp PASS checks
+expect 0 "git push"
+expect 2 "gh pr create --fill" "/pr-self-review"
+
+echo "-- full stamp"
+stamp PASS full
+expect 0 "git push"
+expect 0 "gh pr create --fill"
+
+echo "-- legacy stamp (no level field, counts as full)"
+stamp PASS
+expect 0 "git push"
+expect 0 "gh pr create --fill"
+
+echo "-- FAIL stamp, checks level"
+stamp BLOCK checks
+expect 2 "git push" "BLOCK"
+expect 2 "gh pr create --fill" "BLOCK"
+
+echo "-- FAIL stamp, full level"
+stamp BLOCK full
+expect 2 "git push" "BLOCK"
+expect 2 "gh pr create --fill" "BLOCK"
 
 [ "$fails" = 0 ] || { echo "$fails case(s) failed"; exit 1; }
 echo "all hook cases passed"

@@ -1,12 +1,15 @@
 #!/usr/bin/env node
 // pr-self-review: the deterministic half of the skill.
 //
-//   node self-review.mjs collect  [--base <ref>] [--full] [--no-fetch]
+//   node self-review.mjs collect  [--base <ref>] [--full | --checks-only] [--no-fetch]
 //   node self-review.mjs check    --run <runDir>
 //   node self-review.mjs merge    --run <runDir>
 //   node self-review.mjs finalize --run <runDir> [--tokens <n>]
 //
 // collect  → runDir/collect.json: diff, routing, cache hits. Exit 3 on a dirty tree.
+//            `--checks-only` records `level: "checks"` and routes zero files to
+//            any lens (only the deterministic `check` runs); otherwise `level`
+//            is `"full"`. `--checks-only` with `--full` is an error.
 // check    → runDir/checks.json: typecheck, unit tests, arch:check, static rules.
 // merge    → runDir/merged.json: lens outputs + cache, capped, deduped; prints the skeptic queue.
 // finalize → stamp, cache, refuted.jsonl, report.md, pr-body.md; prints the report.
@@ -36,6 +39,7 @@ import {
   repoRoot,
   routeFile,
   sha256,
+  stampLevel,
   stateDir,
 } from './lib.mjs';
 
@@ -83,6 +87,8 @@ function collect(opts) {
   const root = repoRoot(process.cwd());
   const base = typeof opts.base === 'string' ? opts.base : DEFAULT_BASE;
   const full = Boolean(opts.full);
+  const checksOnly = Boolean(opts['checks-only']);
+  if (checksOnly && full) fail('--checks-only і --full не можна разом: обери один режим');
   const warnings = [];
 
   const dirty = dirtyPackageFiles(root);
@@ -113,6 +119,7 @@ function collect(opts) {
 
   const lenses = {};
   const excluded = [];
+  let anyRoutable = false;
   for (const f of files) {
     if (f.status === 'D') {
       excluded.push({ path: f.path, reason: 'видалено' });
@@ -122,6 +129,11 @@ function collect(opts) {
     const routes = routeFile(f.path, content, { full });
     if (routes.length === 0) {
       excluded.push({ path: f.path, reason: 'поза лінзами' });
+      continue;
+    }
+    anyRoutable = true;
+    if (checksOnly) {
+      excluded.push({ path: f.path, reason: 'лінзи вимкнено (--checks-only)' });
       continue;
     }
     const blob = sha256(content);
@@ -150,8 +162,9 @@ function collect(opts) {
     head: diff.head,
     diffHash: diff.diffHash,
     full,
+    level: checksOnly ? 'checks' : 'full',
     empty: diff.patch.length === 0,
-    docsOnly: diff.patch.length > 0 && Object.keys(lenses).length === 0,
+    docsOnly: diff.patch.length > 0 && !anyRoutable,
     stats: { files: files.length, lines: totalLines, large },
     files,
     excluded,
@@ -164,6 +177,7 @@ function collect(opts) {
     runDir,
     diffHash: diff.diffHash,
     branch: data.branch,
+    level: data.level,
     empty: data.empty,
     docsOnly: data.docsOnly,
     stats: data.stats,
@@ -533,6 +547,7 @@ function finalize(opts) {
     mergeBase: c.mergeBase,
     head: c.head,
     branch: c.branch,
+    level: c.level ?? 'full',
     verdict,
     criticals: blocking.length,
     blocking,
@@ -542,7 +557,16 @@ function finalize(opts) {
     cost: { ms, tokens },
   };
   // A stamp for an overridden base would never match the hook's diff, so it is not written as a gate key.
-  if (c.base === DEFAULT_BASE) writeJson(join(state, `${c.diffHash}.json`), stamp);
+  if (c.base === DEFAULT_BASE) {
+    const stampPath = join(state, `${c.diffHash}.json`);
+    // A checks-only PASS must never overwrite an existing full PASS for the same
+    // diff: the full run is strictly stronger (it also ran the lenses) and a
+    // later, narrower checks-only run must not throw that verification away.
+    const existing = stamp.level === 'checks' ? readJson(stampPath, undefined) : undefined;
+    const keepExisting = existing?.verdict === 'PASS' && stampLevel(existing) === 'full';
+    if (keepExisting) c.warnings.push('вже є повний PASS для цього diff: checks-only вердикт не перезаписав штамп');
+    else writeJson(stampPath, stamp);
+  }
 
   const report = renderReport(c, checks ?? [], findings, m.lensStatus, stamp);
   writeFileSync(join(runDir, 'report.md'), report);
@@ -557,7 +581,8 @@ function skippedLine(c, checks = []) {
   const parts = ['server/**/*.it.test.ts (потрібен Docker/Postgres)'];
   for (const r of checks.filter((x) => x.skipped)) parts.push(`${r.name}: ${r.detail}`);
   if (c.excluded.length) parts.push(`${c.excluded.length} файлів поза лінзами (видалені, lockfile, міграції, vendored, md, не-TS)`);
-  if (!c.full) parts.push('advisory-лінзи ts-advisory і react-perf (без --full)');
+  if (c.level === 'checks') parts.push('усі LLM-лінзи пропущено через --checks-only');
+  else if (!c.full) parts.push('advisory-лінзи ts-advisory і react-perf (без --full)');
   return parts.join('; ');
 }
 
@@ -570,6 +595,7 @@ function renderReport(c, checks, findings, lensStatus, stamp) {
     `Self-review: ${stamp.verdict} (${stamp.criticals} блокуючих; ${stamp.counts.CRITICAL} critical, ${stamp.counts.HIGH} high, ${stamp.counts.MEDIUM} medium)  ` +
       `base=${c.base}@${c.mergeBase.slice(0, 7)}  head=${c.head.slice(0, 7)}  files=${c.stats.files}`,
   );
+  lines.push(`рівень: ${stamp.level === 'checks' ? 'лише детерміновані перевірки' : 'повний (з лінзами)'}`);
   lines.push(
     `Час: ${Math.round(stamp.cost.ms / 1000)} с · лінзи: ${lensCount} (${cachedLenses} повністю з кешу, ${cachedFiles} файл-лінз з кешу)` +
       (stamp.cost.tokens ? ` · токени: ~${stamp.cost.tokens}` : ' · токени: не виміряно'),

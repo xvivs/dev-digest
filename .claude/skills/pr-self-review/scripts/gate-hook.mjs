@@ -11,7 +11,7 @@
 
 import { existsSync, readFileSync } from 'node:fs';
 import { isAbsolute, join, resolve } from 'node:path';
-import { DEFAULT_BASE, branchDiff, currentBranch, git, repoRoot, stateDir } from './lib.mjs';
+import { DEFAULT_BASE, branchDiff, currentBranch, git, repoRoot, stampLevel, stateDir } from './lib.mjs';
 
 const HEAD_MOVERS = /^(commit|merge|rebase|cherry-pick|am|pull|reset|revert|checkout|switch|stash|restore|apply)$/;
 
@@ -118,12 +118,18 @@ function main() {
   }
 
   let needsGate = false;
+  // git push accepts a PASS of level "checks" or "full"; gh pr create needs "full".
+  // A command chain touching both (rare) is held to "full", the stricter one.
+  let requiredLevel;
   for (const p of parsed.slice(gatedAt)) {
     if (!p) continue;
     if (p.kind === 'git' && p.sub === 'push') {
       const r = pushNeedsGate(p.args, root, branch);
       if (r?.error) block(r.error);
-      if (r?.ok) needsGate = true;
+      if (r?.ok) {
+        needsGate = true;
+        requiredLevel ??= 'checks';
+      }
     }
     if (p.kind === 'gh-pr-create') {
       const i = p.args.findIndex((a) => a === '--head' || a === '-H');
@@ -131,9 +137,13 @@ function main() {
       if (head && head !== branch && !head.endsWith(`:${branch}`))
         block(`\`gh pr create --head ${head}\` відкриває PR не з поточної гілки (${branch}). Зроби checkout цієї гілки і повтори.`);
       needsGate = true;
+      requiredLevel = 'full';
     }
   }
   if (!needsGate) process.exit(0);
+  // The exact command to name in a block message: the minimal self-review that
+  // would satisfy what is actually being gated.
+  const suggestedCmd = requiredLevel === 'full' ? '/pr-self-review' : '/pr-self-review --checks-only';
 
   // A commit (or anything that moves HEAD) earlier in the same command would be
   // pushed without review: the hook only sees HEAD as it is right now.
@@ -156,19 +166,25 @@ function main() {
   if (!existsSync(stampPath))
     block(
       `немає PASS-вердикту для поточного diff гілки ${branch} (diffHash ${diff.diffHash.slice(0, 12)}). ` +
-        'Запусти /pr-self-review вручну (автовиклик вимкнено). Після PASS повтори цю саму команду.',
+        `Запусти ${suggestedCmd} вручну (автовиклик вимкнено). Після PASS повтори цю саму команду.`,
     );
   let stamp;
   try {
     stamp = JSON.parse(readFileSync(stampPath, 'utf8'));
   } catch {
-    block(`штамп ${stampPath} пошкоджений. Запусти /pr-self-review ще раз вручну (автовиклик вимкнено).`);
+    block(`штамп ${stampPath} пошкоджений. Запусти ${suggestedCmd} ще раз вручну (автовиклик вимкнено).`);
   }
-  if (stamp.diffHash !== diff.diffHash) block('штамп не відповідає поточному diff. Запусти /pr-self-review ще раз вручну (автовиклик вимкнено).');
+  if (stamp.diffHash !== diff.diffHash) block(`штамп не відповідає поточному diff. Запусти ${suggestedCmd} ще раз вручну (автовиклик вимкнено).`);
   if (stamp.verdict !== 'PASS') {
     const list = (stamp.blocking ?? []).slice(0, 10).map((b) => `  - ${b}`).join('\n');
-    block(`останній self-review дав BLOCK (${stamp.criticals} critical). Виправ, закоміть і запусти /pr-self-review знову вручну (автовиклик вимкнено).\n${list}`);
+    block(`останній self-review дав BLOCK (${stamp.criticals} critical). Виправ, закоміть і запусти ${suggestedCmd} знову вручну (автовиклик вимкнено).\n${list}`);
   }
+  // A stamp without `level` predates checks-only and counts as full (stampLevel()).
+  if (requiredLevel === 'full' && stampLevel(stamp) !== 'full')
+    block(
+      `останній self-review — рівень "${stampLevel(stamp)}" (лише детерміновані перевірки), а для gh pr create потрібен повний прогін з лінзами. ` +
+        `Запусти ${suggestedCmd}.`,
+    );
   process.exit(0);
 }
 
