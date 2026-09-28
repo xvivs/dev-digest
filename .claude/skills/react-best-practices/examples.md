@@ -1,12 +1,13 @@
 # React Best Practices — Code Examples
 
-Good/bad patterns for each rule in [SKILL.md](SKILL.md).
+Good/bad patterns for each rule in [SKILL.md](SKILL.md). Stack: Next 15 App
+Router, React 19, TanStack Query over `src/lib/api.ts`, styles in `styles.ts`.
 
 ---
 
 ## Derive, Don't Store
 
-```jsx
+```tsx
 // BAD: Storing derived state
 const [fullName, setFullName] = useState('');
 useEffect(() => {
@@ -17,253 +18,403 @@ useEffect(() => {
 const fullName = `${firstName} ${lastName}`;
 ```
 
-```jsx
+```tsx
 // BAD: Filtering in useEffect
-const [filteredBlogs, setFilteredBlogs] = useState(blogs);
+const [visible, setVisible] = useState(findings);
 useEffect(() => {
-  setFilteredBlogs(blogs.filter(b => b.category === selected));
-}, [blogs, selected]);
+  setVisible(findings.filter((f) => f.severity === selected));
+}, [findings, selected]);
 
-// GOOD: Compute (memoize only if expensive)
-const filteredBlogs = useMemo(
-  () => blogs.filter(b => b.category === selected),
-  [blogs, selected],
-);
+// GOOD: Compute during render — a filter over a PR's findings is cheap
+const visible = findings.filter((f) => f.severity === selected);
+
+// GOOD (only if console.time shows >= 1ms, e.g. thousands of diff lines)
+const parsedLines = useMemo(() => parseDiff(rawDiff), [rawDiff]);
+```
+
+```tsx
+// BAD: Mirroring query data into state
+const { data } = useAgents();
+const [agents, setAgents] = useState<Agent[]>([]);
+useEffect(() => { if (data) setAgents(data); }, [data]);
+
+// GOOD: Read and derive from the query
+const { data: agents = [] } = useAgents();
+const enabledAgents = agents.filter((a) => a.enabled);
+```
+
+```tsx
+// BAD: Keeping a "corrected" copy of an index in state
+const [index, setIndex] = useState(0);
+useEffect(() => { if (index >= items.length) setIndex(items.length - 1); }, [items, index]);
+
+// GOOD: Clamp on read
+const [rawIndex, setIndex] = useState(0);
+const index = Math.min(rawIndex, Math.max(items.length - 1, 0));
 ```
 
 ---
 
 ## Memoization
 
-```jsx
+```tsx
 // BAD: Over-memoizing trivial operations
 const greeting = useMemo(() => `Hello, ${name}!`, [name]);
-const handleClick = useCallback(() => setOpen(true), []);
+const handleClick = useCallback(() => setOpen(true), []);   // passed to a plain <button>
 
-// GOOD: Only memoize expensive operations
-const sortedBlogs = useMemo(
-  () => [...blogs].sort((a, b) => new Date(b.date) - new Date(a.date)),
-  [blogs],
+// GOOD: useMemo for a measured-expensive computation
+const sortedRuns = useMemo(
+  () => [...runs].sort((a, b) => Date.parse(b.ran_at) - Date.parse(a.ran_at)),
+  [runs],   // only worth it for large lists; otherwise compute inline
 );
+```
+
+```tsx
+// GOOD: useCallback when the function is a dependency of another hook
+const loadMore = useCallback(() => fetchNextPage(), [fetchNextPage]);
+useEffect(() => {
+  if (inView) loadMore();
+}, [inView, loadMore]);
+
+// GOOD: useCallback when passed to a memo-wrapped child
+const MemoRow = memo(Row);
+const handleSelect = useCallback((id: string) => setSelected(id), []);
+<MemoRow onSelect={handleSelect} />
+
+// GOOD: useCallback for functions returned from a custom hook
+function useFindingActions(prId: string) {
+  const mutate = useFindingAction(prId).mutate;
+  const accept = useCallback((id: string) => mutate({ id, kind: 'accept' }), [mutate]);
+  const dismiss = useCallback((id: string) => mutate({ id, kind: 'dismiss' }), [mutate]);
+  return { accept, dismiss };
+}
 ```
 
 ---
 
 ## Render Factories
 
-```jsx
-// BAD: Render factory (camelCase, called as function)
-const renderBlogCard = (blog) => {
-  return <div className="p-4">{blog.title}</div>;
-};
-return <div>{renderBlogCard(blog)}</div>;
+```tsx
+// BAD: Render factory (camelCase, called as a function)
+const renderRunRow = (run: RunSummary) => <div>{run.agent_name}</div>;
+return <div>{runs.map(renderRunRow)}</div>;
 
-// GOOD: Proper React component (PascalCase, used as JSX)
-const BlogCard = ({ blog }) => {
-  return <div className="p-4">{blog.title}</div>;
-};
-return <div><BlogCard blog={blog} /></div>;
+// GOOD: Proper component (PascalCase, used as JSX)
+function RunRow({ run }: { run: RunSummary }) {
+  return <div>{run.agent_name}</div>;
+}
+return <div>{runs.map((run) => <RunRow key={run.run_id} run={run} />)}</div>;
+```
+
+```tsx
+// BAD: Component defined inside another component — state resets every render
+function AgentEditor() {
+  function NameField() {
+    const [name, setName] = useState('');
+    return <input value={name} onChange={(e) => setName(e.target.value)} />;
+  }
+  return <NameField />;
+}
+
+// GOOD: Module-level definition
+function NameField() { /* ... */ }
+function AgentEditor() { return <NameField />; }
 ```
 
 ---
 
 ## Inline Creation in JSX
 
-```jsx
+```tsx
 // BAD: New array on every render
-<CategoryFilter categories={['Tech', 'Startup', 'Lifestyle']} />
+<SeverityFilterBar options={['CRITICAL', 'WARNING', 'SUGGESTION']} />
 
-// GOOD: Stable reference (module-level constant)
-const CATEGORIES = ['Tech', 'Startup', 'Lifestyle'];
-<CategoryFilter categories={CATEGORIES} />
+// GOOD: Stable reference (module-level constant, in constants.ts)
+export const SEVERITY_OPTIONS = ['CRITICAL', 'WARNING', 'SUGGESTION'] as const;
+<SeverityFilterBar options={SEVERITY_OPTIONS} />
 ```
 
-```jsx
-// BAD: Inline style object on every render
-<div style={{ padding: '16px', background: '#fff' }}>
+```tsx
+// BAD: Inline style object literal in JSX
+<div style={{ padding: 16, background: '#fff' }}>
 
-// GOOD: Use Tailwind utility classes
-<div className="p-4 bg-white">
+// GOOD: Colocated styles.ts over CSS variables (ADR 0003)
+// styles.ts
+export const s = { panel: { padding: 16, background: 'var(--bg-elevated)' } satisfies CSSProperties };
+// Component.tsx
+<div style={s.panel}>
 ```
 
 ---
 
-## Container / Presenter Split
+## Separate Logic from Rendering (hook, not container)
 
-```jsx
-// BAD: Mixed data fetching and rendering
-const BlogList = () => {
-  const { data, loading, error } = useBlogs();
-  if (loading) return <Loader />;
-  if (error) return <p>Error loading blogs</p>;
-  // ... 150 lines of rendering logic
-};
+```tsx
+// BAD: Data fetching, business rules and 150 lines of JSX in one body
+function FindingsPanel({ prId }: { prId: string }) {
+  const [findings, setFindings] = useState<FindingRecord[]>([]);
+  useEffect(() => { apiFetch(`/pulls/${prId}/reviews`).then(/* ... */); }, [prId]);
+  const shown = findings.filter((f) => f.confidence >= 0.65).sort(/* ... */);
+  // ... 150 lines of rendering
+}
 
-// GOOD: Container fetches, presenter renders
-const BlogListContainer = () => {
-  const { data, loading, error } = useBlogs();
-  if (loading) return <Loader />;
-  if (error) return <p>Error loading blogs</p>;
-  if (!data?.blogs?.length) return <p>No blogs found</p>;
-  return <BlogGrid blogs={data.blogs} />;
-};
-
-const BlogGrid = ({ blogs }) => {
-  // Pure rendering — no data fetching, no effects
-  return (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-      {blogs.map(blog => <BlogCard key={blog._id} blog={blog} />)}
-    </div>
-  );
-};
+// GOOD: Hook owns data, helper owns rules, component renders
+function FindingsPanel({ prId }: { prId: string }) {
+  const { data: reviews, isPending, error } = usePrReviews(prId);
+  if (isPending) return <Skeleton />;
+  if (error) return <ErrorState error={error} />;
+  const findings = baseFindings(latestFindings(reviews), { hideLow: true });  // helpers.ts
+  if (!findings.length) return <EmptyState />;
+  return <FindingList findings={findings} />;
+}
 ```
 
 ---
 
 ## State Colocation
 
-```jsx
-// BAD: State lifted too high — parent re-renders everything
-const Home = () => {
-  const [searchTerm, setSearchTerm] = useState('');
+```tsx
+// BAD: State lifted too high — every keystroke re-renders the whole page
+function PullsPage() {
+  const [search, setSearch] = useState('');
   return (
     <>
-      <SearchBar value={searchTerm} onChange={setSearchTerm} />
-      <BlogList /> {/* re-renders on every keystroke */}
-      <Newsletter />
+      <SearchBar value={search} onChange={setSearch} />
+      <RepoStats />      {/* re-renders on every keystroke */}
+      <PullsTable search={search} />
     </>
   );
-};
+}
 
-// GOOD: State pushed down to where it's used
-const Home = () => (
-  <>
-    <SearchSection /> {/* owns its own search state */}
-    <BlogList />
-    <Newsletter />
-  </>
-);
+// GOOD: State pushed down to the section that uses it
+function PullsPage() {
+  return (
+    <>
+      <RepoStats />
+      <SearchablePulls />   {/* owns search state */}
+    </>
+  );
+}
 
-const SearchSection = () => {
-  const [searchTerm, setSearchTerm] = useState('');
-  const debouncedTerm = useDebounce(searchTerm, 300);
-  return <SearchBar value={searchTerm} onChange={setSearchTerm} />;
-};
+function SearchablePulls() {
+  const [search, setSearch] = useState('');
+  const deferredSearch = useDeferredValue(search);   // keeps typing responsive
+  return (
+    <>
+      <SearchBar value={search} onChange={setSearch} />
+      <PullsTable search={deferredSearch} />
+    </>
+  );
+}
 ```
 
 ---
 
-## Data Fetching in Custom Hooks
+## Resetting State with a Key
 
-```jsx
-// BAD: Fetching directly in component
-const BlogDetail = ({ id }) => {
-  const [blog, setBlog] = useState(null);
-  useEffect(() => {
-    blogApi.getBlog(id).then(res => setBlog(res.data));
-  }, [id]);
+```tsx
+// BAD: Clearing state in an effect when the id changes (renders stale draft first)
+function CommentComposer({ findingId }: { findingId: string }) {
+  const [draft, setDraft] = useState('');
+  useEffect(() => { setDraft(''); }, [findingId]);
   // ...
-};
+}
 
-// GOOD: Use a custom hook
-const BlogDetail = ({ id }) => {
-  const { data, loading, error } = useBlog(id);
-  if (loading) return <Loader />;
-  if (error) return <p>Error</p>;
-  return <BlogContent blog={data.blog} />;
-};
+// GOOD: A different key = a different instance, state starts fresh
+<CommentComposer key={findingId} findingId={findingId} />
+```
+
+---
+
+## Data Fetching
+
+```tsx
+// BAD: Fetching directly in a component
+function AgentDetail({ id }: { id: string }) {
+  const [agent, setAgent] = useState<Agent | null>(null);
+  useEffect(() => {
+    fetch(`${process.env.NEXT_PUBLIC_API_BASE}/agents/${id}`).then((r) => r.json()).then(setAgent);
+  }, [id]);
+  // no cancellation, no cache, no error normalisation
+}
+
+// GOOD: Hook in src/lib/hooks/agents.ts over api.ts
+function AgentDetail({ id }: { id: string }) {
+  const { data: agent, isPending, error } = useAgent(id);
+  if (isPending) return <Skeleton />;
+  if (error) return <ErrorState error={error} />;
+  return <AgentForm agent={agent} />;
+}
+```
+
+```ts
+// BAD: Hand-rolled AbortController effect
+useEffect(() => {
+  const controller = new AbortController();
+  apiFetch('/pulls', { signal: controller.signal }).then(setPulls);
+  return () => controller.abort();
+}, []);
+
+// GOOD: TanStack Query passes the signal and cancels for you.
+// `api.get` takes no init, so forward the signal through `apiFetch` when cancellation matters.
+useQuery({
+  queryKey: ['pulls', repoId],
+  queryFn: ({ signal }) => apiFetch<PullSummary[]>(`/repos/${repoId}/pulls`, { signal }),
+});
+```
+
+```ts
+// BAD: Polling with setInterval
+useEffect(() => {
+  const t = setInterval(() => refetch(), 4000);
+  return () => clearInterval(t);
+}, [refetch]);
+
+// GOOD: Polling owned by the query, stops when nothing is running
+refetchInterval: (q) => ((q.state.data ?? []).some((r) => r.status === 'running') ? 4000 : false),
 ```
 
 ---
 
 ## useEffect Misuse
 
-```jsx
+```tsx
 // BAD: useEffect for event handling
-const handleSubmit = () => {
-  setSubmitted(true);
-};
+const [submitted, setSubmitted] = useState(false);
 useEffect(() => {
   if (submitted) {
-    api.createBlog(formData);
+    createAgent.mutate(form);
     setSubmitted(false);
   }
 }, [submitted]);
 
 // GOOD: Logic in the event handler
-const handleSubmit = async () => {
-  await api.createBlog(formData);
-  toast.success('Blog created!');
-  navigate('/admin/blogs');
-};
+async function handleSubmit() {
+  const agent = await createAgent.mutateAsync(form);
+  notify(t('agentCreated'));
+  router.push(`/agents/${agent.id}`);
+}
+```
+
+```ts
+// BAD: Lifecycle wrapper hides intent
+function useMount(fn: () => void) { useEffect(() => { fn(); }, []); }
+
+// GOOD: Hook named for the external system it synchronises
+function useRunEvents(runId: string, onEvent: (e: RunEvent) => void) {
+  useEffect(() => {
+    const source = new EventSource(`${API_BASE}/runs/${runId}/events`);
+    source.onmessage = (m) => onEvent(JSON.parse(m.data));
+    return () => source.close();
+  }, [runId, onEvent]);
+}
+```
+
+---
+
+## Forms & Actions (React 19)
+
+```tsx
+// BAD: Hand-rolled pending/error booleans
+const [isSaving, setIsSaving] = useState(false);
+const [error, setError] = useState<string | null>(null);
+async function onSubmit(e: FormEvent) {
+  e.preventDefault(); setIsSaving(true);
+  try { await saveKey(value); } catch (err) { setError(String(err)); } finally { setIsSaving(false); }
+}
+
+// GOOD: useActionState owns pending + result
+const [state, formAction, isPending] = useActionState(
+  async (_prev: { error?: string }, formData: FormData) => {
+    try { await saveKey.mutateAsync(String(formData.get('key'))); return {}; }
+    catch (err) { return { error: err instanceof ApiError ? err.message : 'unknown' }; }
+  },
+  {},
+);
+<form action={formAction}>
+  <input name="key" aria-invalid={!!state.error} aria-describedby="key-error" />
+  <button disabled={isPending}>Save</button>
+  {state.error && <p id="key-error">{state.error}</p>}
+</form>
+```
+
+```tsx
+// GOOD: Optimistic UI while the mutation is in flight
+const [optimisticStatus, setOptimisticStatus] = useOptimistic(finding.status);
+function handleAccept() {
+  startTransition(async () => {
+    setOptimisticStatus('accepted');
+    await acceptFinding.mutateAsync(finding.id);
+  });
+}
 ```
 
 ---
 
 ## Early Returns for States
 
-```jsx
+```tsx
 // BAD: Nested ternaries
-return loading ? <Loader /> : error ? <Error /> : data ? <Content data={data} /> : <Empty />;
+return isPending ? <Skeleton /> : error ? <ErrorState /> : data?.length ? <Grid data={data} /> : <EmptyState />;
 
 // GOOD: Early returns
-if (loading) return <Loader />;
-if (error) return <p className="text-red-500">Something went wrong</p>;
-if (!data?.blogs?.length) return <p>No blogs yet</p>;
-return <BlogGrid blogs={data.blogs} />;
+if (isPending) return <Skeleton />;
+if (error) return <ErrorState error={error} />;
+if (!data?.length) return <EmptyState />;
+return <Grid data={data} />;
 ```
 
 ---
 
 ## Error Boundaries
 
-```jsx
-import { ErrorBoundary } from 'react-error-boundary';
-import { useLocation } from 'react-router-dom';
-
-// BAD: No error boundary — unhandled errors crash the whole app
-const App = () => <Routes>...</Routes>;
-
-// GOOD: Error boundary with route-aware reset and recovery
-const ErrorFallback = ({ error, resetErrorBoundary }) => (
-  <div className="p-8 text-center">
-    <p className="text-red-500">Something went wrong</p>
-    <button onClick={resetErrorBoundary} className="mt-4 px-4 py-2 bg-blue-500 text-white rounded">
-      Try again
-    </button>
-  </div>
-);
-
-const App = () => {
-  const location = useLocation();
+```tsx
+// Route level — Next App Router: app/repos/[repoId]/pulls/error.tsx
+'use client';
+export default function Error({ error, reset }: { error: Error; reset: () => void }) {
   return (
-    <ErrorBoundary resetKeys={[location.pathname]} FallbackComponent={ErrorFallback}>
-      <Routes>...</Routes>
+    <ErrorState error={error}>
+      <button onClick={reset}>Try again</button>
+    </ErrorState>
+  );
+}
+```
+
+```tsx
+// Component level (requires adding react-error-boundary — a dependency decision)
+import { ErrorBoundary } from 'react-error-boundary';
+import { usePathname } from 'next/navigation';
+
+function Section({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+  return (
+    <ErrorBoundary resetKeys={[pathname]} FallbackComponent={SectionFallback}>
+      {children}
     </ErrorBoundary>
   );
-};
+}
 ```
 
 ---
 
 ## Key Prop Patterns
 
-```jsx
-// BAD: Index as key — causes state bugs when list changes
-{blogs.map((blog, index) => <BlogCard key={index} blog={blog} />)}
+```tsx
+// BAD: Index as key — state bugs when the list changes
+{findings.map((f, index) => <FindingCard key={index} finding={f} />)}
 
-// GOOD: Stable unique ID as key
-{blogs.map((blog) => <BlogCard key={blog._id} blog={blog} />)}
+// GOOD: Stable unique id
+{findings.map((f) => <FindingCard key={f.id} finding={f} />)}
 
-// BAD: Random key — forces full remount every render
-{blogs.map((blog) => <BlogCard key={Math.random()} blog={blog} />)}
+// BAD: Random key — full remount every render
+{findings.map((f) => <FindingCard key={Math.random()} finding={f} />)}
 
-// GOOD: Key on Fragment when mapping fragments
+// GOOD: Key on the Fragment when mapping fragments
 {items.map((item) => (
-  <React.Fragment key={item.id}>
+  <Fragment key={item.id}>
     <dt>{item.label}</dt>
     <dd>{item.value}</dd>
-  </React.Fragment>
+  </Fragment>
 ))}
 ```
 
@@ -271,14 +422,14 @@ const App = () => {
 
 ## Conditional Rendering Gotcha
 
-```jsx
+```tsx
 // BAD: Renders literal "0" when count is 0
 {count && <Badge>{count}</Badge>}
 
 // GOOD: Explicit comparison
 {count > 0 && <Badge>{count}</Badge>}
 
-// GOOD: Ternary for clarity
+// GOOD: Ternary
 {count ? <Badge>{count}</Badge> : null}
 ```
 
@@ -286,84 +437,63 @@ const App = () => {
 
 ## Accessibility
 
-```jsx
+```tsx
 // BAD: Icon button without label — invisible to screen readers
 <button onClick={onDelete}><TrashIcon /></button>
 
-// GOOD: Accessible icon button
-<button onClick={onDelete} aria-label="Delete blog post"><TrashIcon /></button>
+// GOOD
+<button onClick={onDelete} aria-label={t('deleteRun')}><TrashIcon /></button>
 
-// BAD: Error not associated with field
+// BAD: Error not associated with the field
 <input type="email" />
-{error && <span className="text-red-500">{error}</span>}
+{error && <span style={s.error}>{error}</span>}
 
-// GOOD: Error linked to field
+// GOOD: Error linked to the field
 <input type="email" aria-invalid={!!error} aria-describedby="email-error" />
-{error && <span id="email-error" className="text-red-500">{error}</span>}
+{error && <span id="email-error" style={s.error}>{error}</span>}
 
 // GOOD: Live region for dynamic updates
-<div aria-live="polite">{searchResults.length} results found</div>
+<div aria-live="polite">{t('findingsCount', { count: findings.length })}</div>
+```
+
+```tsx
+// BAD: A div that looks like a modal
+<div style={s.overlay}><div style={s.modal}>{children}</div></div>
+
+// GOOD: Dialog semantics (WAI-ARIA APG) + focus management + Escape
+<div role="dialog" aria-modal="true" aria-labelledby="prompt-title" style={s.modal}>
+  <h2 id="prompt-title">{t('prompt')}</h2>
+  {children}
+  <button onClick={onClose} aria-label={t('close')}>×</button>
+</div>
 ```
 
 ---
 
-## Route-Level Code Splitting
+## Code Splitting
 
-```jsx
-import { lazy, Suspense } from 'react';
+```tsx
+// BAD: Heavy client-only widget in the main bundle of every page
+import { MermaidDiagram } from '@/components/mermaid-diagram';
 
-// BAD: All pages in main bundle
-import AdminDashboard from './pages/admin/Dashboard';
-import AddBlog from './pages/admin/AddBlog';
-
-// GOOD: Lazy-loaded routes
-const AdminDashboard = lazy(() => import('./pages/admin/Dashboard'));
-const AddBlog = lazy(() => import('./pages/admin/AddBlog'));
-
-const App = () => (
-  <Suspense fallback={<PageLoader />}>
-    <Routes>
-      <Route path="/admin" element={<AdminDashboard />} />
-      <Route path="/admin/add" element={<AddBlog />} />
-    </Routes>
-  </Suspense>
+// GOOD: next/dynamic with a static import path
+import dynamic from 'next/dynamic';
+const MermaidDiagram = dynamic(
+  () => import('@/components/mermaid-diagram').then((m) => m.MermaidDiagram),
+  { ssr: false, loading: () => <Skeleton /> },
 );
-```
-
----
-
-## Axios Request Cancellation
-
-```jsx
-// BAD: No cleanup — stale responses update unmounted component
-useEffect(() => {
-  axios.get('/api/blogs').then(res => setBlogs(res.data));
-}, []);
-
-// GOOD: Cancel on cleanup with AbortController
-useEffect(() => {
-  const controller = new AbortController();
-  axios.get('/api/blogs', { signal: controller.signal })
-    .then(res => setBlogs(res.data.blogs))
-    .catch(err => {
-      if (!axios.isCancel(err)) setError(err.message);
-    });
-  return () => controller.abort();
-}, []);
 ```
 
 ---
 
 ## React 19: ref as Prop
 
-```jsx
+```tsx
 // OLD (React 18): forwardRef boilerplate
-const Input = forwardRef((props, ref) => (
-  <input ref={ref} {...props} />
-));
+const Input = forwardRef<HTMLInputElement, InputProps>((props, ref) => <input ref={ref} {...props} />);
 
 // NEW (React 19): ref as a regular prop
-const Input = ({ ref, ...props }) => (
-  <input ref={ref} {...props} />
-);
+function Input({ ref, ...props }: InputProps & { ref?: React.Ref<HTMLInputElement> }) {
+  return <input ref={ref} {...props} />;
+}
 ```
