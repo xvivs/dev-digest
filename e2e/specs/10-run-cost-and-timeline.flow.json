@@ -1,0 +1,33 @@
+{
+  "name": "Run cost provenance on the PR list, the run timeline and the trace drawer",
+  "description": "Cost is rendered from three seeded agent_runs on PR #482 and one on #479, and the point of the flow is PROVENANCE, not just that a number appears: a provider-reported cost prints bare ('$0.041'), an estimated one prints with a leading tilde ('~$0.014'), and a run that failed before spending anything prints an em dash instead of '$0.00'. A formatter that dropped the tilde, or that coerced null to zero, would still satisfy a plain '$' assertion — these three forms together are what make the assertion meaningful.\n\nThe timeline badges cover the three terminal run states the seed provides: rejected (done + request_changes), reviewed (done + approved) and error (failed, carrying the OpenRouter message).\n\nThe trace drawer asserts only the fields that are derived arithmetically from the seeded run row — durationMs 8200 -> '8.2s' and tokensIn/Out 14820/1240 -> '15k->1.2k' -- plus the same provider cost. The drawer's grounding stat is deliberately NOT asserted here: it is denormalised into agent_runs.grounding and drifts from the review's real finding count on any database seeded before the widened fixture, which would make this flow fail for a reason that has nothing to do with cost.\n\nRead-only seeded data (no model call).",
+  "steps": [
+    { "cmd": ["open", "{BASE}/"], "label": "load the app root" },
+    { "cmd": ["wait", "--url", "/pulls"], "label": "land on the PR list" },
+    { "cmd": ["wait", "--text", "acme/payments-api"], "label": "guard: the home redirect landed on the demo repo — the seed holds TWO repos (acme/payments-api and xvivs/dev-digest) and ReposRepository.listByWorkspace has no ORDER BY, so which one `/` redirects to is not guaranteed by contract" },
+    { "cmd": ["wait", "--load", "networkidle"], "label": "PR list data settles" },
+    { "cmd": ["wait", "--text", "COST"], "label": "the COST column header renders (headRow is uppercase)" },
+    { "cmd": ["wait", "--text", "$0.063"], "label": "PR #479 shows its run cost on the list" },
+    { "cmd": ["wait", "--text", "$0.041"], "label": "PR #482 shows the cost of its newest run, not the sum of all three" },
+    { "cmd": ["find", "text", "Add rate limiting to public API endpoints", "click"], "label": "open PR #482 by title, not by row position" },
+    { "cmd": ["wait", "--url", "/pulls/482"], "label": "navigate to the PR detail route" },
+    { "cmd": ["wait", "--load", "networkidle"], "label": "PR detail data settles" },
+    { "cmd": ["find", "role", "button", "click", "--name", "Agent runs"], "label": "switch to the Agent runs tab" },
+    { "cmd": ["wait", "--url", "tab=findings"], "label": "findings tab is active in the URL" },
+    { "cmd": ["wait", "--text", "TIMELINE"], "label": "the run timeline renders" },
+    { "cmd": ["wait", "--text", "rejected"], "label": "timeline badge: the newest run requested changes" },
+    { "cmd": ["wait", "--text", "reviewed"], "label": "timeline badge: the older run approved" },
+    { "cmd": ["wait", "--text", "error"], "label": "timeline badge: the oldest run failed" },
+    { "cmd": ["wait", "--text", "OpenRouter returned no choices"], "label": "the failed run surfaces its provider error inline" },
+    { "cmd": ["wait", "--text", "16,060 tok"], "label": "token total is tokensIn + tokensOut (14,820 + 1,240), thousands-separated" },
+    { "cmd": ["wait", "--text", "$0.041"], "label": "provider-reported cost prints bare — no tilde" },
+    { "cmd": ["wait", "--text", "~$0.014"], "label": "estimated cost prints WITH a tilde — this is the provenance assertion" },
+    { "cmd": ["wait", "--text", "0 tok"], "label": "the failed run spent no tokens" },
+    { "cmd": ["scrollintoview", "[aria-label=\"Open run trace & logs\"]"], "label": "bring the trace trigger into the viewport; without this the next click silently no-ops" },
+    { "cmd": ["find", "first", "[aria-label=\"Open run trace & logs\"]", "click"], "label": "open the trace drawer for the newest run (#482 seeds three, so take the first)" },
+    { "cmd": ["wait", "--url", "trace="], "label": "the drawer records the selected run in the URL" },
+    { "cmd": ["wait", "--text", "8.2s"], "label": "drawer duration is the seeded durationMs 8200 rendered in seconds" },
+    { "cmd": ["wait", "--text", "15k→1.2k"], "label": "drawer tokens are the in/out pair abbreviated, not a single total" },
+    { "cmd": ["wait", "--text", "$0.041"], "label": "the drawer agrees with the timeline on cost" }
+  ]
+}

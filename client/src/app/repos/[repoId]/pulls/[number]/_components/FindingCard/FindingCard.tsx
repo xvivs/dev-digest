@@ -13,6 +13,7 @@ import {
   MonoLink,
   ConfidenceNum,
   Button,
+  Collapse,
   Markdown,
   type Severity,
   type Category,
@@ -42,6 +43,7 @@ export function FindingCard({
 }) {
   const t = useTranslations("prReview");
   const [expanded, setExpanded] = React.useState(defaultExpanded ?? false);
+  const bodyId = React.useId();
   const sevColor = SEV_COLOR[f.severity] ?? SEV_COLOR_FALLBACK;
   const fileHref =
     repoFullName && headSha
@@ -53,7 +55,22 @@ export function FindingCard({
 
   return (
     <div data-finding-id={f.id} style={s.card(!!focused, sevColor, muted)}>
-      <div onClick={() => setExpanded((e) => !e)} style={s.header}>
+      <div
+        role="button"
+        tabIndex={0}
+        aria-expanded={expanded}
+        aria-controls={bodyId}
+        onClick={() => setExpanded((e) => !e)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            // Space scrolls the page by default, and the card is inside a
+            // scroll container — the toggle would be invisible.
+            e.preventDefault();
+            setExpanded((x) => !x);
+          }
+        }}
+        style={s.header}
+      >
         <div style={s.badgeWrap}>
           <SeverityBadge severity={f.severity as Severity} compact />
         </div>
@@ -74,7 +91,7 @@ export function FindingCard({
         <Icon.ChevronDown size={16} style={s.chevron(expanded)} />
       </div>
 
-      {expanded && (
+      <Collapse open={expanded} id={bodyId}>
         <div style={s.body}>
           <div style={s.prose}>
             <Markdown>{f.rationale}</Markdown>
@@ -111,7 +128,7 @@ export function FindingCard({
             </Button>
           </div>
         </div>
-      )}
+      </Collapse>
     </div>
   );
 }

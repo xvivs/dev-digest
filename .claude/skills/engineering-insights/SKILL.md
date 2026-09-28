@@ -1,6 +1,6 @@
 ---
 name: engineering-insights
-description: Captures durable engineering learnings into the touched module's INSIGHTS.md — non-obvious fixes, dead ends, codebase conventions, library quirks, recurring errors. Fires two ways — capture-as-you-go, the moment something surprising or hard-won happens mid-task, and wrap-up, at the end of any substantive session with a real problem, decision, or dead end (skip trivial tweaks). Also runs on /engineering-insights, or on a request to review or prune a module's INSIGHTS.md.
+description: The only sanctioned way to write a module's INSIGHTS.md — never edit those files by hand, and tell any subagent that writes one to come through here too. Files a durable engineering learning (non-obvious fix, dead end, codebase convention, library quirk, recurring error) into the right module's file, in the right section, dated and backed by evidence. Use it MID-TASK, the moment one appears — do not save them for the end. Concrete triggers: something broke in a way the code did not predict; a green typecheck or a green test suite hid a real failure; the obvious fix turned out to be wrong; a tool, library or CLI behaved against its own docs; you lost time to a cause that was not visible from the code; you hit an existing convention the hard way; a migration, seed or fixture did not do what its name implies; a subagent reported something worth keeping. Also fires at wrap-up of any substantive session, on /engineering-insights, and on a request to review or prune an INSIGHTS.md.
 ---
 
 Knowledge that lives only in this session's context dies with it. This skill's
@@ -32,16 +32,42 @@ inventing a new journal format, never touching `CLAUDE.md` on its own.
    mechanics below.
 6. **Wrap-up only**: additionally write one dated Session Notes entry per
    module actually touched this session.
-7. **Report back**: one line per file touched, naming the section(s) written,
-   any duplicates skipped, and — as a mention, never an edit — flag if a
-   Recurring Errors & Fixes entry looks like a repeat worth a `CLAUDE.md` line.
+7. **Self-audit before reporting.** Re-read every entry you just wrote and
+   confirm four things: the claim is specific and falsifiable, it carries a
+   real `file.ts:NN` (or command/version) reference, it ends with
+   `_(YYYY-MM-DD)_`, and it sits in the section the precedence table picks.
+   Fix anything that fails NOW. A malformed entry is worse than no entry —
+   it reads as filed and survives every later audit by eye.
+8. **Report back** in the fixed shape below. No prose summary instead of it.
 
 **Completion criterion**: every candidate surviving step 1 is either (a)
 appended under the correct section of the correct module's `INSIGHTS.md`
 using the entry template, or (b) explicitly named as rejected and why (quality
 bar or duplicate) — and for a wrap-up, exactly one dated Session Notes entry
 exists for today in every module actually touched. Silently doing nothing is
-never a valid stopping point: always report which of (a)/(b) happened.
+never a valid stopping point: always report which of (a)/(b) happened. Every entry
+that did get written passes the step-7 audit — no exceptions carried into the
+report as caveats.
+
+## Report format
+
+```
+INSIGHTS — <capture-as-you-go | wrap-up | cleanup>
+
+| file | section | entry |
+|---|---|---|
+| client/INSIGHTS.md | Recurring Errors & Fixes | Module not found './contracts/findings.js' … |
+
+Rejected: <n> — <one clause each: which bar it failed, or which entry it duplicated>
+Flagged:  <conflicts added to Open Questions, duplicate headings, sharding threshold — or "none">
+Audit:    <n> entries written, all dated and file-referenced · Session Notes: <modules, or "n/a">
+```
+
+Two things the report must never do: claim an entry was written without the
+script having returned `inserted` for it, and quote a long excerpt instead of
+the first handful of words — the file is the record, the report is an index.
+If a `Recurring Errors & Fixes` entry looks like a repeat worth promoting to
+`CLAUDE.md`, mention it on the `Flagged:` line — mention only, never an edit.
 
 ## Quality bar
 
@@ -74,8 +100,17 @@ more than one — pick the first match, never duplicate across sections.
 ## Entry format
 
 ```markdown
-- **<one-line, specific, testable claim>** — <mechanism/why, with a `path/to/file.ts:NN` reference when applicable>. _(YYYY-MM-DD)_
+- **<one-line, specific, testable claim>** — <mechanism/why, carrying a `path/to/file.ts:NN` reference>. _(YYYY-MM-DD)_
 ```
+
+Both parts are mandatory and are what a later reader checks first:
+
+- **Evidence** — a `path/to/file.ts:NN` a reader can open. When the finding is
+  genuinely not about our code (a CLI, a container, a package manager), name
+  the exact command, package and version instead — but something checkable
+  must be there. Naming only a component or a concept is not evidence.
+- **Date** — the trailing `_(YYYY-MM-DD)_`. Never omit it and never guess it:
+  an entry about work done in this session gets today's date.
 
 Session Notes uses a dated sub-heading instead of a bullet:
 
@@ -117,6 +152,14 @@ JSON line on stdout. Branch on its `status`:
 The script never edits or deletes a byte that existed before the insertion
 (besides normalizing surrounding blank-line spacing) during normal capture.
 Deletion is reserved for Cleanup mode only, done by hand.
+
+**Never write an `INSIGHTS.md` with Write/Edit.** Hand-editing is how the file
+drifts: entries land undated, under an invented heading, or in the wrong
+section, and nothing catches it until someone audits the file months later.
+This applies to subagents too — a subagent told only "update INSIGHTS.md" will
+edit it directly. When you delegate work that could produce a learning, either
+tell the subagent to report its findings back and file them yourself, or tell
+it explicitly to file them through this skill's script.
 
 ## Conflicts
 

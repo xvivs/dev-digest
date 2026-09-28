@@ -1,13 +1,18 @@
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
-import { and, desc, eq, inArray } from 'drizzle-orm';
+import { and, count, desc, eq, inArray } from 'drizzle-orm';
 import type { PrMeta, PrDetail, GitHubClient, PrReviewComment } from '@devdigest/shared';
 import { PrCommentInput } from '@devdigest/shared';
 import * as t from '../../db/schema.js';
 import { getContext } from '../_shared/context.js';
 import { IdParams } from '../_shared/schemas.js';
 import { AppError, NotFoundError } from '../../platform/errors.js';
-import { deriveReviewStatus, deriveCostMissingReason } from './status.js';
+import {
+  deriveReviewStatus,
+  deriveCostMissingReason,
+  rollupSeverityRows,
+  ZERO_SEVERITY_COUNTS,
+} from './status.js';
 
 /**
  * F1 — pulls module. PR import via Octokit (list + per-PR detail).
@@ -111,23 +116,52 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
       }
     }
 
-    // Latest-review SCORE per PR for the list's score ring. Computed on read
-    // from reviews (no FK denorm); the list is small, so one IN-query + JS
-    // grouping is cheap. (The per-severity FINDINGS breakdown is intentionally
-    // not surfaced on the list — findings live on the PR detail page.)
+    // Latest-review SCORE + FINDINGS breakdown per PR. Both hang off the SAME
+    // anchor — the newest `kind: 'review'` row — so the score ring and the
+    // severity icons can never describe different reviews. (COST deliberately
+    // anchors on the latest RUN instead: a failed run has a cost but no review.)
     const prIds = rows.map((r) => r.id);
-    const latestReviewByPr = new Map<string, { score: number | null }>();
+    const latestReviewByPr = new Map<string, { id: string; score: number | null }>();
     if (prIds.length > 0) {
       const reviewRows = await container.db
-        .select({ prId: t.reviews.prId, score: t.reviews.score })
+        .select({ id: t.reviews.id, prId: t.reviews.prId, score: t.reviews.score })
         .from(t.reviews)
-        .where(and(inArray(t.reviews.prId, prIds), eq(t.reviews.kind, 'review')))
+        .where(
+          and(
+            eq(t.reviews.workspaceId, workspaceId),
+            inArray(t.reviews.prId, prIds),
+            eq(t.reviews.kind, 'review'),
+          ),
+        )
         .orderBy(desc(t.reviews.createdAt));
       // Rows are newest-first → first seen per PR is the latest review.
       for (const rv of reviewRows) {
-        if (!latestReviewByPr.has(rv.prId)) latestReviewByPr.set(rv.prId, { score: rv.score });
+        if (!latestReviewByPr.has(rv.prId)) {
+          latestReviewByPr.set(rv.prId, { id: rv.id, score: rv.score });
+        }
       }
     }
+
+    // Severity tally for those reviews, aggregated in SQL. Grouping in JS would
+    // mean one row per finding across every PR in the repo on a route that is
+    // polled every 60s and has no pagination; GROUP BY caps it at 3 rows per PR.
+    const latestReviewIds = [...latestReviewByPr.values()].map((rv) => rv.id);
+    // Guarded separately from `prIds`: a repo can have PRs but no reviews yet.
+    const severityByReview =
+      latestReviewIds.length > 0
+        ? rollupSeverityRows(
+            await container.db
+              .select({
+                reviewId: t.findings.reviewId,
+                severity: t.findings.severity,
+                // postgres-js returns count() as a string — coerce at the edge.
+                n: count().mapWith(Number),
+              })
+              .from(t.findings)
+              .where(inArray(t.findings.reviewId, latestReviewIds))
+              .groupBy(t.findings.reviewId, t.findings.severity),
+          )
+        : new Map<string, import('@devdigest/shared').SeverityCounts>();
 
     // Cost of each PR's LATEST run (any status, not a sum) for the list's
     // COST column. Same inArray + orderBy(desc) + first-seen-wins pattern as
@@ -181,6 +215,11 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
         opened_at: r.openedAt?.toISOString() ?? null,
         updated_at: r.updatedAt?.toISOString() ?? null,
         score: review ? review.score : null,
+        // A reviewed PR with zero findings still reports a tally (all zeros);
+        // only a never-reviewed PR is null, which the UI renders as a dash.
+        last_review_findings: review
+          ? severityByReview.get(review.id) ?? ZERO_SEVERITY_COUNTS
+          : null,
         // No run at all → null/null/null, same as "no cost" on a run — the
         // list doesn't need a fourth state to say "never ran".
         last_run_cost_usd: lastRun ? lastRun.costUsd : null,

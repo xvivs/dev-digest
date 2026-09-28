@@ -1,6 +1,7 @@
 /* icons.tsx — lucide-react icon registry.
    The prototype used window.Icon[name]; here we map those names to
    lucide-react components so all ported components keep the same API. */
+import React from "react";
 import {
   GitPullRequest,
   Layers,
@@ -72,15 +73,31 @@ import {
   Globe,
   Wrench,
   ListChecks,
-  Activity,
   BarChart,
   TrendingUp,
   TrendingDown,
   Workflow,
   PanelRight,
   CornerDownRight,
+  createLucideIcon,
   type LucideIcon,
+  type LucideProps,
 } from "lucide-react";
+
+const ActivityBase = createLucideIcon("Activity", [
+  ["polyline", { points: "22 12 18 12 15 21 9 3 6 12 2 12", key: "activity-pulse" }],
+]);
+
+/** lucide 0.469 redrew `Activity` from a sharp polyline into a smoothed path.
+ *  The design this app is ported from sits on the pre-redraw glyph, at stroke
+ *  1.75 — so the registry keeps the prototype's shape rather than whatever the
+ *  current lucide release happens to draw. `strokeWidth` is a prop default
+ *  because `createLucideIcon` gives no way to override `defaultAttributes`, and
+ *  neither `Tabs` nor `SectionLabel` forwards a `strokeWidth` of its own. */
+const Activity = React.forwardRef<SVGSVGElement, LucideProps>(
+  ({ strokeWidth = 1.75, ...rest }, ref) => <ActivityBase ref={ref} strokeWidth={strokeWidth} {...rest} />,
+);
+Activity.displayName = "Activity";
 
 /** Names used throughout the ported prototype, mapped to lucide-react. */
 export const Icon = {

@@ -6,8 +6,8 @@
 "use client";
 
 import React from "react";
-import { Icon, Badge } from "@devdigest/ui";
-import type { ReviewRecord, Verdict } from "@devdigest/shared";
+import { Icon, Badge, Collapse } from "@devdigest/ui";
+import type { ReviewRecord, Severity, Verdict } from "@devdigest/shared";
 import { FindingsPanel } from "../FindingsPanel";
 import { VerdictBanner } from "../VerdictBanner";
 import { useDeleteReview } from "../../../../../../../lib/hooks/reviews";
@@ -29,7 +29,8 @@ export function ReviewRunAccordion({
   defaultOpen = false,
   repoFullName,
   headSha,
-  targetRunId = null,
+  targetReviewId = null,
+  targetSeverity = null,
   targetNonce = 0,
 }: {
   review: ReviewRecord;
@@ -37,20 +38,25 @@ export function ReviewRunAccordion({
   defaultOpen?: boolean;
   repoFullName?: string | null;
   headSha?: string | null;
-  /** When this matches review.run_id, the accordion opens and scrolls into view
-   *  (driven from the Timeline: clicking an agent name navigates here). */
-  targetRunId?: string | null;
+  /** When this matches review.id, the accordion opens and scrolls into view
+   *  (driven from the Timeline: clicking an agent name navigates here).
+   *  Keyed on the REVIEW id, not run_id: reviews with a null run_id exist on a
+   *  real database and a run_id gate would never fire for them. */
+  targetReviewId?: string | null;
+  /** Severity the Timeline asked for — handed straight to the FindingsPanel. */
+  targetSeverity?: Severity | null;
   targetNonce?: number;
 }) {
   const [open, setOpen] = React.useState(defaultOpen);
+  const bodyId = React.useId();
   const rootRef = React.useRef<HTMLDivElement | null>(null);
+  const isTarget = targetReviewId != null && review.id === targetReviewId;
   React.useEffect(() => {
-    if (review.run_id && review.run_id === targetRunId) {
+    if (isTarget) {
       setOpen(true);
       rootRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [targetRunId, targetNonce, review.run_id]);
+  }, [isTarget, targetNonce]);
   const del = useDeleteReview(prId);
   const findings = review.findings;
   const blockers = findings.filter((f) => f.severity === "CRITICAL" && !f.dismissed_at).length;
@@ -72,6 +78,8 @@ export function ReviewRunAccordion({
       <div
         role="button"
         tabIndex={0}
+        aria-expanded={open}
+        aria-controls={bodyId}
         onClick={() => setOpen((o) => !o)}
         onKeyDown={(e) => {
           if (e.key === "Enter" || e.key === " ") setOpen((o) => !o);
@@ -133,7 +141,7 @@ export function ReviewRunAccordion({
         />
       </div>
 
-      {open && (
+      <Collapse open={open} id={bodyId}>
         <div style={{ padding: "0 16px 16px" }}>
           {review.verdict && (
             <div style={{ marginBottom: 16 }}>
@@ -147,14 +155,20 @@ export function ReviewRunAccordion({
               />
             </div>
           )}
+          {/* Straight through to the panel — no copy of the target in this
+              component's state. Scoped to the targeted run so clicking a
+              severity on one timeline tile doesn't silently filter every other
+              open accordion ("…findings from THIS run"). */}
           <FindingsPanel
             findings={findings}
             prId={prId}
             repoFullName={repoFullName}
             headSha={headSha}
+            targetSeverity={isTarget ? targetSeverity : null}
+            targetNonce={isTarget ? targetNonce : 0}
           />
         </div>
-      )}
+      </Collapse>
     </div>
   );
 }

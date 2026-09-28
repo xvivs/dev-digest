@@ -29,19 +29,49 @@ A spec lives in `specs/NN-name.flow.json`:
   (they time out and exit non-zero if the condition never holds).
 - Optional `"assert": { "stdoutIncludes": "…" }` adds a substring check on the
   command's stdout.
-- Locators are deterministic only (`--url`, `--text`, `find role|text|label`).
+- Locators are deterministic only (`--url`, `--text`, `find role|text|label`,
+  and plain CSS for `get count` / `hover` / `focus` / `scrollintoview`).
   We never use the AI `chat` command, so runs are stable and key-free.
+
+### Locator gotchas (all three cost us a green-but-meaningless suite)
+
+- **`find … click` silently no-ops on an element below the fold.** It prints
+  `✓ Done` and exits 0 while the click never lands, so the steps after it keep
+  asserting the pre-click state and the flow passes without testing anything.
+  Always `scrollintoview` the target first, and pair a click with a
+  `get count` assertion that can only hold if the click really landed.
+- **`wait --text` is case-SENSITIVE; `find text` is case-INSENSITIVE.** Write
+  `wait --text` in the case the browser *paints* (CSS `text-transform` counts).
+  Because `find text` ignores case, `find text "Warning"` cannot tell the tally
+  pill (`2 WARNING`), the timeline chip (`2 Warning findings`) and the filter
+  button (`Warning`) apart — address the filter as
+  `find role button --name Warning --exact` instead.
+- **`get attr` with a multi-match selector returns the first match** (exit 0);
+  it only fails when nothing matches. `get count` prints a bare number, so
+  `"assert": { "stdoutIncludes": "2" }` is the way to assert a count — keep the
+  expected values single-digit, since the check is a substring match.
 
 Flows target **read-only seeded data** (the demo repo `acme/payments-api`, PR
 #482, the seeded agents), so nothing triggers a model call.
 
-> **Precondition: a freshly-seeded DB.** Flow `02` follows the home redirect to
-> the *first* repo, so it assumes the seeded demo repo is the only one. CI
-> guarantees this — `e2e-web.yml` brings up an empty Postgres and seeds it.
-> Your local dev DB usually has other imported repos, so running `npm test`
-> straight against it makes flows 02/04/05 land on the wrong repo and fail.
-> **Use the hermetic runner below** — it spins up its own isolated, freshly-seeded
-> stack and leaves your dev DB untouched.
+> **Precondition: a freshly-seeded DB.** The seed creates **two** repos —
+> `acme/payments-api`, which every flow here targets, and `xvivs/dev-digest` —
+> and `ReposRepository.listByWorkspace` has no `ORDER BY`, so which of them `/`
+> redirects to is **not guaranteed by contract**. This is the seed's permanent
+> shape, not a regression. Every flow that depends on a specific repo therefore
+> opens with a guard step — `wait --text "acme/payments-api"` immediately after
+> `wait --url /pulls` — so that a redirect to the other repo fails the flow
+> there, loudly, instead of quietly asserting against the wrong data. Treat the
+> guard as a permanent part of the preamble, not a workaround awaiting a server
+> fix. For the same reason, flows reach a PR by clicking its **title** rather
+> than a row position.
+>
+> Staleness is the other half of the precondition. The seed inserts the demo
+> repo only when it is missing, so a database seeded before a fixture was
+> widened keeps the old rows forever and re-running `pnpm db:seed` will not
+> repair it — count assertions then fail against perfectly healthy code.
+> **Use the hermetic runner below** — it spins up its own isolated,
+> freshly-seeded stack and leaves your dev DB untouched.
 >
 > ⚠️ **Never `docker compose down -v` to "reset" your dev DB** — `-v` deletes the
 > `devdigest_pgdata` volume along with every real repo and review you've imported.
@@ -64,14 +94,16 @@ npm i -g agent-browser && agent-browser install
 # or: cd e2e && npm install && npm run e2e:hermetic
 ```
 
-The isolated Postgres is ephemeral (no persistent volume), so it's empty every
-run and the seeded demo repo `acme/payments-api` is the only one — which is
-exactly what flows 02/04/05 need.
+The isolated Postgres is ephemeral (no persistent volume), so every run starts
+from an empty database and seeds it from scratch: both seeded repos exist and
+every fixture matches the current `server/src/db/seed.ts`. That is what the
+repo-specific guards and the count-based assertions need.
 
 ### Against your own running stack
 
-Only safe if your dev DB contains *only* the seeded repo (see precondition
-above). Otherwise prefer the hermetic runner.
+Only safe if your dev DB was seeded from the *current* `seed.ts` and the home
+redirect happens to land on `acme/payments-api` (see precondition above).
+Otherwise prefer the hermetic runner.
 
 ```sh
 ./scripts/dev.sh          # Postgres + API :3001 + web :3000 (seeded)
@@ -100,3 +132,6 @@ a CI artifact by `.github/workflows/e2e-web.yml`).
 | `05-pr-diff` | PR #482 → Files changed tab → seeded file renders in the diff viewer |
 | `06-onboarding` | `/onboarding` → add-repository form renders (no submit) |
 | `07-settings` | `/settings/api-keys` + `/settings/models` → section titles render |
+| `08-findings-popover-severity` | hover/focus a severity chip → FindingsPopover scoped to that severity; sticky scope, Escape closes |
+| `09-disclosure-a11y` | `Collapse` disclosures: `aria-expanded` wiring, body unmount after `ddCollapseOut`, Enter on a card trigger |
+| `10-run-cost-and-timeline` | cost provenance (bare `$` vs `~$` vs `—`), timeline run badges, trace drawer duration/tokens |

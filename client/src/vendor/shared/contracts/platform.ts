@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { Provider } from './knowledge.js';
 import { CostSource, CostMissingReason } from './cost.js';
+import { SeverityCounts } from './findings.js';
 
 /**
  * Platform / scaffolding DTOs owned by F1:
@@ -171,6 +172,10 @@ export const PrMeta = z.object({
   updated_at: z.string().nullish(),
   // Latest-review score (list endpoint only; null/absent until reviewed).
   score: z.number().int().nullish(),
+  // Severity tally of the PR's LATEST review (list endpoint only). Same anchor
+  // as `score` — the newest `kind: 'review'` row — so the two never disagree.
+  // Null until the PR has been reviewed at all.
+  last_review_findings: SeverityCounts.nullish(),
   // Cost of the PR's LATEST run (any status), not a sum across runs.
   last_run_cost_usd: z.number().nullish(),
   last_run_cost_source: CostSource.nullish(),

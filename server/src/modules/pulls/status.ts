@@ -1,4 +1,4 @@
-import type { CostMissingReason, PrStatus } from '@devdigest/shared';
+import type { CostMissingReason, PrStatus, SeverityCounts } from '@devdigest/shared';
 
 /**
  * PR-list rollup helpers (pure — no DB / `this`, so they unit-test cleanly).
@@ -13,11 +13,8 @@ import type { CostMissingReason, PrStatus } from '@devdigest/shared';
 /** Open PRs whose current head was reviewed but untouched this long read "stale". */
 export const STALE_DAYS = 7;
 
-export interface SeverityCounts {
-  critical: number;
-  warning: number;
-  suggestion: number;
-}
+/** A review with no findings at all — the shape the list falls back to. */
+export const ZERO_SEVERITY_COUNTS: SeverityCounts = { critical: 0, warning: 0, suggestion: 0 };
 
 /** Tally finding severities (CRITICAL / WARNING / SUGGESTION) for one review. */
 export function rollupSeverities(rows: { severity: string }[]): SeverityCounts {
@@ -28,6 +25,31 @@ export function rollupSeverities(rows: { severity: string }[]): SeverityCounts {
     else if (r.severity === 'SUGGESTION') c.suggestion += 1;
   }
   return c;
+}
+
+/**
+ * Fold `GROUP BY review_id, severity` rows into one tally per review.
+ *
+ * The list endpoint aggregates in SQL rather than pulling every finding row —
+ * it is polled every 60s for every PR in the repo, and `GET /repos/:id/pulls`
+ * is unpaginated, so "one row per finding" has no ceiling. An unknown severity
+ * (the column is `text`, not an enum) is counted nowhere rather than crashing.
+ */
+export function rollupSeverityRows(
+  rows: { reviewId: string; severity: string; n: number }[],
+): Map<string, SeverityCounts> {
+  const byReview = new Map<string, SeverityCounts>();
+  for (const r of rows) {
+    let c = byReview.get(r.reviewId);
+    if (!c) {
+      c = { critical: 0, warning: 0, suggestion: 0 };
+      byReview.set(r.reviewId, c);
+    }
+    if (r.severity === 'CRITICAL') c.critical += r.n;
+    else if (r.severity === 'WARNING') c.warning += r.n;
+    else if (r.severity === 'SUGGESTION') c.suggestion += r.n;
+  }
+  return byReview;
 }
 
 /**

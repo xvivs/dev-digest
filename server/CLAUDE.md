@@ -72,5 +72,7 @@ because native dynamic `import()` of `.ts` is not portable.
 
 ## Before you finish
 
-Update `INSIGHTS.md` with anything durable you learned this session — don't
-skip this step.
+File anything durable you learned this session into `INSIGHTS.md` **through
+the `engineering-insights` skill** — don't skip this step, and don't edit the
+file by hand. Hand-written entries land undated, unreferenced and in the wrong
+section, and nothing catches it until someone audits the file months later.

@@ -5,6 +5,7 @@
 
 import React from "react";
 import {
+  Icon,
   Button,
   IconBtn,
   Badge,
@@ -21,6 +22,7 @@ import {
   Kbd,
   SectionLabel,
   Card,
+  Collapse,
   EmptyState,
   ErrorState,
   Skeleton,
@@ -63,6 +65,7 @@ export function Gallery() {
   const [sel, setSel] = React.useState("gpt-4.1");
   const [drawer, setDrawer] = React.useState(false);
   const [modal, setModal] = React.useState(false);
+  const [collapsed, setCollapsed] = React.useState(true);
 
   return (
     <div style={s.gallery}>
@@ -114,6 +117,46 @@ export function Gallery() {
         <MonoLink>src/config.ts:12</MonoLink>
         <Kbd>⌘K</Kbd>
         <Toggle on={toggle} onChange={setToggle} />
+      </Group>
+
+      <Group title="Collapse (animated disclosure)">
+        <div style={{ width: "100%" }}>
+          <button
+            type="button"
+            aria-expanded={collapsed}
+            aria-controls="showcase-collapse"
+            onClick={() => setCollapsed((c) => !c)}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              width: "100%",
+              padding: "10px 12px",
+              background: "var(--bg-surface)",
+              border: "1px solid var(--border)",
+              borderRadius: 8,
+              color: "var(--text-primary)",
+              fontSize: 14,
+              fontWeight: 600,
+            }}
+          >
+            <Icon.ChevronDown
+              size={15}
+              style={{
+                transform: collapsed ? "rotate(180deg)" : "none",
+                transition: "transform .15s",
+                color: "var(--text-muted)",
+              }}
+            />
+            Toggle the region
+          </button>
+          <Collapse open={collapsed} id="showcase-collapse">
+            <div style={{ padding: "12px 12px 0", fontSize: 13, color: "var(--text-secondary)" }}>
+              The body animates open and closed through <span className="mono">grid-template-rows</span>,
+              so no height is ever measured. It unmounts once the exit animation finishes.
+            </div>
+          </Collapse>
+        </div>
       </Group>
 
       <Group title="Progress & Score">

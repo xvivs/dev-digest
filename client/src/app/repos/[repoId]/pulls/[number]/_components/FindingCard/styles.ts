@@ -7,10 +7,18 @@ export const s = {
     // All-longhand (never mix `border` shorthand with `borderLeft` — React warns
     // about updating shorthand + non-shorthand on the same rerender).
     borderStyle: "solid",
-    borderColor: focused ? sevColor : "var(--border)",
-    borderWidth: 1,
-    borderLeftWidth: 3,
+    // Per-side longhands only. `borderColor`/`borderWidth` are themselves
+    // 4-side shorthands, and React warns when a shorthand and its longhand
+    // (`borderLeftColor`) both change between renders — which is exactly what
+    // happens when `focused` flips.
+    borderTopColor: focused ? sevColor : "var(--border)",
+    borderRightColor: focused ? sevColor : "var(--border)",
+    borderBottomColor: focused ? sevColor : "var(--border)",
     borderLeftColor: sevColor,
+    borderTopWidth: 1,
+    borderRightWidth: 1,
+    borderBottomWidth: 1,
+    borderLeftWidth: 3,
     background: "var(--bg-elevated)",
     overflow: "hidden",
     opacity: muted ? 0.6 : 1,

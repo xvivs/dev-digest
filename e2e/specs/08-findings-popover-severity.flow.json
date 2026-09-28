@@ -1,0 +1,30 @@
+{
+  "name": "Findings popover is scoped to the hovered severity chip",
+  "description": "Hovering a severity chip in the run timeline opens the FindingsPopover filtered to that severity, titled '<n> <SEVERITY> FINDING(S) IN THIS RUN'.\n\nTargets PR #479 (not #482) on purpose: #479 carries the same 1 CRITICAL + 2 WARNING + 1 SUGGESTION distribution, but it has exactly ONE agent run and one review accordion, so every selector below resolves to a single node. #482 seeds three runs and is a noisier surface for the same assertions.\n\nLocators: the chips are the only nodes carrying `data-severity`, which makes them the one severity locator that cannot collide with the uppercase tally pills or the title-case filter buttons — `find text` is case-INSENSITIVE, so text locators cannot tell those three apart.\n\nTitles are asserted UPPERCASE because the panel header is text-transform: uppercase and `wait --text` matches rendered text case-SENSITIVELY.\n\nSeverity scope is deliberately sticky: moving the pointer off a chip does NOT reset it, and moving onto a DIFFERENT chip while the panel is open does NOT re-scope it. The panel must be closed with Escape before the next severity can be asserted — that is what the Escape steps below are for, not mere cleanup.\n\nRead-only seeded data (no model call).",
+  "steps": [
+    { "cmd": ["open", "{BASE}/"], "label": "load the app root" },
+    { "cmd": ["wait", "--url", "/pulls"], "label": "land on the PR list" },
+    { "cmd": ["wait", "--text", "acme/payments-api"], "label": "guard: the home redirect landed on the demo repo — the seed holds TWO repos (acme/payments-api and xvivs/dev-digest) and ReposRepository.listByWorkspace has no ORDER BY, so which one `/` redirects to is not guaranteed by contract" },
+    { "cmd": ["wait", "--load", "networkidle"], "label": "PR list data settles" },
+    { "cmd": ["find", "text", "Migrate sessions table to UUID primary key", "click"], "label": "open PR #479 by title, not by row position" },
+    { "cmd": ["wait", "--url", "/pulls/479"], "label": "navigate to the PR detail route" },
+    { "cmd": ["wait", "--load", "networkidle"], "label": "PR detail data settles" },
+    { "cmd": ["find", "role", "button", "click", "--name", "Agent runs"], "label": "switch to the Agent runs tab" },
+    { "cmd": ["wait", "--url", "tab=findings"], "label": "findings tab is active in the URL" },
+    { "cmd": ["get", "count", "[data-severity]"], "assert": { "stdoutIncludes": "3" }, "label": "the single seeded run renders one chip per severity present" },
+    { "cmd": ["hover", "[data-severity=\"WARNING\"]"], "label": "hover the WARNING severity chip" },
+    { "cmd": ["wait", "--text", "2 WARNING FINDINGS IN THIS RUN"], "label": "the panel title names the severity and its count (plural)" },
+    { "cmd": ["get", "count", "[role=\"tooltip\"]"], "assert": { "stdoutIncludes": "1" }, "label": "exactly one panel is open — chips do not stack popovers" },
+    { "cmd": ["wait", "--text", "Rewrite locks the sessions table with no lock timeout"], "label": "panel body: first WARNING finding" },
+    { "cmd": ["wait", "--text", "Session lookup still parses the id as an integer"], "label": "panel body: second WARNING finding — the panel previews the whole severity set, not one row" },
+    { "cmd": ["hover", "[role=\"tooltip\"]"], "label": "move the pointer onto the panel itself" },
+    { "cmd": ["wait", "--text", "2 WARNING FINDINGS IN THIS RUN"], "label": "the panel survives the pointer leaving the chip and keeps its severity scope" },
+    { "cmd": ["press", "Escape"], "label": "close the panel — required before another severity can be scoped" },
+    { "cmd": ["get", "count", "[role=\"tooltip\"]"], "assert": { "stdoutIncludes": "0" }, "label": "Escape tears the panel down" },
+    { "cmd": ["hover", "[data-severity=\"CRITICAL\"]"], "label": "hover the CRITICAL chip on a closed panel" },
+    { "cmd": ["wait", "--text", "1 CRITICAL FINDING IN THIS RUN"], "label": "the title re-scopes and switches to the singular noun" },
+    { "cmd": ["press", "Escape"], "label": "close the panel again" },
+    { "cmd": ["focus", "[data-severity=\"SUGGESTION\"]"], "label": "reach the SUGGESTION chip by keyboard instead of pointer" },
+    { "cmd": ["wait", "--text", "1 SUGGESTION FINDING IN THIS RUN"], "label": "focus opens the same panel as hover — the preview is keyboard-reachable" }
+  ]
+}

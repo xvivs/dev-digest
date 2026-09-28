@@ -1,10 +1,10 @@
 {
   "finding": {
     "accepted": "accepted",
-    "dismissed": "dismissed",
+    "dismissed": "rejected",
     "suggestedFix": "Suggested fix",
     "accept": "Accept",
-    "dismiss": "Dismiss",
+    "dismiss": "Reject",
     "learn": "Learn",
     "replyToAuthor": "Reply to author",
     "replyPlaceholder": "Reply to the author about this finding…",
@@ -29,7 +29,18 @@
   "panel": {
     "hideLowConfidence": "Hide low confidence",
     "noMatchTitle": "No findings match",
-    "noMatchBody": "Adjust the filters above, or run a review to generate findings."
+    "noMatchBody": "Adjust the filters above, or run a review to generate findings.",
+    "filter": {
+      "critical": "Critical",
+      "warning": "Warning",
+      "suggestion": "Suggestion",
+      "clear": "Clear severity filter"
+    },
+    "counts": {
+      "critical": "{count} CRITICAL",
+      "warning": "{count} WARNING",
+      "suggestion": "{count} SUGGESTION"
+    }
   },
   "runReview": {
     "runAll": "Run all enabled agents",
@@ -93,7 +104,8 @@
       "score": "Score",
       "status": "Status",
       "cost": "Cost",
-      "updated": "Updated"
+      "updated": "Updated",
+      "findings": "Findings"
     },
     "filesCount": "{count} files",
     "errorTitle": "Couldn’t load pull requests",

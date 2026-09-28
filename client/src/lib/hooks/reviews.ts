@@ -48,11 +48,17 @@ export function usePrRuns(prId: string | null | undefined) {
 }
 
 // ---- Persisted reviews + findings for a PR ----
-export function usePrReviews(prId: string | null | undefined) {
+export function usePrReviews(
+  prId: string | null | undefined,
+  opts?: { enabled?: boolean },
+) {
   return useQuery({
     queryKey: ["reviews", prId],
     queryFn: () => api.get<ReviewRecord[]>(`/pulls/${prId}/reviews`),
-    enabled: !!prId,
+    // `opts.enabled` lets a hover surface defer the fetch until it is actually
+    // needed. The key is unchanged on purpose: hovering a row in the PR list
+    // warms the very cache the PR detail page then reads.
+    enabled: !!prId && (opts?.enabled ?? true),
   });
 }
 
@@ -156,6 +162,9 @@ export function useFindingAction() {
       ),
     onSuccess: (_d, { prId }) => {
       if (prId) qc.invalidateQueries({ queryKey: ["reviews", prId] });
+      // The PR list shows a severity tally derived from these same findings;
+      // without this it stays stale until the next 60s poll.
+      qc.invalidateQueries({ queryKey: ["pulls"] });
     },
   });
 }

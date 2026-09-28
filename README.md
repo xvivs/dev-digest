@@ -157,5 +157,45 @@ Postgres); everything else is hermetic. The browser e2e flows live in
   host port in `docker-compose.yml`.
 - **`vector` type errors** — the pgvector extension is enabled by migration `0000`;
   make sure migrations ran against the Dockerized DB, not a different one.
-- **Reset everything** — `docker compose down -v` drops the volume, then re-run
-  `./scripts/dev.sh`.
+- **`column ... already exists` on migrate** — two checkouts are sharing one
+  database and their migration journals have diverged. See *One database per
+  worktree* below.
+- **Reset everything** — drop and recreate **your own** database, then re-run
+  `./scripts/dev.sh`:
+
+  ```sh
+  docker exec devdigest-postgres psql -U devdigest -d postgres \
+    -c 'DROP DATABASE devdigest; CREATE DATABASE devdigest OWNER devdigest;'
+  ```
+
+  Do **not** use `docker compose down -v`: the volume is shared by every
+  checkout on this machine, so it wipes their imported repos and reviews too.
+
+## One database per worktree
+
+`DATABASE_URL` in `server/.env` is the only thing binding a checkout to a
+database, and `.env` is gitignored — so a fresh worktree silently inherits the
+same `devdigest` as every other one. Two checkouts on different branches then
+write to one `drizzle.__drizzle_migrations`, their journals diverge, and
+`pnpm db:migrate` fails with `42701 column ... already exists` against a schema
+that already has the column.
+
+Give each worktree its own database instead. One container, many databases:
+
+```sh
+docker exec devdigest-postgres psql -U devdigest -d postgres \
+  -c 'CREATE DATABASE devdigest_myfeature OWNER devdigest;'
+# then in server/.env:
+# DATABASE_URL=postgres://devdigest:devdigest@localhost:5432/devdigest_myfeature
+cd server && pnpm db:migrate && pnpm db:seed
+```
+
+`POSTGRES_DB` in `docker-compose.yml` will not do this for you — it only applies
+when the `devdigest_pgdata` volume is first initialised, and by now it exists.
+Create the database explicitly.
+
+Nothing else needs changing: clones are already per-worktree
+(`DEVDIGEST_CLONE_DIR=./clones` resolves against `server/`), secrets live in
+`~/.devdigest/secrets.json` outside the DB, and tests never touch your dev
+database — `*.it.test.ts` spins up its own testcontainers Postgres and
+`scripts/e2e.sh` uses a throwaway container on `:5433`.
