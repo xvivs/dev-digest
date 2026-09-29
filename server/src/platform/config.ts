@@ -28,7 +28,8 @@ const EnvSchema = z.object({
   REPO_INTEL_ENABLED: z.string().optional(),
   // ADR 0018: hard cap on one eval suite's pre-run estimate (USD). A suite
   // whose estimate is above it is refused before anything runs.
-  EVAL_MAX_BUDGET_USD: z.coerce.number().positive().default(5),
+  // Empty (`EVAL_MAX_BUDGET_USD=`) falls through to the default, like LOG_LEVEL.
+  EVAL_MAX_BUDGET_USD: z.preprocess((v) => (v === '' ? undefined : v), z.coerce.number().positive().default(5)),
   API_PORT: z.coerce.number().int().default(3001),
   WEB_PORT: z.coerce.number().int().default(3000),
   DEVDIGEST_CLONE_DIR: z.string().optional(),
