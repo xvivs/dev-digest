@@ -65,10 +65,10 @@ lines, derived with `parseUnifiedDiff`), before run 1:
 
 | ID | Range (new side) | Frozen on |
 |---|---|---|
-| B1 | | |
-| B2 | | |
-| B3 | | |
-| B4 | | |
+| B1 | `server/src/modules/reviews/helpers.ts:12-14` (type), `:42-43` (mapper); `server/src/vendor/shared/contracts/review-api.ts:15-17` and `client/src/vendor/shared/contracts/review-api.ts:15-17` | 2026-09-29 |
+| B2 | `server/src/modules/agents/routes.ts:40` | 2026-09-29 |
+| B3 | `server/src/vendor/shared/contracts/findings.ts:11`; `client/src/vendor/shared/contracts/findings.ts:11` | 2026-09-29 |
+| B4 | `server/src/modules/reviews/helpers.ts:24-25` (`ReviewDto`, deletion point between `run_id` and `kind`), `:56-62` (`reviewToDto`, deletion point in the returned object between `:61` and `:62`); `server/src/modules/reviews/service.ts:164` (call site) | 2026-09-29 |
 
 ### False positives
 
