@@ -6,6 +6,7 @@ import type {
   CompletionResult,
   StructuredRequest,
   StructuredResult,
+  ProviderRouting,
 } from '@devdigest/shared';
 import { toJsonSchema, parseWithRepair } from './structured.js';
 import { pickCost } from './cost.js';
@@ -25,6 +26,16 @@ import { sdkRequestOptions, throwIfAborted } from './request-options.js';
  */
 
 const NOT_SUPPORTED = 'OpenRouterProvider only implements completeStructured';
+
+/** `StructuredRequest.providerRouting` → OpenRouter's `provider` body object (snake_case). */
+export function toProviderBody(r: ProviderRouting): Record<string, unknown> {
+  return {
+    ...(r.sort ? { sort: r.sort } : {}),
+    ...(r.ignore?.length ? { ignore: r.ignore } : {}),
+    ...(r.only?.length ? { only: r.only } : {}),
+    ...(r.allowFallbacks !== undefined ? { allow_fallbacks: r.allowFallbacks } : {}),
+  };
+}
 
 export interface OpenRouterProviderOptions {
   /** OpenAI-compatible base URL (default: OpenRouter). */
@@ -75,10 +86,18 @@ export class OpenRouterProvider implements LLMProvider {
         messages,
         temperature: req.temperature ?? 0,
         ...(req.maxTokens ? { max_tokens: req.maxTokens } : {}),
-        response_format: {
-          type: 'json_schema',
-          json_schema: { name: req.schemaName, schema: jsonSchema.schema, strict: true },
-        },
+        response_format:
+          req.responseFormat === 'json_object'
+            ? { type: 'json_object' }
+            : {
+                type: 'json_schema',
+                json_schema: { name: req.schemaName, schema: jsonSchema.schema, strict: true },
+              },
+        // OpenRouter extension: hybrid reasoning models otherwise burn the whole
+        // max_tokens on hidden reasoning and return `content: null`.
+        ...(this.id === 'openrouter' && req.disableReasoning ? { reasoning: { enabled: false } } : {}),
+        // OpenRouter provider routing: pick / exclude upstreams of the model.
+        ...(this.id === 'openrouter' && req.providerRouting ? { provider: toProviderBody(req.providerRouting) } : {}),
         // OpenRouter session grouping — extra body field (spread is exempt from
         // excess-property checks). Only sent when talking to OpenRouter.
         ...(this.id === 'openrouter' && req.sessionId ? { session_id: req.sessionId } : {}),
@@ -100,6 +119,16 @@ export class OpenRouterProvider implements LLMProvider {
       // `usage.cost` is an OpenRouter extension (USD), absent from the OpenAI SDK type.
       const apiCost = (res.usage as { cost?: number } | null | undefined)?.cost;
       if (typeof apiCost === 'number') costFromApi = (costFromApi ?? 0) + apiCost;
+
+      // Output cut at max_tokens: a repair prompt would hit the same cap (and,
+      // for a reasoning model, spend it on reasoning again), so fail now with
+      // the reason instead of burning the caller's deadline on a doomed retry.
+      if (choice.finish_reason === 'length') {
+        throw new Error(
+          `OpenRouter output for ${req.schemaName} was cut at max_tokens (finish_reason=length, ` +
+            `${tokensOut} output tokens, ${lastRaw.length} content chars)`,
+        );
+      }
 
       const parsed = parseWithRepair(req.schema, lastRaw);
       if (parsed.ok) {

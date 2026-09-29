@@ -8,7 +8,7 @@ vi.mock('openai', () => ({
   },
 }));
 
-import { OpenRouterProvider } from '../src/llm/openrouter.js';
+import { OpenRouterProvider, toProviderBody } from '../src/llm/openrouter.js';
 import { sdkRequestOptions } from '../src/llm/request-options.js';
 
 const schema = z.object({ ok: z.boolean() });
@@ -71,5 +71,68 @@ describe('OpenRouterProvider.completeStructured — signal / timeout', () => {
     const signal = new AbortController().signal;
     await new OpenRouterProvider('k').completeStructured({ ...base, timeoutMs: 1234, signal });
     expect(create.mock.calls[0]![1]).toEqual({ timeout: 1234, maxRetries: 0, signal });
+  });
+});
+
+describe('OpenRouterProvider.completeStructured — response format / reasoning / truncation', () => {
+  beforeEach(() => create.mockReset());
+
+  it('sends strict json_schema and no reasoning field by default', async () => {
+    create.mockResolvedValue(okResponse);
+    await new OpenRouterProvider('k').completeStructured(base);
+    const body = create.mock.calls[0]![0];
+    expect(body.response_format).toMatchObject({ type: 'json_schema', json_schema: { name: 'T', strict: true } });
+    expect(body).not.toHaveProperty('reasoning');
+  });
+
+  it('sends JSON mode and disables reasoning when asked', async () => {
+    create.mockResolvedValue(okResponse);
+    await new OpenRouterProvider('k').completeStructured({ ...base, responseFormat: 'json_object', disableReasoning: true });
+    const body = create.mock.calls[0]![0];
+    expect(body.response_format).toEqual({ type: 'json_object' });
+    expect(body.reasoning).toEqual({ enabled: false });
+  });
+
+  it('sends no provider field without providerRouting', async () => {
+    create.mockResolvedValue(okResponse);
+    await new OpenRouterProvider('k').completeStructured(base);
+    expect(create.mock.calls[0]![0]).not.toHaveProperty('provider');
+  });
+
+  it('maps providerRouting to the snake_case provider body field', async () => {
+    create.mockResolvedValue(okResponse);
+    await new OpenRouterProvider('k').completeStructured({
+      ...base,
+      providerRouting: { sort: 'throughput', ignore: ['deepinfra'], only: ['alibaba'], allowFallbacks: false },
+    });
+    expect(create.mock.calls[0]![0].provider).toEqual({
+      sort: 'throughput',
+      ignore: ['deepinfra'],
+      only: ['alibaba'],
+      allow_fallbacks: false,
+    });
+  });
+
+  it('never sends provider routing to the plain OpenAI endpoint', async () => {
+    create.mockResolvedValue(okResponse);
+    await new OpenRouterProvider('k', { id: 'openai' }).completeStructured({ ...base, providerRouting: { sort: 'price' } });
+    expect(create.mock.calls[0]![0]).not.toHaveProperty('provider');
+  });
+
+  it('toProviderBody omits unset and empty fields', () => {
+    expect(toProviderBody({})).toEqual({});
+    expect(toProviderBody({ ignore: [], only: [] })).toEqual({});
+    expect(toProviderBody({ allowFallbacks: true })).toEqual({ allow_fallbacks: true });
+  });
+
+  it('fails at once on finish_reason=length instead of spending a repair attempt', async () => {
+    create.mockResolvedValue({
+      choices: [{ finish_reason: 'length', message: { content: null } }],
+      usage: { prompt_tokens: 10, completion_tokens: 6000 },
+    });
+    await expect(new OpenRouterProvider('k').completeStructured({ ...base, maxRetries: 1 })).rejects.toThrow(
+      /finish_reason=length, 6000 output tokens/,
+    );
+    expect(create).toHaveBeenCalledTimes(1);
   });
 });

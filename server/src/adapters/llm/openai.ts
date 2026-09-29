@@ -107,10 +107,13 @@ export class OpenAIProvider implements LLMProvider {
             model: req.model,
             messages,
             ...tuningParams(req.model, req.temperature, req.maxTokens),
-            response_format: {
-              type: 'json_schema',
-              json_schema: { name: req.schemaName, schema: jsonSchema.schema, strict: true },
-            },
+            response_format:
+              req.responseFormat === 'json_object'
+                ? { type: 'json_object' }
+                : {
+                    type: 'json_schema',
+                    json_schema: { name: req.schemaName, schema: jsonSchema.schema, strict: true },
+                  },
           }, sdkOpts),
           req.timeoutMs ?? DEFAULT_TIMEOUT,
         ),

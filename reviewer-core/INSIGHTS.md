@@ -28,6 +28,12 @@ lives in the engineering-insights skill).
 
 ## Tool & Library Notes
 
+- **`deepseek/deepseek-v4-flash` on OpenRouter returns `content: null` with `finish_reason: length` unless reasoning is disabled** — it is a hybrid reasoning model: some upstreams spend the whole `max_tokens` (6000 here, ~50 s) on hidden reasoning; `reasoning: { effort: 'low' }` is ignored, only `reasoning: { enabled: false }` works. Wired as `StructuredRequest.disableReasoning` (`reviewer-core/src/llm/openrouter.ts:98`); a `length` finish now fails fast instead of looping repair. _(2026-09-30)_
+
+- **Several OpenRouter upstreams re-sort `response_format: json_schema` properties alphabetically, so schema field order stops being generation order** — `category, counter_example, evidence, llm_confidence…` came back in that order and the classify-last trick (conventions AC-13) silently broke. For order-sensitive output use `responseFormat: 'json_object'` with the shape spelled out in the prompt and validate with zod (`reviewer-core/src/llm/openrouter.ts:90`). _(2026-09-30)_
+
+- **Without a `provider` block, OpenRouter picks the upstream by price, and quality and latency differ wildly between upstreams of the same model** — on ~16k input tokens a conventions scan ranged from 2–3 s returning `[]` (price-inferred DeepInfra/DigitalOcean) to 100 s timeouts, versus 10–16 s with full output via `provider: { sort: 'throughput' }` (Alibaba). The chosen upstream is in the response's `provider` field; `/models/{id}/endpoints` reports null latency/throughput for this model, so pick by measurement. Config: `server/src/modules/conventions/constants.ts:87`. _(2026-09-30)_
+
 ## Recurring Errors & Fixes
 
 ## Session Notes
