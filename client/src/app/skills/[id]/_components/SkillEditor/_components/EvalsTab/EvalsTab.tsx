@@ -1,23 +1,28 @@
 /* EvalsTab — the skill's ablation evals (plan Phase 3, ADR 0017/0018).
-   Top: the latest started suite (verdict, results line or live progress).
-   Below: the eval cases, each showing both arms of that suite and a badge.
-   "Run all" (and the editor header's "Run on evals", via `runRequested`)
-   opens the Run modal; the running suite is polled until it is terminal.
-   Per-case runs are not offered: `CreateEvalSuiteBody` has no case subset,
-   so every suite runs all cases with parsed expectations. */
+   Header: "Eval cases", a "P / T passing" badge, Run all / New case.
+   One thin line: the latest suite (verdict, mode, carrier, tallies, cost) or
+   its live progress. Below: lean case cards (status icon, subtitle, tag, one
+   outcome chip); a click opens the case drawer with the full details.
+   Runs: "Run all" (and the editor header's "Run on evals", via
+   `runRequested`) opens the Run modal for every runnable case; a card's Run
+   opens it for that one case (`case_ids`). The running suite is polled until
+   it is terminal. `?case=` / `?suite=` are owned by the route (props here), so
+   the drawer is linkable and Back closes it. A per-case suite never replaces
+   the whole-skill suite: it only overrides its own card. */
 "use client";
 
 import React from "react";
 import { useTranslations } from "next-intl";
-import { Button, EmptyState, ErrorState, Modal, Skeleton } from "@devdigest/ui";
-import type { Skill, SkillEvalCase } from "@devdigest/shared";
+import { Badge, Button, EmptyState, ErrorState, Modal, Skeleton } from "@devdigest/ui";
+import type { EvalSuite, Skill, SkillEvalCase } from "@devdigest/shared";
 import { useCancelEvalSuite, useDeleteEvalCase, useEvalSuite, useSkillEvalCases, useSkillEvalSuites } from "@/lib/hooks";
 import { CaseEditorModal } from "./_components/CaseEditorModal";
 import { CaseList } from "./_components/CaseList";
+import { EvalCaseDrawer } from "./_components/EvalCaseDrawer";
 import { RunEvalModal } from "./_components/RunEvalModal";
 import { SuiteSummary } from "./_components/SuiteSummary";
 import { DELETE_MODAL_WIDTH, SKELETON_ROWS, SKELETON_ROW_HEIGHT } from "./constants";
-import { latestStartedSuite, runBlockedReason, runnableCaseCount } from "./helpers";
+import { mergeCaseResults, newerPartialSuite, runBlockedReason, runnableCaseCount, runningSuite, wholeSkillSuite } from "./helpers";
 import { s } from "./styles";
 
 /** Which case the editor is open on: a new one, an existing one, or closed. */
@@ -28,6 +33,11 @@ export function EvalsTab({
   runRequested = false,
   onRunRequestHandled,
   onOpenConfig,
+  caseId = null,
+  caseSuiteId = null,
+  onOpenCase,
+  onCloseCase,
+  onSelectCaseSuite,
 }: {
   skill: Skill;
   /** The editor header's "Run on evals" asked for the Run modal. */
@@ -35,45 +45,115 @@ export function EvalsTab({
   onRunRequestHandled?: () => void;
   /** Trust gate → Config, where the skill is reviewed and trusted. */
   onOpenConfig: () => void;
+  /** `?case=`: the case whose drawer is open. */
+  caseId?: string | null;
+  /** `?suite=`: the suite the drawer shows; null = the case's latest. */
+  caseSuiteId?: string | null;
+  onOpenCase?: (caseId: string) => void;
+  onCloseCase?: () => void;
+  onSelectCaseSuite?: (suiteId: string) => void;
 }) {
   const t = useTranslations("eval");
   const tShell = useTranslations("shell");
   const cases = useSkillEvalCases(skill.id);
   const suites = useSkillEvalSuites(skill.id);
-  const latest = latestStartedSuite(suites.data);
-  const detail = useEvalSuite(skill.id, latest?.id);
+  const whole = wholeSkillSuite(suites.data);
+  const partial = newerPartialSuite(suites.data);
+  const running = runningSuite(suites.data);
+  const wholeDetail = useEvalSuite(skill.id, whole?.id);
+  const partialDetail = useEvalSuite(skill.id, partial?.id);
   const cancel = useCancelEvalSuite();
   const remove = useDeleteEvalCase();
+  const wrapRef = React.useRef<HTMLDivElement>(null);
 
   const [runOpen, setRunOpen] = React.useState(false);
+  const [runCase, setRunCase] = React.useState<{ id: string; name: string } | null>(null);
   const [editing, setEditing] = React.useState<Editing>(null);
   const [deleting, setDeleting] = React.useState<SkillEvalCase | null>(null);
+
+  const openRunAll = () => {
+    setRunCase(null);
+    setRunOpen(true);
+  };
+  const openRunCase = (c: SkillEvalCase) => {
+    setRunCase({ id: c.id, name: c.name });
+    setRunOpen(true);
+  };
 
   // The header button lives in SkillEditorView; it raises a flag instead of
   // reaching into this tab, and the tab acknowledges it once handled.
   React.useEffect(() => {
     if (!runRequested) return;
-    setRunOpen(true);
+    openRunAll();
     onRunRequestHandled?.();
   }, [runRequested, onRunRequestHandled]);
 
-  // The polled detail is fresher than the list row; fall back to the row until it loads.
-  const suite = detail.data ?? latest;
+  // A `?case=` that names no case of this skill (deleted, bad link): close the drawer.
+  React.useEffect(() => {
+    if (caseId && cases.isSuccess && !cases.data.some((c) => c.id === caseId)) onCloseCase?.();
+  }, [caseId, cases.isSuccess, cases.data, onCloseCase]);
+
+  // Closing the drawer returns focus to its card (the kit already restores it to the
+  // opener; a deep link has none, so fall back to the card).
+  const openedCase = React.useRef<string | null>(null);
+  React.useEffect(() => {
+    if (caseId) {
+      openedCase.current = caseId;
+      return;
+    }
+    const last = openedCase.current;
+    openedCase.current = null;
+    if (!last) return;
+    const active = document.activeElement;
+    if (active && active !== document.body) return;
+    wrapRef.current?.querySelector<HTMLElement>(`[data-case-card="${last}"]`)?.focus();
+  }, [caseId]);
+
+  // Header badge and cards read the whole-skill suite; a running suite (whole or per-case) drives the summary line.
+  const shown = running ?? whole;
+  const shownDetail = shown && shown.id === partial?.id ? partialDetail : wholeDetail;
+  const suite = shownDetail.data ?? shown;
+  const wholeResults = (wholeDetail.data ?? whole)?.results ?? null;
+  const results = mergeCaseResults(wholeDetail.data, partialDetail.data);
+  const resultsLoading = (!!whole && wholeDetail.isLoading) || (!!partial && partialDetail.isLoading);
   const runnable = runnableCaseCount(cases.data);
-  const blocked = runBlockedReason(runnable, suite);
+  const blocked = runBlockedReason(runnable, running);
+  const runBlockedTitle = running ? t("skillEvals.runBlockedRunning") : null;
+  const drawerCase = caseId ? (cases.data?.find((c) => c.id === caseId) ?? null) : null;
+
+  // Started from the drawer's case: follow the new suite there.
+  const onStarted = (started: EvalSuite) => {
+    if (caseId && started.case_ids?.includes(caseId)) onSelectCaseSuite?.(started.id);
+  };
 
   const confirmDelete = () => {
     if (!deleting) return;
-    remove.mutate({ skillId: skill.id, caseId: deleting.id }, { onSettled: () => setDeleting(null) });
+    const gone = deleting.id;
+    remove.mutate(
+      { skillId: skill.id, caseId: gone },
+      {
+        onSettled: () => setDeleting(null),
+        onSuccess: () => {
+          if (gone === caseId) onCloseCase?.();
+        },
+      },
+    );
   };
 
   return (
-    <div style={s.wrap}>
+    <div ref={wrapRef} style={s.wrap}>
       <div style={s.header}>
-        <div>
-          <h2 style={s.title}>{t("skillEvals.title")}</h2>
-          <p style={s.caption}>{t("skillEvals.caption")}</p>
-        </div>
+        <h2 style={s.title}>{t("skillEvals.title")}</h2>
+        {wholeResults && (
+          <span title={t("skillEvals.passingBadgeTitle")}>
+            <Badge
+              color={wholeResults.passing < wholeResults.total ? "var(--warn)" : "var(--ok)"}
+              bg={wholeResults.passing < wholeResults.total ? "var(--warn-bg)" : "var(--ok-bg)"}
+            >
+              {t("skillEvals.passingBadge", { passing: wholeResults.passing, total: wholeResults.total })}
+            </Badge>
+          </span>
+        )}
         <div style={s.actions}>
           <Button kind="secondary" size="sm" icon="Plus" onClick={() => setEditing({ kind: "new" })}>
             {t("skillEvals.newCase")}
@@ -82,7 +162,7 @@ export function EvalsTab({
             kind="primary"
             size="sm"
             icon="Play"
-            onClick={() => setRunOpen(true)}
+            onClick={openRunAll}
             disabled={blocked !== null}
             title={blocked ? t(`skillEvals.${blocked}`) : t("skillEvals.runAllHint")}
           >
@@ -128,7 +208,11 @@ export function EvalsTab({
           ) : (
             <CaseList
               cases={cases.data ?? []}
-              suite={detail.data ?? null}
+              results={results}
+              resultsLoading={resultsLoading}
+              runBlockedTitle={runBlockedTitle}
+              onOpen={(c) => onOpenCase?.(c.id)}
+              onRun={openRunCase}
               onEdit={(c) => setEditing({ kind: "edit", c })}
               onDelete={setDeleting}
             />
@@ -139,11 +223,25 @@ export function EvalsTab({
       {runOpen && (
         <RunEvalModal
           skill={skill}
+          caseTarget={runCase}
+          onStarted={onStarted}
           onClose={() => setRunOpen(false)}
           onOpenConfig={() => {
             setRunOpen(false);
             onOpenConfig();
           }}
+        />
+      )}
+      {caseId && (
+        <EvalCaseDrawer
+          caseId={caseId}
+          suiteId={caseSuiteId}
+          runBlockedTitle={runBlockedTitle}
+          onClose={() => onCloseCase?.()}
+          onSelectSuite={(id) => onSelectCaseSuite?.(id)}
+          onRun={() => drawerCase && openRunCase(drawerCase)}
+          onEdit={() => drawerCase && setEditing({ kind: "edit", c: drawerCase })}
+          onDelete={() => drawerCase && setDeleting(drawerCase)}
         />
       )}
       {editing && (

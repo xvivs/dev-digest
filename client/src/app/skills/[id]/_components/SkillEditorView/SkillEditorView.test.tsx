@@ -29,6 +29,7 @@ const h = vi.hoisted(() => ({
   versions: [] as unknown[],
   snapshot: undefined as unknown,
   statsWindow: null as string | null,
+  evalCases: [] as unknown[],
 }));
 
 vi.mock("next/navigation", () => ({
@@ -58,7 +59,8 @@ vi.mock("@/lib/hooks", async (importOriginal) => {
     }),
     useRestoreSkillVersion: () => ({ mutate: vi.fn(), reset: vi.fn(), isPending: false, isError: false }),
     // Evals tab: no cases, no suites, no agents — enough to mount it and its Run modal.
-    useSkillEvalCases: () => ({ data: [], isLoading: false, isError: false, refetch: vi.fn() }),
+    useSkillEvalCases: () => ({ data: h.evalCases, isLoading: false, isError: false, isSuccess: true, refetch: vi.fn() }),
+    useEvalCaseDetail: () => ({ data: undefined, isLoading: true, isError: false, refetch: vi.fn() }),
     useSkillEvalSuites: () => ({ data: [], isLoading: false, isError: false, refetch: vi.fn() }),
     useEvalSuite: () => ({ data: undefined }),
     useCancelEvalSuite: () => ({ mutate: vi.fn(), isPending: false }),
@@ -118,6 +120,7 @@ beforeEach(() => {
   h.versions = [];
   h.snapshot = undefined;
   h.statsWindow = null;
+  h.evalCases = [];
 });
 afterEach(cleanup);
 
@@ -307,5 +310,59 @@ describe("SkillEditorView", () => {
       fireEvent.click(screen.getByRole("button", { name: "Run evals" }));
       expect(h.replace).toHaveBeenCalledWith("/skills/sk1?tab=evals");
     });
+  });
+});
+
+describe("SkillEditorView — eval case drawer (?case=)", () => {
+  const CASE = {
+    id: "c1",
+    owner_kind: "skill",
+    owner_id: "sk1",
+    skill_id: "sk1",
+    name: "stripe-key-leak",
+    input_diff: "+a",
+    input_files: null,
+    input_meta: null,
+    expected_output: {},
+    expectation: { must_find: [{ file: "a.ts", min_severity: "CRITICAL", category: "security" }], must_not_find: [] },
+    input_source: { kind: "paste" },
+    notes: null,
+  };
+
+  it("?tab=evals&case=<id> opens the drawer on load", () => {
+    h.search = "tab=evals&case=c1";
+    h.evalCases = [CASE];
+    renderView();
+    expect(screen.getByRole("dialog", { name: "Eval case details" })).toBeInTheDocument();
+  });
+
+  it("?case= is ignored outside the Evals tab", () => {
+    h.search = "tab=config&case=c1";
+    h.evalCases = [CASE];
+    renderView();
+    expect(screen.queryByRole("dialog", { name: "Eval case details" })).not.toBeInTheDocument();
+  });
+
+  it("opening a card pushes ?case= so Back closes the drawer", () => {
+    h.search = "tab=evals";
+    h.evalCases = [CASE];
+    renderView();
+    fireEvent.click(screen.getByRole("button", { name: /^stripe-key-leak: never run/ }));
+    expect(h.push).toHaveBeenCalledWith("/skills/sk1?tab=evals&case=c1");
+  });
+
+  it("closing the drawer replaces the URL without case and suite", () => {
+    h.search = "tab=evals&case=c1&suite=s1";
+    h.evalCases = [CASE];
+    renderView();
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(h.replace).toHaveBeenCalledWith("/skills/sk1?tab=evals");
+  });
+
+  it("a ?case= for a case the skill does not have is dropped from the URL", () => {
+    h.search = "tab=evals&case=ghost";
+    h.evalCases = [CASE];
+    renderView();
+    expect(h.replace).toHaveBeenCalledWith("/skills/sk1?tab=evals");
   });
 });

@@ -22,14 +22,16 @@ import { ImportSkillDrawer } from "@/app/skills/_components/ImportSkillDrawer";
 import { SkillEditor } from "../SkillEditor";
 import type { SkillStatsWindow } from "@devdigest/shared";
 import {
+  CASE_PARAM,
   DIRTY_GUARD_MODAL_WIDTH,
   FROM_VERSION_PARAM,
   HEADER_ICON_SIZE,
   SKELETON_BODY_HEIGHT,
   SKELETON_TITLE,
   STATS_WINDOW_PARAM,
+  SUITE_PARAM,
 } from "./constants";
-import { editorQuery, parseFromVersion, parseStatsWindow, resolveTab, statsWindowQuery } from "./helpers";
+import { caseQuery, editorQuery, parseCaseParam, parseFromVersion, parseStatsWindow, resolveTab, statsWindowQuery } from "./helpers";
 import { s } from "./styles";
 
 export function SkillEditorView({ id }: { id: string }) {
@@ -45,7 +47,15 @@ export function SkillEditorView({ id }: { id: string }) {
   const tab = resolveTab(search.get("tab"));
   const fromVersion = tab === "config" ? parseFromVersion(search.get(FROM_VERSION_PARAM)) : null;
   const statsWindow = parseStatsWindow(search.get(STATS_WINDOW_PARAM));
-  const replaceQuery = (query: string) => router.replace(`${SKILLS_HREF}/${encodeURIComponent(id)}?${query}`);
+  // The Evals case drawer lives in `?case=` (+ `&suite=`): it only exists on the Evals tab.
+  const evalCase = tab === "evals" ? parseCaseParam(search.get(CASE_PARAM)) : null;
+  const evalSuite = evalCase ? parseCaseParam(search.get(SUITE_PARAM)) : null;
+  const href = (query: string) => `${SKILLS_HREF}/${encodeURIComponent(id)}?${query}`;
+  const replaceQuery = (query: string) => router.replace(href(query));
+  // Opening pushes a history entry so Back closes the drawer; closing and switching suite replace.
+  const openEvalCase = (caseId: string) => router.push(href(caseQuery(search.toString(), caseId, null)));
+  const closeEvalCase = () => replaceQuery(caseQuery(search.toString(), null, null));
+  const selectEvalSuite = (suiteId: string) => replaceQuery(caseQuery(search.toString(), evalCase, suiteId));
   const navigate = (next: string, version: number | null = null) =>
     replaceQuery(editorQuery(search.toString(), next, version));
   // Stats window in `?window=`: survives reloads and shared links, and tab
@@ -176,6 +186,11 @@ export function SkillEditorView({ id }: { id: string }) {
                   onStatsWindow={setStatsWindow}
                   runRequested={runRequested}
                   onRunRequestHandled={clearRunRequest}
+                  evalCaseId={evalCase}
+                  evalSuiteId={evalSuite}
+                  onOpenEvalCase={openEvalCase}
+                  onCloseEvalCase={closeEvalCase}
+                  onSelectEvalSuite={selectEvalSuite}
                 />
               </div>
             </div>

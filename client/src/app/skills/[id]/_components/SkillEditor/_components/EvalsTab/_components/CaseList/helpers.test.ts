@@ -1,30 +1,73 @@
 import { describe, it, expect } from "vitest";
-import type { EvalSuiteRun } from "@devdigest/shared";
-import { caseErrorMessage, caseUnexpectedDelta } from "./helpers";
+import type { EvalExpectation, EvalSuiteCaseResult } from "@devdigest/shared";
+import { caseSubtitle, caseTag, formatCount, showsOutcomeChip } from "./helpers";
 
-const run = (case_id: string, arm: EvalSuiteRun["arm"], unexpected: number | null, status: EvalSuiteRun["status"] = "done") =>
-  ({ case_id, arm, unexpected, status }) as EvalSuiteRun;
+const result = (over: Partial<EvalSuiteCaseResult> = {}): EvalSuiteCaseResult => ({
+  case_id: "c1",
+  case_name: "n",
+  with: { passed: 3, total: 3 },
+  without: { passed: 0, total: 3 },
+  outcome: "caught",
+  ...over,
+});
 
-describe("caseUnexpectedDelta", () => {
-  it("is the mean unexpected with the skill minus without it, for this case only", () => {
-    const runs = [run("c1", "with", 3), run("c1", "with", 1), run("c1", "without", 0), run("c2", "with", 9)];
-    expect(caseUnexpectedDelta(runs, "c1")).toBe(2);
+const exp = (must_find: EvalExpectation["must_find"], must_not_find: EvalExpectation["must_not_find"] = []): EvalExpectation => ({
+  must_find,
+  must_not_find,
+});
+const finding = (min_severity: "CRITICAL" | "WARNING", category: "security" | "bug") => ({ file: "a.ts", min_severity, category });
+
+describe("caseTag", () => {
+  it("is severity · category of the first must_find", () => {
+    expect(caseTag(exp([finding("CRITICAL", "security")]))).toEqual({ kind: "defect", severity: "CRITICAL", category: "security", more: 0 });
   });
-
-  it("ignores unfinished runs and is null until both arms are scored", () => {
-    expect(caseUnexpectedDelta([run("c1", "with", 2), run("c1", "without", 5, "running")], "c1")).toBeNull();
-    expect(caseUnexpectedDelta([], "c1")).toBeNull();
+  it("counts the other must_find rows as more", () => {
+    expect(caseTag(exp([finding("WARNING", "bug"), finding("CRITICAL", "security"), finding("CRITICAL", "bug")]))).toMatchObject({
+      severity: "WARNING",
+      more: 2,
+    });
+  });
+  it("is empty for a clean case and null for a legacy one", () => {
+    expect(caseTag(exp([], [{ file: "a.ts" }]))).toEqual({ kind: "clean" });
+    expect(caseTag(null)).toBeNull();
   });
 });
 
-describe("caseErrorMessage", () => {
-  const failed = (case_id: string, error: string | null) =>
-    ({ case_id, arm: "with", status: "failed", error }) as EvalSuiteRun;
+describe("caseSubtitle", () => {
+  it("never run without a result", () => {
+    expect(caseSubtitle(null)).toEqual({ kind: "never" });
+  });
+  it("expected N, matched X (median) for a defect case", () => {
+    expect(caseSubtitle(result({ expected_count: 2, matched_median: 1.5, is_clean: false }))).toEqual({ kind: "defect", expected: 2, matched: 1.5 });
+  });
+  it("expected 0, got U (median unexpected) for a clean case", () => {
+    expect(caseSubtitle(result({ expected_count: 0, unexpected_median: 1, is_clean: true }))).toEqual({ kind: "clean", got: 1 });
+  });
+  it("in progress while the with arm has no scored repeat", () => {
+    expect(caseSubtitle(result({ outcome: "pending", expected_count: null, matched_median: null }))).toEqual({ kind: "pending" });
+  });
+  it("error wins even when the server sent counts from the other repeats", () => {
+    expect(caseSubtitle(result({ outcome: "error", expected_count: 1, matched_median: 0 }))).toEqual({ kind: "error" });
+  });
+  it("error when the case errored and nothing was scored", () => {
+    expect(caseSubtitle(result({ outcome: "error", expected_count: null }))).toEqual({ kind: "error" });
+  });
+});
 
-  it("is the error of this case's first failed run, else null", () => {
-    const runs = [failed("c1", "Timed out"), failed("c2", "Boom"), run("c1", "without", 0)];
-    expect(caseErrorMessage(runs, "c1")).toBe("Timed out");
-    expect(caseErrorMessage(runs, "c3")).toBeNull();
-    expect(caseErrorMessage([failed("c1", null)], "c1")).toBeNull();
+describe("showsOutcomeChip", () => {
+  it("only caught, regressed and flaky", () => {
+    expect(["caught", "regressed", "flaky", "pass_both", "fail_both", "pending", "error"].filter((o) => showsOutcomeChip(o as never))).toEqual([
+      "caught",
+      "regressed",
+      "flaky",
+    ]);
+  });
+});
+
+describe("formatCount", () => {
+  it("drops a trailing .0 and keeps one decimal", () => {
+    expect(formatCount(2)).toBe("2");
+    expect(formatCount(1.5)).toBe("1.5");
+    expect(formatCount(0.3333)).toBe("0.3");
   });
 });

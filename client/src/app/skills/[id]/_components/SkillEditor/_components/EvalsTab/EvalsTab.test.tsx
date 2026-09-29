@@ -3,6 +3,7 @@
  * (`api`) faked. Every fake response is parsed through the schema the hook
  * hands over (ADR 0007), so fixtures are held to the skill-impact contracts.
  */
+import React from "react";
 import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
 import { screen, cleanup, fireEvent, within, waitFor, act } from "@testing-library/react";
 import type {
@@ -125,8 +126,8 @@ const run = (case_id: string, arm: "with" | "without", repeat_idx: number, pass:
 const DETAIL: EvalSuiteDetail = {
   ...SUITE,
   cases: [
-    { case_id: "c1", case_name: "stripe-key-leak", with: { passed: 3, total: 3 }, without: { passed: 0, total: 3 }, outcome: "caught" },
-    { case_id: "c2", case_name: "clean-refactor", with: { passed: 2, total: 3 }, without: { passed: 3, total: 3 }, outcome: "flaky" },
+    { case_id: "c1", case_name: "stripe-key-leak", with: { passed: 3, total: 3 }, without: { passed: 0, total: 3 }, outcome: "caught", expected_count: 1, matched_median: 1, unexpected_median: 1.5, is_clean: false },
+    { case_id: "c2", case_name: "clean-refactor", with: { passed: 2, total: 3 }, without: { passed: 3, total: 3 }, outcome: "flaky", expected_count: 0, matched_median: 0, unexpected_median: 0, is_clean: true },
   ],
   runs: [
     run("c1", "with", 0, true, 2),
@@ -175,6 +176,31 @@ const PULL = {
   ],
 } as unknown as PrDetail;
 
+const CASE_DETAIL = {
+  case: {
+    id: "c1",
+    skill_id: "sk1",
+    name: "stripe-key-leak",
+    notes: null,
+    expectation: CASE_DEFECT.expectation,
+    input_source: CASE_DEFECT.input_source,
+    input_files: ["src/config.ts"],
+    input_diff_preview: "+a\n+b\n",
+    input_diff_chars: 6,
+    input_diff_truncated: false,
+    created_at: "2026-09-29T09:00:00.000Z",
+    updated_at: "2026-09-29T09:00:00.000Z",
+  },
+  suite: { id: "su1", mode: "full", status: "done", carrier_name: "Strict reviewer", skill_version: 3, repeats: 3, stale: false, partial: false, created_at: "2026-09-29T10:00:00.000Z" },
+  arms: {
+    with: { passed: 3, total: 3, matched_median: 1, unexpected_median: 1.5, runs: [0, 1, 2].map((i) => ({ repeat_idx: i, status: "done", pass: true, matched_must_find: [0], missed_must_find: [], unexpected: 1, unexpected_findings: [], duration_ms: 1000, cost_usd: 0.01, cost_source: "provider", error: null })) },
+    without: { passed: 0, total: 3, matched_median: 0, unexpected_median: 0, runs: [] },
+  },
+  outcome: "caught",
+  expectation_changed: false,
+  history: [],
+};
+
 interface World {
   carriers: EvalCarrier[];
   cases: SkillEvalCase[];
@@ -189,6 +215,7 @@ function routeGet(path: string, schema?: Schema) {
   if (path === "/skills/sk1/eval-cases") return answer(world.cases, schema);
   if (path === "/skills/sk1/eval-suites") return answer(world.suites, schema);
   if (path === "/eval-suites/su1") return answer(typeof world.detail === "function" ? world.detail() : world.detail, schema);
+  if (path.startsWith("/eval-cases/c1")) return answer(CASE_DETAIL, schema);
   if (path === "/skills/sk1/eval-carriers") return answer(world.carriers, schema);
   if (path === "/agents") return answer(AGENTS, schema);
   if (path === "/skills/sk1/stats?window=30d") return answer(STATS, schema);
@@ -198,12 +225,41 @@ function routeGet(path: string, schema?: Schema) {
   return Promise.reject(new ApiError(`unexpected GET ${path}`, 404));
 }
 
-function renderTab(skill: Skill = SKILL) {
-  const onOpenConfig = vi.fn();
-  const view = renderWithProviders(<EvalsTab skill={skill} onOpenConfig={onOpenConfig} />, {
+/** The route owns `?case=` / `?suite=`; this stands in for it with plain state. */
+function Harness({ skill, initialCase, initialSuite, spies }: { skill: Skill; initialCase: string | null; initialSuite: string | null; spies: Spies }) {
+  const [caseId, setCaseId] = React.useState<string | null>(initialCase);
+  const [suiteId, setSuiteId] = React.useState<string | null>(initialSuite);
+  return (
+    <EvalsTab
+      skill={skill}
+      onOpenConfig={spies.onOpenConfig}
+      caseId={caseId}
+      caseSuiteId={suiteId}
+      onOpenCase={(id) => {
+        spies.onOpenCase(id);
+        setCaseId(id);
+        setSuiteId(null);
+      }}
+      onCloseCase={() => {
+        spies.onCloseCase();
+        setCaseId(null);
+        setSuiteId(null);
+      }}
+      onSelectCaseSuite={(id) => {
+        spies.onSelectCaseSuite(id);
+        setSuiteId(id);
+      }}
+    />
+  );
+}
+type Spies = { onOpenConfig: () => void; onOpenCase: (id: string) => void; onCloseCase: () => void; onSelectCaseSuite: (id: string) => void };
+
+function renderTab(skill: Skill = SKILL, opts: { initialCase?: string | null; initialSuite?: string | null } = {}) {
+  const spies = { onOpenConfig: vi.fn(), onOpenCase: vi.fn(), onCloseCase: vi.fn(), onSelectCaseSuite: vi.fn() };
+  const view = renderWithProviders(<Harness skill={skill} initialCase={opts.initialCase ?? null} initialSuite={opts.initialSuite ?? null} spies={spies} />, {
     namespaces: { eval: evalMessages, skills: skillsMessages, shell: shellMessages, cost: costMessages },
   });
-  return { ...view, onOpenConfig };
+  return { ...view, ...spies };
 }
 
 beforeEach(() => {
@@ -219,39 +275,28 @@ afterEach(() => {
 });
 
 describe("EvalsTab — results", () => {
-  it("shows the suite line, the verdict and both arms per case with outcome badges", async () => {
+  it("header: title, amber P / T passing badge, both buttons; one thin suite line under it", async () => {
     renderTab();
-    // The list row paints first; the per-case arms need the polled detail.
-    expect(await screen.findByText("with 3/3")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Eval cases" })).toBeInTheDocument();
+    expect(await screen.findByText("17 / 20 passing")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "New eval case" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Run all evals" })).toBeEnabled();
+    expect(screen.queryByText(/Ablation eval/)).not.toBeInTheDocument();
+
     const summary = screen.getByRole("region", { name: "Latest suite" });
-    expect(within(summary).getByText("17/20 passing")).toBeInTheDocument();
     expect(within(summary).getByText("+3 caught")).toBeInTheDocument();
     expect(within(summary).getByText("0 regressed")).toBeInTheDocument();
     expect(within(summary).getByText("2 flaky")).toBeInTheDocument();
     expect(within(summary).getByText("Δunexpected +0.4")).toBeInTheDocument();
     expect(within(summary).getByText("$0.420")).toBeInTheDocument();
     expect(within(summary).getByText("Helps")).toBeInTheDocument();
+    expect(within(summary).getByText("Full")).toBeInTheDocument();
     expect(within(summary).getByText("Carrier: Strict reviewer")).toBeInTheDocument();
-    expect(within(summary).queryByText(/Indicative only/)).not.toBeInTheDocument();
-
-    const list = screen.getByRole("list", { name: "Eval cases" });
-    const [defect, clean] = within(list).getAllByRole("listitem");
-    expect(within(defect!).getByText("stripe-key-leak")).toBeInTheDocument();
-    expect(within(defect!).getByText("PR #42")).toBeInTheDocument();
-    expect(within(defect!).getByText("1 must find")).toBeInTheDocument();
-    expect(within(defect!).getByText("with 3/3")).toBeInTheDocument();
-    expect(within(defect!).getByText("without 0/3")).toBeInTheDocument();
-    expect(within(defect!).getByText("caught")).toBeInTheDocument();
-    // with: (2+1)/2 = 1.5, without: 0 → +1.5 unexpected.
-    expect(within(defect!).getByText("+1.5 unexpected")).toBeInTheDocument();
-
-    expect(within(clean!).getByText("clean · 1 must not find")).toBeInTheDocument();
-    expect(within(clean!).getByText("pasted diff")).toBeInTheDocument();
-    expect(within(clean!).getByText("flaky")).toBeInTheDocument();
-    expect(within(clean!).queryByText(/unexpected$/)).not.toBeInTheDocument();
+    expect(within(summary).queryByText(/passing/)).not.toBeInTheDocument();
+    expect(summary).not.toHaveAttribute("title");
   });
 
-  it("marks a Quick (indicative) and stale suite, and a legacy case as skipped", async () => {
+  it("marks a Quick (indicative) and stale suite in the line's tooltip, and a legacy case as skipped", async () => {
     const quick: EvalSuite = {
       ...SUITE,
       mode: "quick",
@@ -265,12 +310,12 @@ describe("EvalsTab — results", () => {
     expect(within(summary).getByText("Indicative")).toBeInTheDocument();
     expect(within(summary).getByText("stale")).toBeInTheDocument();
     expect(within(summary).getByText("Quick")).toBeInTheDocument();
-    expect(within(summary).getByText(/Indicative only/)).toBeInTheDocument();
-    expect(within(summary).getByText(/changed since this suite ran/)).toBeInTheDocument();
+    expect(summary).toHaveAttribute("title", expect.stringContaining("Indicative only"));
+    expect(summary).toHaveAttribute("title", expect.stringContaining("changed since this suite ran"));
     expect(screen.getByText("legacy expectations, skipped")).toBeInTheDocument();
-    expect(await screen.findByText("not in the latest suite")).toBeInTheDocument();
-    // Only a legacy case: nothing to run.
-    expect(screen.getByRole("button", { name: "Run all" })).toBeDisabled();
+    // Only a legacy case: nothing to run, on the card either.
+    expect(screen.getByRole("button", { name: "Run all evals" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Run old-case" })).toBeDisabled();
   });
 
   it("ignores estimate-only suites and shows the empty state with no cases", async () => {
@@ -278,7 +323,7 @@ describe("EvalsTab — results", () => {
     renderTab();
     expect(await screen.findByText(/No eval cases yet/)).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "Latest suite" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Run all" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Run all evals" })).toBeDisabled();
     expect(h.get).not.toHaveBeenCalledWith("/eval-suites/est", expect.anything());
   });
 
@@ -290,10 +335,10 @@ describe("EvalsTab — results", () => {
     renderTab();
     expect(await screen.findByText("Running 30/120 jobs")).toBeInTheDocument();
     expect(screen.getByRole("progressbar", { name: "Suite progress" })).toHaveAttribute("aria-valuenow", "30");
-    expect(screen.getByRole("button", { name: "Run all" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Run all evals" })).toBeDisabled();
 
     await act(() => vi.advanceTimersByTimeAsync(EVAL_SUITE_POLL_INTERVAL_MS));
-    expect(await screen.findByText("17/20 passing")).toBeInTheDocument();
+    expect(await screen.findByText("17 / 20 passing")).toBeInTheDocument();
     expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
   });
 
@@ -314,7 +359,7 @@ describe("EvalsTab — Run modal", () => {
   async function openModal() {
     const view = renderTab();
     await screen.findByText("stripe-key-leak");
-    fireEvent.click(screen.getByRole("button", { name: "Run all" }));
+    fireEvent.click(screen.getByRole("button", { name: "Run all evals" }));
     const dialog = await screen.findByRole("dialog", { name: "Run on evals" });
     // Preselected: the server's `is_default` carrier (decision 5).
     await waitFor(() => expect(within(dialog).getByLabelText("Carrier agent")).toHaveValue("a1"));
@@ -333,7 +378,7 @@ describe("EvalsTab — Run modal", () => {
     world.carriers = [];
     const view = renderTab();
     await screen.findByText("stripe-key-leak");
-    fireEvent.click(screen.getByRole("button", { name: "Run all" }));
+    fireEvent.click(screen.getByRole("button", { name: "Run all evals" }));
     const dialog = await screen.findByRole("dialog", { name: "Run on evals" });
     expect(await within(dialog).findByText("Link this skill to an agent (enabled) to run evals")).toBeInTheDocument();
     expect(within(dialog).getByRole("link", { name: "Open Agents" })).toHaveAttribute("href", "/agents");
@@ -419,7 +464,7 @@ describe("EvalsTab — case editor", () => {
       answer({ ...created(body), expectation: (body as { expectation: unknown }).expectation, input_source: { kind: "paste" } }, schema),
     );
     renderTab();
-    fireEvent.click(await screen.findByRole("button", { name: "New case" }));
+    fireEvent.click(await screen.findByRole("button", { name: "New eval case" }));
     const dialog = await screen.findByRole("dialog", { name: "New eval case" });
 
     // Saving an empty form names what is missing instead of calling the API.
@@ -461,7 +506,7 @@ describe("EvalsTab — case editor", () => {
       answer({ ...created(body), expectation: (body as { expectation: unknown }).expectation }, schema),
     );
     renderTab();
-    fireEvent.click(await screen.findByRole("button", { name: "New case" }));
+    fireEvent.click(await screen.findByRole("button", { name: "New eval case" }));
     const dialog = await screen.findByRole("dialog", { name: "New eval case" });
     fireEvent.change(within(dialog).getByLabelText("Name"), { target: { value: "clean-pr" } });
 
@@ -566,11 +611,11 @@ describe("EvalsTab — errored cases", () => {
     };
   };
 
-  it("header says N errored (warning) only when > 0, next to a passing count that ignores the error", async () => {
+  it("header says N errored (warning) only when > 0, next to a passing badge that ignores the error", async () => {
     errored();
     renderTab();
     const summary = await screen.findByRole("region", { name: "Latest suite" });
-    expect(within(summary).getByText("0/0 passing")).toBeInTheDocument();
+    expect(screen.getByText("0 / 0 passing")).toBeInTheDocument();
     expect(within(summary).getByText("1 errored")).toBeInTheDocument();
   });
 
@@ -580,12 +625,236 @@ describe("EvalsTab — errored cases", () => {
     expect(within(summary).queryByText(/errored/)).not.toBeInTheDocument();
   });
 
-  it("the case row keeps the error badge and shows the failed run's message", async () => {
+  it("an errored card shows the error icon and 'run failed', no chip; the message lives in the drawer", async () => {
     errored();
     renderTab();
-    const row = (await screen.findAllByRole("listitem"))[0]!;
-    expect(await within(row).findByText("error")).toBeInTheDocument();
-    const msg = await within(row).findByText(TIMEOUT_MSG);
-    expect(msg).toHaveAttribute("title", TIMEOUT_MSG);
+    const card = await screen.findByRole("button", { name: /stripe-key-leak: errored/ });
+    expect(within(card).getByText("run failed")).toBeInTheDocument();
+    expect(within(card).queryByText("error")).not.toBeInTheDocument();
+    expect(screen.queryByText(TIMEOUT_MSG)).not.toBeInTheDocument();
+  });
+});
+
+describe("EvalsTab — lean case cards", () => {
+  const cardResult = (case_id: string, over: Record<string, unknown>) => ({
+    case_id,
+    case_name: case_id,
+    with: { passed: 3, total: 3 },
+    without: { passed: 0, total: 3 },
+    outcome: "caught" as const,
+    expected_count: 1,
+    matched_median: 1,
+    unexpected_median: 0,
+    is_clean: false,
+    ...over,
+  });
+  const named = (id: string, name: string, over: Partial<SkillEvalCase> = {}): SkillEvalCase => ({ ...CASE_DEFECT, id, name, ...over });
+
+  function setWorld(cases: SkillEvalCase[], results: ReturnType<typeof cardResult>[]) {
+    world = { carriers: CARRIERS, cases, suites: [SUITE], detail: { ...DETAIL, cases: results, runs: [] } };
+  }
+
+  it("caught: green check, expected/matched subtitle, severity tag and a caught chip", async () => {
+    renderTab();
+    const card = await screen.findByRole("button", { name: /stripe-key-leak: passes with the skill/ });
+    expect(within(card).getByText("expected 1 finding, matched 1")).toBeInTheDocument();
+    expect(within(card).getByText("CRITICAL · security")).toBeInTheDocument();
+    expect(within(card).getByText("caught")).toBeInTheDocument();
+    // Removed from the card: source, tallies, unexpected badge, must-find count.
+    for (const gone of [/PR #42/, /with 3\/3/, /without/, /unexpected/, /must find/]) {
+      expect(within(card).queryByText(gone)).not.toBeInTheDocument();
+    }
+  });
+
+  it("clean + flaky: 'expected 0 findings, got U', empty [] tag, amber flaky chip", async () => {
+    renderTab();
+    const card = await screen.findByRole("button", { name: /clean-refactor: flaky with the skill/ });
+    expect(within(card).getByText("expected 0 findings, got 0")).toBeInTheDocument();
+    expect(within(card).getByText("empty []")).toBeInTheDocument();
+    expect(within(card).getByText("flaky")).toBeInTheDocument();
+  });
+
+  it("uses the median: matched can be a half", async () => {
+    setWorld([named("c1", "half")], [cardResult("c1", { case_name: "half", expected_count: 2, matched_median: 1.5, outcome: "pass_both" })]);
+    renderTab();
+    expect(await screen.findByText("expected 2 findings, matched 1.5")).toBeInTheDocument();
+  });
+
+  it("pass_both and fail_both get no chip; fail shows a red state; regressed gets a chip", async () => {
+    setWorld(
+      [named("c1", "steady"), named("c2", "broken"), named("c3", "worse")],
+      [
+        cardResult("c1", { outcome: "pass_both", without: { passed: 3, total: 3 } }),
+        cardResult("c2", { outcome: "fail_both", with: { passed: 0, total: 3 }, matched_median: 0 }),
+        cardResult("c3", { outcome: "regressed", with: { passed: 0, total: 3 }, without: { passed: 3, total: 3 }, matched_median: 0 }),
+      ],
+    );
+    renderTab();
+    const steady = await screen.findByRole("button", { name: /steady: passes with the skill/ });
+    const broken = screen.getByRole("button", { name: /broken: fails with the skill/ });
+    const worse = screen.getByRole("button", { name: /worse: fails with the skill/ });
+    for (const [card, label] of [[steady, /passes both/], [broken, /fails both/]] as const) {
+      expect(within(card).queryByText(label)).not.toBeInTheDocument();
+    }
+    expect(within(worse).getByText("regressed")).toBeInTheDocument();
+  });
+
+  it("never run: grey dot, 'never run', no chip, still has the tag", async () => {
+    setWorld([named("c1", "fresh")], []);
+    renderTab();
+    const card = await screen.findByRole("button", { name: /fresh: never run/ });
+    expect(await within(card).findByText("never run")).toBeInTheDocument();
+    expect(within(card).getByText("CRITICAL · security")).toBeInTheDocument();
+  });
+
+  it("several must_find rows: first row tag plus '+k more'", async () => {
+    const many = named("c1", "multi", {
+      expectation: {
+        must_find: [
+          { file: "a.ts", min_severity: "WARNING", category: "bug" },
+          { file: "b.ts", min_severity: "CRITICAL", category: "security" },
+          { file: "c.ts", min_severity: "CRITICAL", category: "security" },
+        ],
+        must_not_find: [],
+      },
+    });
+    setWorld([many], [cardResult("c1", { expected_count: 3, matched_median: 2 })]);
+    renderTab();
+    expect(await screen.findByText("WARNING · bug +2 more")).toBeInTheDocument();
+  });
+
+  it("clicking the card, and Enter or Space on it, open the drawer; the action icons do not", async () => {
+    const { onOpenCase } = renderTab();
+    const card = await screen.findByRole("button", { name: /stripe-key-leak: passes/ });
+    fireEvent.click(card);
+    expect(onOpenCase).toHaveBeenCalledWith("c1");
+    expect(await screen.findByRole("dialog", { name: "stripe-key-leak" })).toBeInTheDocument();
+    cleanup();
+
+    const again = renderTab();
+    const cardAgain = await screen.findByRole("button", { name: /stripe-key-leak: passes/ });
+    fireEvent.keyDown(cardAgain, { key: "Enter" });
+    fireEvent.keyDown(cardAgain, { key: " " });
+    expect(again.onOpenCase).toHaveBeenCalledTimes(2);
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit stripe-key-leak" }));
+    expect(again.onOpenCase).toHaveBeenCalledTimes(2);
+    expect(await screen.findByRole("dialog", { name: "Edit case · stripe-key-leak" })).toBeInTheDocument();
+  });
+});
+
+describe("EvalsTab — case drawer", () => {
+  it("a ?case= deep link opens the drawer with the case's details, asking for ?suite= when given", async () => {
+    renderTab(SKILL, { initialCase: "c1", initialSuite: "su1" });
+    const dialog = await screen.findByRole("dialog", { name: "stripe-key-leak" });
+    expect(await within(dialog).findByText("Summary")).toBeInTheDocument();
+    expect(h.get).toHaveBeenCalledWith("/eval-cases/c1?suite_id=su1", expect.anything());
+  });
+
+  it("closes through the close button, and focus returns to the card", async () => {
+    const { onCloseCase } = renderTab();
+    const card = await screen.findByRole("button", { name: /stripe-key-leak: passes/ });
+    card.focus();
+    fireEvent.click(card);
+    const dialog = await screen.findByRole("dialog", { name: "stripe-key-leak" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+    expect(onCloseCase).toHaveBeenCalled();
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(screen.getByRole("button", { name: /stripe-key-leak: passes/ })).toHaveFocus();
+  });
+
+  it("a deep-linked drawer, when closed, focuses the card too", async () => {
+    renderTab(SKILL, { initialCase: "c1" });
+    const dialog = await screen.findByRole("dialog", { name: "stripe-key-leak" });
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(screen.getByRole("button", { name: /stripe-key-leak: passes/ })).toHaveFocus();
+  });
+
+  it("a ?case= that names no case of the skill closes the drawer", async () => {
+    const { onCloseCase } = renderTab(SKILL, { initialCase: "ghost" });
+    await waitFor(() => expect(onCloseCase).toHaveBeenCalled());
+  });
+
+  it("Edit in the drawer opens the case editor", async () => {
+    renderTab(SKILL, { initialCase: "c1" });
+    const dialog = await screen.findByRole("dialog", { name: "stripe-key-leak" });
+    await within(dialog).findByText("Summary");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Edit" }));
+    expect(await screen.findByRole("dialog", { name: "Edit case · stripe-key-leak" })).toBeInTheDocument();
+  });
+});
+
+describe("EvalsTab — per-case run", () => {
+  const estimatedOne: EvalSuite = { ...SUITE, id: "su9", status: "estimated", done_jobs: 0, results: null, cost_usd: null, cost_source: null, total_jobs: 6, estimate_usd: 0.05, case_ids: ["c1"], partial: true };
+
+  function wirePost() {
+    h.post.mockImplementation((path: string, _b: unknown, schema?: Schema) => {
+      if (path === "/skills/sk1/eval-suites") return answer(estimatedOne, schema);
+      if (path === "/eval-suites/su9/start") return answer({ ...estimatedOne, status: "running" }, schema);
+      return Promise.reject(new Error(path));
+    });
+  }
+
+  it("the card's Run opens the Run modal for that one case and estimates with case_ids", async () => {
+    wirePost();
+    renderTab();
+    fireEvent.click(await screen.findByRole("button", { name: "Run stripe-key-leak" }));
+    const dialog = await screen.findByRole("dialog", { name: "Run case" });
+    expect(within(dialog).getByText(/Runs “stripe-key-leak”/)).toBeInTheDocument();
+    await waitFor(() => expect(within(dialog).getByLabelText("Carrier agent")).toHaveValue("a1"));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Estimate" }));
+    await waitFor(() =>
+      expect(h.post).toHaveBeenCalledWith("/skills/sk1/eval-suites", { carrier_agent_id: "a1", mode: "full", case_ids: ["c1"] }, expect.anything()),
+    );
+    expect(await within(dialog).findByText("1 case × 2 arms × 3 repeats", { exact: false })).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Start" }));
+    await waitFor(() => expect(h.post).toHaveBeenCalledWith("/eval-suites/su9/start", undefined, expect.anything()));
+  });
+
+  it("Run all still sends no case_ids", async () => {
+    wirePost();
+    renderTab();
+    await screen.findByText("stripe-key-leak");
+    fireEvent.click(screen.getByRole("button", { name: "Run all evals" }));
+    const dialog = await screen.findByRole("dialog", { name: "Run on evals" });
+    await waitFor(() => expect(within(dialog).getByLabelText("Carrier agent")).toHaveValue("a1"));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Estimate" }));
+    await waitFor(() => expect(h.post).toHaveBeenCalledWith("/skills/sk1/eval-suites", { carrier_agent_id: "a1", mode: "full" }, expect.anything()));
+  });
+
+  it("the drawer's Run this case opens the same per-case modal", async () => {
+    renderTab(SKILL, { initialCase: "c1" });
+    const drawer = await screen.findByRole("dialog", { name: "stripe-key-leak" });
+    await within(drawer).findByText("Summary");
+    fireEvent.click(within(drawer).getByRole("button", { name: "Run this case" }));
+    expect(await screen.findByRole("dialog", { name: "Run case" })).toBeInTheDocument();
+  });
+
+  it("every Run is disabled while a suite is running", async () => {
+    world = { ...world, suites: [{ ...SUITE, status: "running", results: null }], detail: { ...DETAIL, status: "running", results: null } };
+    renderTab();
+    expect(await screen.findByRole("button", { name: "Run stripe-key-leak" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Run all evals" })).toBeDisabled();
+  });
+
+  it("a newer per-case suite overrides its own card only; header and summary stay on the whole-skill suite", async () => {
+    const partialSuite: EvalSuite = { ...SUITE, id: "su7", case_ids: ["c1"], partial: true, results: { ...SUITE.results!, passing: 0, total: 1, verdict: "indicative" } };
+    const partialDetail = {
+      ...DETAIL,
+      ...partialSuite,
+      cases: [{ case_id: "c1", case_name: "stripe-key-leak", with: { passed: 0, total: 1 }, without: { passed: 1, total: 1 }, outcome: "regressed", expected_count: 1, matched_median: 0, unexpected_median: 0, is_clean: false }],
+      runs: [],
+    };
+    world = { ...world, suites: [partialSuite, SUITE] };
+    const base = routeGet;
+    h.get.mockImplementation((path: string, schema?: Schema) => (path === "/eval-suites/su7" ? answer(partialDetail, schema) : base(path, schema)));
+    renderTab();
+    const card = await screen.findByRole("button", { name: /stripe-key-leak: fails with the skill/ });
+    expect(within(card).getByText("regressed")).toBeInTheDocument();
+    expect(within(card).getByText("expected 1 finding, matched 0")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /clean-refactor: flaky/ })).toBeInTheDocument();
+    expect(screen.getByText("17 / 20 passing")).toBeInTheDocument();
+    expect(within(screen.getByRole("region", { name: "Latest suite" })).getByText("Helps")).toBeInTheDocument();
   });
 });

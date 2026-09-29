@@ -79,17 +79,15 @@
     "crumbEvalCase": "Eval case"
   },
   "skillEvals": {
-    "title": "Evals",
-    "caption": "Ablation eval: the carrier agent reviews each case with this skill and without it.",
+    "title": "Eval cases",
     "loadError": "Could not load evals for this skill.",
-    "newCase": "New case",
-    "runAll": "Run all",
+    "newCase": "New eval case",
+    "runAll": "Run all evals",
     "runAllHint": "Run every case with and without the skill",
     "runBlockedRunning": "A suite is already running.",
     "runBlockedNoCases": "Add a case with expectations first.",
     "summary": {
       "label": "Latest suite",
-      "passing": "{passing}/{total} passing",
       "caught": "+{count} caught",
       "regressed": "{count} regressed",
       "flaky": "{count} flaky",
@@ -116,22 +114,10 @@
     "cases": {
       "label": "Eval cases",
       "empty": "No eval cases yet. A case is a diff plus the findings a review must (or must not) produce.",
-      "defect": "{count, plural, one {# must find} other {# must find}}",
-      "clean": "clean · {count, plural, one {# must not find} other {# must not find}}",
       "legacy": "legacy expectations, skipped",
       "legacyTitle": "This case's expected output predates skill evals and does not parse, so suites skip it. Edit it to add expectations.",
       "fromPaste": "pasted diff",
       "fromPr": "PR #{number}",
-      "fromPrUnknown": "PR",
-      "withArm": "with {passed}/{total}",
-      "withoutArm": "without {passed}/{total}",
-      "withTitle": "Passes with the skill, out of repeats",
-      "withoutTitle": "Passes without the skill, out of repeats",
-      "notRun": "not in the latest suite",
-      "unexpected": "+{value} unexpected",
-      "unexpectedTitle": "Unexpected findings per repeat, with the skill minus without it",
-      "edit": "Edit",
-      "delete": "Delete",
       "editLabel": "Edit {name}",
       "deleteLabel": "Delete {name}",
       "outcome": {
@@ -151,6 +137,25 @@
         "flaky": "Repeats disagree within one arm; excluded from caught and regressed.",
         "pending": "Not every repeat has finished.",
         "error": "At least one job failed (timeout or provider error). It is not counted as failing."
+      },
+      "cardLabel": "{name}: {status}. {detail}",
+      "runLabel": "Run {name}",
+      "tagClean": "empty []",
+      "tagMore": "+{count} more",
+      "status": {
+        "pass": "passes with the skill",
+        "fail": "fails with the skill",
+        "flaky": "flaky with the skill",
+        "error": "errored",
+        "pending": "running",
+        "never": "never run"
+      },
+      "subtitle": {
+        "never": "never run",
+        "pending": "in progress",
+        "error": "run failed",
+        "defect": "expected {expected, plural, one {# finding} other {# findings}}, matched {matched}",
+        "clean": "expected 0 findings, got {got}"
       }
     },
     "deleteModal": {
@@ -190,9 +195,12 @@
         "eval_suite_busy": "Another suite is running in this workspace. Wait for it to finish.",
         "eval_suite_stale": "The skill or the carrier changed since the estimate. Estimate again.",
         "eval_carrier_not_linked": "This agent no longer has an enabled link to the skill. Pick another carrier, or enable the link.",
-        "generic": "Could not start the eval: {message}"
+        "generic": "Could not start the eval: {message}",
+        "eval_case_not_found": "This case can no longer be run (deleted or its expectations do not parse)."
       },
-      "openConfig": "Open Config"
+      "openConfig": "Open Config",
+      "caseTitle": "Run case",
+      "caseSubtitle": "Runs “{name}” with the skill and without it on one carrier agent. A single-case run never gives a verdict."
     },
     "caseModal": {
       "newTitle": "New eval case",
@@ -252,6 +260,92 @@
         "rows": "Add at least one expectation row.",
         "generic": "Could not save the case: {message}"
       }
+    },
+    "passingBadge": "{passing} / {total} passing",
+    "passingBadgeTitle": "Settled cases whose with-skill arm passed in every repeat, out of settled cases. Errored cases are not counted."
+  },
+  "drawer": {
+    "label": "Eval case details",
+    "loading": "Loading case…",
+    "loadError": "Could not load this case.",
+    "neverRun": "This case has not run yet. Run it to see how it does with and without the skill.",
+    "suiteLine": "{mode} · {carrier} · skill v{version}",
+    "carrierDeleted": "carrier deleted",
+    "partial": "single-case run",
+    "stale": "stale",
+    "running": "running",
+    "expectationChanged": "This case was edited after that suite ran, so matched and missed marks are hidden: they may not line up with the current expectations.",
+    "summary": {
+      "title": "Summary",
+      "expected": "Expected",
+      "matched": "Matched",
+      "unexpected": "Unexpected",
+      "medianHint": "Median over the with-skill repeats",
+      "withSkill": "With skill",
+      "withoutSkill": "Without skill",
+      "passed": "{passed}/{total} passed",
+      "noScore": "—"
+    },
+    "runs": {
+      "title": "Runs",
+      "arm": "Arm",
+      "repeat": "Repeat",
+      "result": "Result",
+      "matched": "Matched",
+      "unexpected": "Unexpected",
+      "duration": "Duration",
+      "cost": "Cost",
+      "with": "with",
+      "without": "without",
+      "pass": "pass",
+      "fail": "fail",
+      "error": "error",
+      "queued": "queued",
+      "running": "running",
+      "repeatN": "#{n}",
+      "none": "No runs yet.",
+      "seconds": "{value}s"
+    },
+    "expectations": {
+      "title": "Expectations",
+      "mustFind": "Must find",
+      "mustNotFind": "Must not find",
+      "matched": "matched",
+      "missed": "missed",
+      "partial": "matched {hit}/{done}",
+      "lines": "lines {start}–{end}",
+      "contains": "contains “{text}”",
+      "none": "No expectations (legacy case)."
+    },
+    "unexpected": {
+      "title": "Unexpected findings",
+      "arm": "{arm} · repeat {n}",
+      "more": "{count, plural, one {# more finding} other {# more findings}} not listed",
+      "none": "None."
+    },
+    "input": {
+      "title": "Input",
+      "pr": "PR #{number}",
+      "prUnknown": "Pull request",
+      "pasted": "Pasted diff",
+      "files": "{count, plural, one {# file} other {# files}}",
+      "diffShow": "Diff preview",
+      "diffHide": "Hide diff preview",
+      "truncated": "Showing the first {shown} of {total} characters.",
+      "empty": "No diff stored."
+    },
+    "history": {
+      "title": "History",
+      "current": "shown",
+      "empty": "This case has not run in any suite.",
+      "item": "{when} · {mode}",
+      "version": "v{version}",
+      "open": "Show results from {when}"
+    },
+    "actions": {
+      "run": "Run this case",
+      "edit": "Edit",
+      "delete": "Delete"
     }
   }
 }

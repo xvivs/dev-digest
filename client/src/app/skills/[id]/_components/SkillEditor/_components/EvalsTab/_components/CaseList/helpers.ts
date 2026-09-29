@@ -1,23 +1,39 @@
-import type { EvalSuiteRun } from "@devdigest/shared";
+import type { EvalCaseOutcome, EvalExpectation, EvalSuiteCaseResult, Severity, FindingCategory } from "@devdigest/shared";
+import { CHIP_OUTCOMES } from "./constants";
 
-function meanUnexpected(runs: readonly EvalSuiteRun[]): number | null {
-  const values = runs.map((r) => r.unexpected).filter((u): u is number => u != null);
-  return values.length > 0 ? values.reduce((a, b) => a + b, 0) / values.length : null;
+export type CaseTag = { kind: "defect"; severity: Severity; category: FindingCategory; more: number } | { kind: "clean" } | null;
+
+/** Grey tag: severity · category of the first must_find (+ how many more), "empty []" for a clean case, none for legacy. */
+export function caseTag(exp: EvalExpectation | null): CaseTag {
+  if (!exp) return null;
+  const [first, ...rest] = exp.must_find;
+  if (!first) return { kind: "clean" };
+  return { kind: "defect", severity: first.min_severity, category: first.category, more: rest.length };
 }
 
-/**
- * Per-case Δunexpected: mean unexpected findings per finished repeat with the
- * skill minus without it. Null until both arms have at least one scored run.
- */
-export function caseUnexpectedDelta(runs: readonly EvalSuiteRun[], caseId: string): number | null {
-  const mine = runs.filter((r) => r.case_id === caseId && r.status === "done");
-  const withArm = meanUnexpected(mine.filter((r) => r.arm === "with"));
-  const withoutArm = meanUnexpected(mine.filter((r) => r.arm === "without"));
-  return withArm == null || withoutArm == null ? null : withArm - withoutArm;
+export type CaseSubtitle =
+  | { kind: "never" }
+  | { kind: "pending" }
+  | { kind: "error" }
+  | { kind: "defect"; expected: number; matched: number }
+  | { kind: "clean"; got: number };
+
+/** Second line of the card, from the server's per-case summary (medians over the with-arm repeats). */
+export function caseSubtitle(result: EvalSuiteCaseResult | null): CaseSubtitle {
+  if (!result) return { kind: "never" };
+  if (result.outcome === "error") return { kind: "error" };
+  const expected = result.expected_count;
+  if (expected == null) return { kind: "pending" };
+  if (result.is_clean || expected === 0) return { kind: "clean", got: result.unexpected_median ?? 0 };
+  return { kind: "defect", expected, matched: result.matched_median ?? 0 };
 }
 
-/** Error text of the first failed run of a case (timeout, provider error, cancel), or null. */
-export function caseErrorMessage(runs: readonly EvalSuiteRun[], caseId: string): string | null {
-  const failed = runs.find((r) => r.case_id === caseId && r.status === "failed" && r.error);
-  return failed?.error ?? null;
+/** Only the outcomes that say something about the skill get a chip; error shows as the icon. */
+export function showsOutcomeChip(outcome: EvalCaseOutcome): boolean {
+  return CHIP_OUTCOMES.includes(outcome);
+}
+
+/** Medians can end in .5: one decimal at most, no trailing ".0". */
+export function formatCount(n: number): string {
+  return String(Math.round(n * 10) / 10);
 }

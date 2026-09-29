@@ -27,6 +27,11 @@ export function SkillEditor({
   onStatsWindow,
   runRequested = false,
   onRunRequestHandled,
+  evalCaseId = null,
+  evalSuiteId = null,
+  onOpenEvalCase,
+  onCloseEvalCase,
+  onSelectEvalSuite,
 }: {
   skill: Skill;
   tab: string;
@@ -43,6 +48,12 @@ export function SkillEditor({
   /** Header "Run on evals" was pressed: the Evals tab opens its Run modal. */
   runRequested?: boolean;
   onRunRequestHandled?: () => void;
+  /** Evals tab case drawer, from `?case=` / `?suite=`. */
+  evalCaseId?: string | null;
+  evalSuiteId?: string | null;
+  onOpenEvalCase?: (caseId: string) => void;
+  onCloseEvalCase?: () => void;
+  onSelectEvalSuite?: (suiteId: string) => void;
 }) {
   const t = useTranslations("skills");
   const guard = useNavigationGuard();
@@ -61,6 +72,11 @@ export function SkillEditor({
             skill={skill}
             runRequested={runRequested}
             onRunRequestHandled={onRunRequestHandled}
+            caseId={evalCaseId}
+            caseSuiteId={evalSuiteId}
+            onOpenCase={onOpenEvalCase}
+            onCloseCase={onCloseEvalCase}
+            onSelectCaseSuite={onSelectEvalSuite}
             // The Evals tab holds no draft of its own; the guard still covers a dirty Config.
             onOpenConfig={() => guard.confirmNavigation(() => onTab("config"))}
           />

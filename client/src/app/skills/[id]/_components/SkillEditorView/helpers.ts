@@ -2,10 +2,11 @@ import { DEFAULT_EDITOR_TAB } from "@/app/skills/constants";
 import { resolveTab as resolveTabGeneric, withTab } from "@/lib/tabs";
 import { SKILL_EDITOR_TABS } from "../../constants";
 import { SkillStatsWindow } from "@devdigest/shared/contracts/skill-impact";
-import { FROM_VERSION_PARAM, STATS_WINDOW_PARAM } from "./constants";
+import { CASE_PARAM, FROM_VERSION_PARAM, STATS_WINDOW_PARAM, SUITE_PARAM } from "./constants";
 
 const TAB_KEYS = SKILL_EDITOR_TABS.map((tb) => tb.key);
 const POSITIVE_INT = /^[1-9]\d*$/;
+const ID_PARAM = /^[\w-]{1,64}$/;
 
 /** `?tab=` → a known editor tab key; anything else (missing, stale, typo) → the default tab. */
 export function resolveTab(raw: string | null): string {
@@ -26,6 +27,9 @@ export function editorQuery(search: string, tab: string, fromVersion: number | n
   const sp = new URLSearchParams(withTab(search, tab));
   if (fromVersion == null) sp.delete(FROM_VERSION_PARAM);
   else sp.set(FROM_VERSION_PARAM, String(fromVersion));
+  // The drawer belongs to the Evals tab: leaving it closes it.
+  sp.delete(CASE_PARAM);
+  sp.delete(SUITE_PARAM);
   return sp.toString();
 }
 
@@ -42,6 +46,23 @@ export function parseStatsWindow(raw: string | null): SkillStatsWindow {
 export function statsWindowQuery(search: string, window: SkillStatsWindow): string {
   const sp = new URLSearchParams(search);
   sp.set(STATS_WINDOW_PARAM, window);
+  return sp.toString();
+}
+
+/** `?case=` / `?suite=` → an id, or null for anything that is not id-shaped (the API validates the rest). */
+export function parseCaseParam(raw: string | null): string | null {
+  return raw != null && ID_PARAM.test(raw) ? raw : null;
+}
+
+/** The query string with the drawer's `case` (and `suite`) set or, for a null case, removed. Keeps every other param. */
+export function caseQuery(search: string, caseId: string | null, suiteId: string | null): string {
+  const sp = new URLSearchParams(search);
+  sp.delete(CASE_PARAM);
+  sp.delete(SUITE_PARAM);
+  if (caseId) {
+    sp.set(CASE_PARAM, caseId);
+    if (suiteId) sp.set(SUITE_PARAM, suiteId);
+  }
   return sp.toString();
 }
 

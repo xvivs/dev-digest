@@ -15,3 +15,7 @@ export const FROM_VERSION_PARAM = "fromVersion";
 
 /** `?window=7d|30d|90d`: the Stats tab's time window (skill-impact decision 11). */
 export const STATS_WINDOW_PARAM = "window";
+
+/** `?case=<id>[&suite=<id>]`: the Evals tab's case drawer (linkable; Back closes it). */
+export const CASE_PARAM = "case";
+export const SUITE_PARAM = "suite";

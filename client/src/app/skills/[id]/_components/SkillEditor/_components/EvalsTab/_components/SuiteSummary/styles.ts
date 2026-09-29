@@ -1,24 +1,23 @@
 import type { CSSProperties } from "react";
 
-/** Co-located styles for SuiteSummary. */
+/** Co-located styles for SuiteSummary: one thin line under the header (design-evals-spec: no caption block). */
 export const s = {
   wrap: {
     display: "flex",
-    flexDirection: "column",
-    gap: 10,
-    padding: "14px 16px",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: "6px 10px",
+    padding: "8px 12px",
     border: "1px solid var(--border)",
-    borderRadius: 10,
+    borderRadius: 7,
     background: "var(--bg-elevated)",
+    fontSize: 12.5,
+    color: "var(--text-secondary)",
   } satisfies CSSProperties,
-  head: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" } satisfies CSSProperties,
   cancel: { marginLeft: "auto" } satisfies CSSProperties,
-  line: { fontSize: 13.5, color: "var(--text-secondary)", display: "flex", flexWrap: "wrap", gap: 6, margin: 0 } satisfies CSSProperties,
-  strong: { color: "var(--text-primary)", fontWeight: 600 } satisfies CSSProperties,
   errored: { color: "var(--warn)", fontWeight: 600 } satisfies CSSProperties,
   sep: { color: "var(--text-muted)" } satisfies CSSProperties,
-  muted: { fontSize: 13, color: "var(--text-muted)" } satisfies CSSProperties,
-  progress: { display: "flex", flexDirection: "column", gap: 6 } satisfies CSSProperties,
-  note: { fontSize: 12.5, color: "var(--text-secondary)", margin: 0 } satisfies CSSProperties,
-  warnNote: { fontSize: 12.5, color: "var(--warn)", margin: 0 } satisfies CSSProperties,
+  muted: { color: "var(--text-muted)" } satisfies CSSProperties,
+  progress: { display: "flex", alignItems: "center", gap: 10, flex: 1, minWidth: 180 } satisfies CSSProperties,
+  bar: { flex: 1, minWidth: 80 } satisfies CSSProperties,
 } as const;
