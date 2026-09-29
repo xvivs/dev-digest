@@ -17,21 +17,5 @@ export const s = {
   savedNote: { fontSize: 13, color: "var(--ok, var(--accent))" } satisfies CSSProperties,
   deleteBtn: { marginLeft: "auto" } satisfies CSSProperties,
   footer: { display: "flex", gap: 10, justifyContent: "flex-end" } satisfies CSSProperties,
-  draftBanner: {
-    fontSize: 13,
-    color: "var(--accent)",
-    background: "var(--accent-bg)",
-    borderRadius: 6,
-    padding: "8px 12px",
-    marginBottom: 16,
-  } satisfies CSSProperties,
-  draftUnavailable: {
-    fontSize: 13,
-    color: "var(--warn)",
-    background: "var(--warn-bg)",
-    borderRadius: 6,
-    padding: "8px 12px",
-    marginBottom: 16,
-  } satisfies CSSProperties,
   confirmBody: { padding: 24, fontSize: 14, color: "var(--text-secondary)" } satisfies CSSProperties,
 } as const;

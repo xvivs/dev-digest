@@ -1,6 +1,6 @@
 # ADR 0016 — Skill versions are append-only snapshots of every field
 
-**Status:** accepted
+**Status:** accepted; decision 4 amended 2026-09-29 (see Update)
 **Date:** 2026-09-29
 **Interprets:** ADR 0012, decision 4 (vetting reset on edit)
 
@@ -18,7 +18,7 @@ Restore raises a second question. `update` has no version guard (`repository.ts:
 1. **Snapshot every field.** `skill_versions` gains `name, description, type, change_note` next to `body`. `insert` writes v1 in the same transaction as the skill row.
 2. **Bump on any content change.** The version bumps when any of `name`, `description`, `type`, `body` changes. Toggling `enabled` never bumps.
 3. **Append-only.** History is never rewritten. Restoring vN creates vN+1 with `change_note = "Restored from vN"`. `PUT /skills/:id` accepts an optional `change_note`.
-4. **Two restore paths**, chosen in a popup (Edit / Restore / Cancel, ADR 0009 focus trap):
+4. **Two restore paths** (amended: Edit removed, see Update), chosen in a popup (Edit / Restore / Cancel, ADR 0009 focus trap):
    - **Edit** opens the vN snapshot in Config as an unsaved draft (`skillHref(id,'config')&fromVersion=N`). Nothing is written until Save, which is a normal `PUT` with the default note `Restored from vN (edited)`.
    - **Restore** calls `POST /skills/:id/versions/:v/restore {expected_version}`. A new store method guards on `version`, modelled on `vet` (`repository.ts:169-189`). A stale `expected_version` returns 409 `SkillVersionStaleError`. The guard also applies in the no-op branch. An identical body returns 200 with no new version.
 5. **Read endpoints.** `GET /skills/:id/versions` lists versions without bodies. `GET /skills/:id/versions/:v` returns one: non-numeric `v` gives 422, unknown gives 404, as in `agents/routes.ts:137,145`.
@@ -58,3 +58,32 @@ Restore raises a second question. `update` has no version guard (`repository.ts:
 | Restore as `PUT` only (Edit path only) | One code path | No guard against concurrent edits; two clicks to recover |
 | **Two paths: Edit draft and guarded Restore (chosen)** | Fast recovery and safe tweak-then-save | Two flows to test and explain |
 | Reset vetting on every edit, all sources | Uniform, strictest | Friction for trusted `manual` skills; contradicts ADR 0012 tiers |
+
+## Update 2026-09-29: Restore is the only path
+
+The Edit path from decision 4 is gone. The popup is now a confirmation
+dialog: `Restore vN?`, one line saying it creates vN+1 with the content of vN,
+and a footer with Cancel and `Restore as vN+1`. Restore takes initial focus.
+The client code behind Edit (`?fromVersion=N`, the Config draft seeded from a
+snapshot, the default note `Restored from vN (edited)`) was deleted with it.
+
+Why: two paths meant two flows to explain in one small popup, and the popup
+read as a three-way choice where Cancel looked like an action. Tweaking an old
+version is still possible in two steps: restore it, then edit the new version
+in Config.
+
+What still holds from decision 4: the guarded `POST
+/skills/:id/versions/:v/restore {expected_version}`, the 409
+`SkillVersionStaleError`, the guard on the no-op branch, and the focus trap
+from ADR 0009, which the popup gets from `Modal`. The no-op branch compares
+every snapshotted field, not only the body.
+
+This changes the Alternatives table. "Two paths: Edit draft and guarded
+Restore" is no longer the chosen option. The chosen option is guarded Restore
+alone. "Restore as `PUT` only" stays rejected: it has no guard against
+concurrent edits.
+
+The `file:line` references in Context and Decision describe the code as it was
+when this ADR was written. They have drifted since and are kept as a historical
+record. Search by symbol (`snapshotOf`, `write`, `vet`, `assertEnableAllowed`)
+instead of by line.

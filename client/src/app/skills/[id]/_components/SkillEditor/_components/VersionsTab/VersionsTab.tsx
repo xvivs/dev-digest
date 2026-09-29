@@ -1,7 +1,7 @@
 /* VersionsTab — the skill's version history (ADR 0016): newest first, the
  * current version badged, lost history shown as "vN body unavailable". Each
- * older snapshot row expands an inline diff and offers the Restore popup (Edit /
- * Restore / Cancel); the current row shows only its pill. The tab holds no draft of its own, so it never has to
+ * older snapshot row expands an inline diff and offers the Restore
+ * confirmation; the current row shows only its pill. The tab holds no draft of its own, so it never has to
  * report dirty state to the navigation guard. */
 "use client";
 
@@ -22,7 +22,7 @@ const VersionDiff = dynamic(() => import("./_components/VersionDiff").then((m) =
   loading: () => <Skeleton height={DIFF_SKELETON_HEIGHT} />,
 });
 
-export function VersionsTab({ skill }: { skill: Skill; onEditVersion: (version: number) => void }) {
+export function VersionsTab({ skill }: { skill: Skill }) {
   const t = useTranslations("skills");
   const versions = useSkillVersions(skill.id);
   const { refetch: refetchSkill } = useSkill(skill.id);

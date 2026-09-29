@@ -89,8 +89,6 @@
     "changeNote": "What changed",
     "changeNoteHint": "Optional. Stored with the new version.",
     "changeNotePlaceholder": "e.g. Tightened the severity threshold",
-    "draftBanner": "Draft from v{version}. Nothing is saved until you press Save, which creates a new version.",
-    "draftUnavailable": "v{version} body unavailable, so the editor shows the current version.",
     "dirtyGuard": {
       "title": "Discard changes?",
       "body": "This skill has unsaved changes. Leave without saving?",

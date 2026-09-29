@@ -64,14 +64,13 @@ function routeGet(path: string) {
   return Promise.reject(new Error(`unexpected GET ${path}`));
 }
 
-function renderTab(skill: Skill = SKILL, onEditVersion = vi.fn()) {
-  const view = renderWithProviders(
+function renderTab(skill: Skill = SKILL) {
+  return renderWithProviders(
     <ToastProvider>
-      <VersionsTab skill={skill} onEditVersion={onEditVersion} />
+      <VersionsTab skill={skill} />
     </ToastProvider>,
     { namespaces: { skills: messages, shell: shellMessages, common } },
   );
-  return { ...view, onEditVersion };
 }
 
 async function rows() {

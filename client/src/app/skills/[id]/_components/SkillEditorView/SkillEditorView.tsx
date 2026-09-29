@@ -24,14 +24,13 @@ import type { SkillStatsWindow } from "@devdigest/shared";
 import {
   CASE_PARAM,
   DIRTY_GUARD_MODAL_WIDTH,
-  FROM_VERSION_PARAM,
   HEADER_ICON_SIZE,
   SKELETON_BODY_HEIGHT,
   SKELETON_TITLE,
   STATS_WINDOW_PARAM,
   SUITE_PARAM,
 } from "./constants";
-import { caseQuery, editorQuery, parseCaseParam, parseFromVersion, parseStatsWindow, resolveTab, statsWindowQuery } from "./helpers";
+import { caseQuery, editorQuery, parseCaseParam, parseStatsWindow, resolveTab, statsWindowQuery } from "./helpers";
 import { s } from "./styles";
 
 export function SkillEditorView({ id }: { id: string }) {
@@ -45,7 +44,6 @@ export function SkillEditorView({ id }: { id: string }) {
   const [importing, setImporting] = React.useState(false);
 
   const tab = resolveTab(search.get("tab"));
-  const fromVersion = tab === "config" ? parseFromVersion(search.get(FROM_VERSION_PARAM)) : null;
   const statsWindow = parseStatsWindow(search.get(STATS_WINDOW_PARAM));
   // The Evals case drawer lives in `?case=` (+ `&suite=`): it only exists on the Evals tab.
   const evalCase = tab === "evals" ? parseCaseParam(search.get(CASE_PARAM)) : null;
@@ -56,19 +54,13 @@ export function SkillEditorView({ id }: { id: string }) {
   const openEvalCase = (caseId: string) => router.push(href(caseQuery(search.toString(), caseId, null)));
   const closeEvalCase = () => replaceQuery(caseQuery(search.toString(), null, null));
   const selectEvalSuite = (suiteId: string) => replaceQuery(caseQuery(search.toString(), evalCase, suiteId));
-  const navigate = (next: string, version: number | null = null) =>
-    replaceQuery(editorQuery(search.toString(), next, version));
+  const navigate = (next: string) => replaceQuery(editorQuery(search.toString(), next));
   // Stats window in `?window=`: survives reloads and shared links, and tab
   // switches keep it (editorQuery preserves unrelated params).
   const setStatsWindow = (w: SkillStatsWindow) => replaceQuery(statsWindowQuery(search.toString(), w));
   // Not guarded here — SkillEditor's Tabs already route every change through
-  // `guard.confirmNavigation` before calling this. Any tab change drops
-  // `fromVersion`, so the restore draft seeds Config once.
+  // `guard.confirmNavigation` before calling this.
   const setTab = (next: string) => navigate(next);
-  // Restore popup → "Edit": Config opens vN as an unsaved draft (ADR 0016).
-  const editFromVersion = (version: number) => navigate("config", version);
-  // After the draft is saved it is the current version; drop the seed.
-  const clearFromVersion = () => navigate("config");
   // Header "Run on evals": open the Evals tab and ask it for its Run modal.
   // A flag, not a nonce: the tab clears it once the modal is open, so a later
   // visit to Evals does not reopen it.
@@ -179,9 +171,6 @@ export function SkillEditorView({ id }: { id: string }) {
                   skill={skill}
                   tab={tab}
                   onTab={setTab}
-                  fromVersion={fromVersion}
-                  onEditVersion={editFromVersion}
-                  onDraftSaved={clearFromVersion}
                   statsWindow={statsWindow}
                   onStatsWindow={setStatsWindow}
                   runRequested={runRequested}

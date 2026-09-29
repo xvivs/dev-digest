@@ -20,9 +20,6 @@ export function SkillEditor({
   skill,
   tab,
   onTab,
-  fromVersion = null,
-  onEditVersion,
-  onDraftSaved,
   statsWindow = "30d",
   onStatsWindow,
   runRequested = false,
@@ -36,12 +33,6 @@ export function SkillEditor({
   skill: Skill;
   tab: string;
   onTab: (t: string) => void;
-  /** Config opens this snapshot as an unsaved draft (restore "Edit", ADR 0016). */
-  fromVersion?: number | null;
-  /** Versions → "Edit": switch to Config seeded from vN. */
-  onEditVersion?: (version: number) => void;
-  /** Config saved the draft that came from `fromVersion`. */
-  onDraftSaved?: () => void;
   /** Stats tab window, from `?window=` (skill-impact decision 11). */
   statsWindow?: SkillStatsWindow;
   onStatsWindow?: (w: SkillStatsWindow) => void;
@@ -65,7 +56,7 @@ export function SkillEditor({
         <Tabs tabs={tabs} value={tab} onChange={(k) => guard.confirmNavigation(() => onTab(k))} pad="0 24px" />
       </div>
       <div style={s.body}>
-        {tab === "config" && <ConfigTab skill={skill} fromVersion={fromVersion} onDraftSaved={onDraftSaved} />}
+        {tab === "config" && <ConfigTab skill={skill} />}
         {tab === "preview" && <PreviewTab body={skill.body} />}
         {tab === "evals" && (
           <EvalsTab
@@ -89,14 +80,7 @@ export function SkillEditor({
             onRunEvals={() => guard.confirmNavigation(() => onTab("evals"))}
           />
         )}
-        {tab === "versions" && (
-          <VersionsTab
-            skill={skill}
-            // Versions holds no draft, but route through the guard anyway so
-            // this stays correct if that ever changes.
-            onEditVersion={(v) => guard.confirmNavigation(() => onEditVersion?.(v))}
-          />
-        )}
+        {tab === "versions" && <VersionsTab skill={skill} />}
       </div>
     </div>
   );

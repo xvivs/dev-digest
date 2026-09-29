@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { caseQuery, editorQuery, parseCaseParam, parseFromVersion, parseStatsWindow, resolveTab, statsWindowQuery, withTab } from "./helpers";
+import { caseQuery, editorQuery, parseCaseParam, parseStatsWindow, resolveTab, statsWindowQuery, withTab } from "./helpers";
 
 describe("resolveTab", () => {
   it("keeps a known tab", () => {
@@ -21,24 +21,9 @@ describe("withTab", () => {
   });
 });
 
-describe("parseFromVersion", () => {
-  it("reads a positive integer", () => {
-    expect(parseFromVersion("3")).toBe(3);
-  });
-
-  it.each([null, "", "0", "-1", "2.5", "abc", "3abc"])("ignores %j", (raw) => {
-    expect(parseFromVersion(raw)).toBeNull();
-  });
-});
-
 describe("editorQuery", () => {
-  it("opens config with a draft source and keeps unrelated params", () => {
-    expect(editorQuery("foo=1&tab=versions", "config", 3)).toBe("foo=1&tab=config&fromVersion=3");
-  });
-
-  it("drops fromVersion on any other navigation, so a later visit to Config starts clean", () => {
-    expect(editorQuery("tab=config&fromVersion=3", "preview")).toBe("tab=preview");
-    expect(editorQuery("tab=config&fromVersion=3", "config")).toBe("tab=config");
+  it("switches the tab and keeps unrelated params", () => {
+    expect(editorQuery("foo=1&tab=versions", "config")).toBe("foo=1&tab=config");
   });
 });
 

@@ -30,15 +30,6 @@ export function estimateTokens(body: string): number {
 }
 
 /**
- * Default "What changed" note for a draft opened from vN (ADR 0016). It is
- * stored data, not UI copy, and matches the server's own "Restored from vN"
- * note for the one-click Restore — so it is not translated.
- */
-export function draftChangeNote(version: number): string {
-  return `Restored from v${version} (edited)`;
-}
-
-/**
  * The PUT body for Save. `change_note` goes only when it has text and a
  * versioned field changed: an `enabled`-only save creates no version
  * (ADR 0016), so a note there would describe nothing.
