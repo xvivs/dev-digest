@@ -320,8 +320,12 @@ export class EvalsService {
     const suite = await this.deps.store.findSuite(workspaceId, id);
     if (!suite) return undefined;
     const [runs, cases] = await Promise.all([this.deps.store.listRuns(id), this.deps.store.suiteCases(id)]);
-    const { cases: rows } = summarizeSuite({ mode: suite.mode, repeats: suite.repeats, cases, runs });
-    return { suite, cases: rows, runs };
+    const { cases: rows, results } = summarizeSuite({ mode: suite.mode, repeats: suite.repeats, cases, runs });
+    // Header and rows share ONE derivation. The stored `results` column can
+    // predate a summary change (e.g. `errored`), so a done suite with runs
+    // reports the live figures; the column itself is never rewritten here.
+    const live = suite.status === 'done' && suite.results && runs.length > 0 ? results : suite.results;
+    return { suite: { ...suite, results: live }, cases: rows, runs };
   }
 
   private async enqueueRuns(

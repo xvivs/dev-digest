@@ -436,6 +436,29 @@ describe('EvalsService runner', () => {
     expect(withArm[0]!.skills.find((s) => s.id === 'sk')!.body).toBe('TARGET');
   });
 
+  it('getSuiteDetail derives results live: a done suite stored before `errored` existed still reports it', async () => {
+    const id = await startedQuick();
+    await env.drain();
+    // Rewind to the pre-fix shape: case c1's runs failed, stored results predate `errored`.
+    const c1 = [...env.store.runs.values()].filter((r) => r.suiteId === id && r.caseId === 'c1');
+    for (const r of c1) Object.assign(r, { status: 'failed', pass: null, error: 'boom' });
+    const stored = env.store.suites.get(id)!;
+    const staleVerdict = stored.results!.verdict;
+    stored.results = { ...stored.results!, passing: 0, total: 1, errored: 0 };
+
+    const detail = await env.service.getSuiteDetail(WS, id);
+    expect(detail!.suite.results).toMatchObject({ errored: 1, passing: 1, total: 1, verdict: staleVerdict });
+    expect(detail!.cases.find((c) => c.case_id === 'c1')!.outcome).toBe('error');
+    // Read path only: the stored column is untouched.
+    expect(stored.results!.errored).toBe(0);
+  });
+
+  it('getSuiteDetail keeps stored results null for a non-done suite', async () => {
+    const suite = await env.service.createSuite(WS, 'sk', { carrierAgentId: 'ag', mode: 'quick' });
+    const detail = await env.service.getSuiteDetail(WS, suite!.id);
+    expect(detail!.suite.results).toBeNull();
+  });
+
   it('a duplicate job for a claimed run calls no model and counts nothing', async () => {
     const id = await startedQuick();
     const runId = env.enqueued[0]!;
