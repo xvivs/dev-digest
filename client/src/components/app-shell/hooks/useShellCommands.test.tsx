@@ -43,6 +43,7 @@ describe("useShellCommands", () => {
       ["pulls", "Go to Pull Requests"],
       ["skills", "Go to Skills"],
       ["agents", "Go to Agents"],
+      ["conventions", "Go to Conventions"],
       ["settings", "Go to Settings"],
       ["toggle-theme", "Switch to light theme"],
     ]);

@@ -113,7 +113,7 @@ describe("SkillEditorView", () => {
 
   it("writes a tab change to the URL when the form is clean", () => {
     renderView();
-    fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Preview" }));
     expect(h.replace).toHaveBeenCalledWith("/skills/sk1?tab=preview");
   });
 
@@ -127,7 +127,7 @@ describe("SkillEditorView", () => {
   it("asks for confirmation before a tab switch when the Config tab is dirty (AC-8)", () => {
     renderView();
     fireEvent.change(screen.getByDisplayValue("# Rule"), { target: { value: "# Rule v2" } });
-    fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Preview" }));
     expect(screen.getByRole("dialog", { name: "Discard changes?" })).toBeInTheDocument();
     expect(h.replace).not.toHaveBeenCalled();
   });
@@ -135,7 +135,7 @@ describe("SkillEditorView", () => {
   it("cancelling the guard keeps the tab switch from happening", () => {
     renderView();
     fireEvent.change(screen.getByDisplayValue("# Rule"), { target: { value: "# Rule v2" } });
-    fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Preview" }));
     fireEvent.click(screen.getByRole("button", { name: "Keep editing" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(h.replace).not.toHaveBeenCalled();
@@ -144,7 +144,7 @@ describe("SkillEditorView", () => {
   it("confirming the guard proceeds with the tab switch", () => {
     renderView();
     fireEvent.change(screen.getByDisplayValue("# Rule"), { target: { value: "# Rule v2" } });
-    fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Preview" }));
     fireEvent.click(screen.getByRole("button", { name: "Discard changes" }));
     expect(h.replace).toHaveBeenCalledWith("/skills/sk1?tab=preview");
   });

@@ -28,13 +28,17 @@ flowchart TD
   PULLS --> PR["/pulls/:number<br/>review detail<br/>(overview · diff · findings)"]
 
   SKILLS["/skills<br/>list + select prompt"] --> SKILL["/skills/:id<br/>editor (config · preview · evals · stats · versions)"]
-  AGENTS["/agents"] --> AGENT["/agents/:id<br/>editor (config)"]
+  AGENTS["/agents"] --> AGENT["/agents/:id<br/>editor (config · skills)"]
+  CONV["/repos/:repoId/conventions<br/>scan · review · create skill"]
   SETTINGS["/settings/:section<br/>API keys · models"]
 
   PULLS -->|"GET /repos/:id/pulls · /repos/:id/index-state"| API
   PR -->|"GET /pulls/:id · /reviews · /pulls/:id/comments<br/>POST /pulls/:id/review · /findings/:id/(accept|dismiss)"| API
   SKILLS -->|"GET/POST /skills · GET/PUT/DELETE /skills/:id · POST /skills/:id/vet"| API
   AGENTS -->|"/agents · /agents/:id"| API
+  CONV -->|"GET /repos/:id/conventions · POST /repos/:id/conventions/extract<br/>PATCH /conventions/:id · POST /repos/:id/conventions/skills"| API
+  CONV -.->|"Create skill → Open skill / agent Skills tab"| SKILL
+  CONV -.->|"Attach to agents"| AGENT
   SETTINGS -->|"/settings · /providers"| API
 ```
 

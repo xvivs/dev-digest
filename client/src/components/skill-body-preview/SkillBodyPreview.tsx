@@ -4,19 +4,16 @@
    mode shows the raw body with invisible/bidi characters marked and an
    HTML-comment warning, since rendered markdown hides both.
 
-   Lives at the `/skills` ancestor route (ADR 0010) because it has two
-   consumers on different route segments: the skill editor's Preview tab
-   (`/skills/[id]`, via the thin `PreviewTab` wrapper) and the import drawer's
-   preview step (`/skills`, `ImportSkillDrawer`). An ancestor may not import a
-   descendant's `_components/`, so the shared piece sits at the ancestor
-   instead of staying inside `SkillEditor/_components/PreviewTab`. */
+   Lives in `src/components` (ADR 0010): it is rendered by the skill editor's
+   Preview tab, the import drawer's preview step and the conventions
+   Create-skill modal, three screens on different route segments. */
 "use client";
 
 import React from "react";
 import { useTranslations } from "next-intl";
 import { Tabs, Markdown } from "@devdigest/ui";
-import { hasHtmlComment, hasInvisibleChars, splitInvisibleChars } from "@/app/skills/helpers";
-import { InvisibleCharSegments } from "@/app/skills/_components/InvisibleCharSegments";
+import { hasHtmlComment, hasInvisibleChars, splitInvisibleChars } from "@/lib/invisible-chars";
+import { InvisibleCharSegments } from "@/components/invisible-char-segments";
 import { DEFAULT_PREVIEW_MODE, PREVIEW_MODES, type PreviewMode } from "./constants";
 import { s } from "./styles";
 

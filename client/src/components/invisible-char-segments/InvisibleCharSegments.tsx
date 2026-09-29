@@ -1,9 +1,10 @@
 /* InvisibleCharSegments — renders a skill body split into printable runs and
    flagged invisible/bidi characters (see `splitInvisibleChars`, ADR 0012 /
-   SPEC-02 AC-10). Shared by SkillBodyPreview's Source view and VetSkillModal's
-   raw-source pane so both mark invisible characters identically. */
+   SPEC-02 AC-10). Shared by SkillBodyPreview's Source view, VetSkillModal's
+   raw-source pane and the conventions Create-skill modal so all mark invisible
+   characters identically. */
 import React from "react";
-import type { SourceSegment } from "@/app/skills/helpers";
+import type { SourceSegment } from "@/lib/invisible-chars";
 import { s } from "./styles";
 
 export function InvisibleCharSegments({ segments }: { segments: SourceSegment[] }) {

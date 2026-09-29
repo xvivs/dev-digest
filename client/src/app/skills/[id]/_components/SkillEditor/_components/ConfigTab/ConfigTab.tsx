@@ -22,7 +22,8 @@ import { useToast } from "@/lib/toast";
 import { useNavigationGuard } from "@/app/skills/navigation-guard";
 import { VetSkillModal } from "@/app/skills/_components/VetSkillModal";
 import { DELETE_MODAL_WIDTH } from "./constants";
-import { estimateTokens, isSkillDirty } from "./helpers";
+import { estimateTokens } from "@/lib/tokens";
+import { isSkillDirty } from "./helpers";
 import { s } from "./styles";
 
 export function ConfigTab({ skill }: { skill: Skill }) {

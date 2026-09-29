@@ -94,6 +94,8 @@ lives in the engineering-insights skill).
 
 - **The e2e flow matches the verdict badge by its lowercase source text, not what the user sees** — `e2e/specs/04-pr-findings.flow.json:15` waits for `"request changes"`, while `Badge` uppercases it via CSS (`client/src/vendor/ui/primitives/Badge.tsx:75`). Changing the verdict copy (e.g. to title case, or moving it to next-intl with different wording) breaks the browser suite without failing a single unit test. _(2026-09-28)_
 
+- **`FEATURE_MODELS` has a third, client-local runtime copy; changing a default in both vendored `platform.ts` files leaves Settings → Models showing the old default** — the client may import only types from `vendor/shared`, so `client/src/lib/feature-models.ts:13` mirrors the registry by hand ("Keep this in sync" in its header); the `conventions` default stayed `openai/gpt-5.4` at `client/src/lib/feature-models.ts:46-47` after both vendor copies moved to `openrouter`/`deepseek/deepseek-v4-flash`. Change all three together. _(2026-09-29)_
+
 ## Tool & Library Notes
 
 - In this worktree, `pnpm typecheck` / `pnpm test` / any `pnpm exec …` first
@@ -120,6 +122,10 @@ lives in the engineering-insights skill).
 - **TanStack Query v5 fires a per-call `mutate(vars, { onSuccess, onError })` only for the dispatch its observer currently tracks; a superseded, still-in-flight dispatch never runs its per-call callbacks, while the hook-level `onSuccess` fires for every dispatch** — so a stale-response guard written in per-call options silently does nothing, and a slow older PUT can still win the cache write through the hook-level handler. Guard the hook-level `onSuccess` with a generation counter bumped in `onMutate` (`client/src/lib/hooks/agents.ts:133-140`). In tests under `vi.useFakeTimers()`, flush TanStack's notify scheduling with `await act(async () => { await vi.advanceTimersByTimeAsync(0) })`; looping `await Promise.resolve()` does not. _(2026-09-28)_
 
 - **Under this repo's vitest + jsdom, `File.prototype.arrayBuffer` is missing, and `new Response(file).arrayBuffer()` "works" by stringifying the jsdom `File` to `"[object File]"` (cross-realm Blob, no error)** — a parser fed that looks like it got a corrupt upload. Read bytes with `file.arrayBuffer()` when present and fall back to `FileReader.readAsArrayBuffer`, which is same-realm and correct (`client/src/app/skills/_components/ImportSkillDrawer/helpers.ts:184-193`). Browsers always take the fast path; the fallback exists only for the test environment. _(2026-09-28)_
+
+- **`beforeEach(() => mock.mockReset())` makes vitest call the mock with no arguments as a cleanup hook** — the arrow returns the mock function, and vitest treats a function returned from `beforeEach` as teardown; use a block body `beforeEach(() => { mock.mockReset(); })`. Cost time in `client/src/lib/hooks/agents.test.tsx`; `client/src/lib/query-client.test.ts:27` has the same shape, harmlessly. vitest 3. _(2026-09-29)_
+
+- **next-intl `format.relativeTime(date)` without an explicit `now` logs `ENVIRONMENT_FALLBACK` in tests and client renders** — pass `format.relativeTime(date, new Date())` (or a `now` from `useNow`). Hit in the Conventions `ScanHeader` ("last scan X ago"), `client/src/app/repos/[repoId]/conventions/_components/ScanHeader/`. _(2026-09-29)_
 
 ## Recurring Errors & Fixes
 

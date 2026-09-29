@@ -1,5 +1,6 @@
 {
   "page": {
+    "metaTitle": "Conventions",
     "crumbLab": "Skills Lab",
     "crumbConventions": "Conventions",
     "headingPrefix": "Conventions in ",
@@ -8,8 +9,10 @@
     "scanning": "Scanning…",
     "rescan": "Re-scan",
     "runExtraction": "Run extraction",
+    "runAnalysis": "Run analysis",
     "extractionFailed": "Extraction failed",
     "loadError": "Could not load conventions.",
+    "retry": "Retry",
     "empty": {
       "title": "No conventions extracted yet",
       "body": "Scan the repo to surface house-rules — naming, error handling, structure — each backed by evidence you can turn into a Skill.",
@@ -17,10 +20,178 @@
     },
     "candidateCount": "{count, plural, one {# candidate} other {# candidates}} · grounded against sampled files"
   },
+  "header": {
+    "detected": "Detected from {count, plural, one {# sample file} other {# sample files}} · last scan {when}"
+  },
+  "stats": {
+    "label": "Scan statistics",
+    "found": "Found",
+    "verified": "Verified",
+    "dropped": "Dropped",
+    "relocated": "Relocated",
+    "model": "Model",
+    "tokens": "Tokens",
+    "tokensValue": "{input} in · {output} out",
+    "cost": "Cost",
+    "duration": "Duration",
+    "none": "—"
+  },
+  "states": {
+    "neverScanned": {
+      "title": "No analysis yet",
+      "body": "Scan the repo to surface house-rules — naming, error handling, structure — each backed by evidence you can turn into a Skill.",
+      "cta": "Run analysis"
+    },
+    "notIndexed": {
+      "title": "This repo is not indexed yet",
+      "body": "The scan reads a sample of files picked from the repo index. Index the repository first, then the scan can start.",
+      "cta": "Index repository",
+      "indexing": "Indexing…",
+      "errorTitle": "Could not start indexing.",
+      "errorFallback": "Try again in a moment.",
+      "notCloned": "Repository is not cloned yet — re-import it from Pull Requests"
+    },
+    "scanning": {
+      "title": "Scanning the repo…",
+      "body": "This takes up to a minute. The page updates when the scan finishes."
+    },
+    "failed": {
+      "title": "The last scan failed",
+      "fallback": "The scan stopped before it produced results.",
+      "olderNote": "Candidates from an earlier scan are still listed below."
+    },
+    "zeroVerified": {
+      "title": "No conventions passed verification",
+      "body": "{count, plural, =0 {The model proposed nothing it could back with code.} one {# candidate was dropped because its evidence was not found in the repo.} other {# candidates were dropped because their evidence was not found in the repo.}}"
+    },
+    "allRejected": {
+      "title": "Every candidate is rejected",
+      "body": "Nothing is left to review. Open the Rejected tab to bring one back, or re-scan."
+    },
+    "tabEmpty": {
+      "accepted": "Nothing accepted yet. Accept a candidate on the All tab and it lands here.",
+      "rejected": "No rejected candidates."
+    }
+  },
+  "extract": {
+    "errorTitle": "Could not start the scan"
+  },
+  "tabs": {
+    "label": "Candidate filter",
+    "countLabel": "{label}, {count, plural, one {# item} other {# items}}",
+    "all": "All",
+    "accepted": "Accepted",
+    "rejected": "Rejected"
+  },
+  "toolbar": {
+    "selectAll": "Select all",
+    "deselectAll": "Deselect all",
+    "selectedCount": "{selected} of {accepted} accepted selected",
+    "createSkill": "Create skill",
+    "createSkillHint": "Select accepted conventions on the Accepted tab first."
+  },
   "card": {
     "confidence": "Confidence",
     "accepted": "Accepted",
     "accepting": "Accepting…",
-    "acceptAsSkill": "Accept as Skill"
+    "acceptAsSkill": "Accept as Skill",
+    "accept": "Accept",
+    "reject": "Reject",
+    "rejected": "Rejected",
+    "edit": "Edit rule",
+    "editRule": "Rule",
+    "editCategory": "Category",
+    "save": "Save",
+    "cancel": "Cancel",
+    "ruleHint": "{count} / {max}",
+    "badges": {
+      "edited": "edited",
+      "inSkill": "in: {name}",
+      "notSeen": "not seen in latest scan",
+      "flagged": "{count, plural, one {flagged in # review} other {flagged in # reviews}}",
+      "cited": "{count, plural, one {# cited example} other {# cited examples}}"
+    },
+    "evidence": {
+      "copy": "Copy snippet from {location}",
+      "copied": "Copied",
+      "open": "Open {location} on GitHub"
+    },
+    "category": {
+      "naming": "naming",
+      "structure": "structure",
+      "error-handling": "error handling",
+      "async": "async",
+      "typing": "typing",
+      "testing": "testing",
+      "imports": "imports",
+      "api": "api",
+      "other": "other"
+    },
+    "rejectConfirm": {
+      "title": "Reject this convention?",
+      "body": "It is already part of a skill. Skills are snapshots, so the skill keeps this rule after you reject it. Edit the skill by hand to remove it.",
+      "usedIn": "Used in",
+      "confirm": "Reject anyway",
+      "cancel": "Keep it"
+    }
+  },
+  "modal": {
+    "title": "Create skill from conventions",
+    "banner": "Merged from <b>{count, plural, one {# accepted convention} other {# accepted conventions}}</b> in <repoTag>{repo}</repoTag>. Everything below is editable before you save.",
+    "name": "Name",
+    "nameHint": "Lowercase letters, digits and hyphens; 2 to 64 characters.",
+    "nameInvalid": "Use lowercase letters, digits and hyphens, 2 to 64 characters, starting with a letter or digit.",
+    "nameTaken": "A skill named \"{name}\" already exists. Pick another name.",
+    "description": "Description",
+    "descriptionDefault": "{count, plural, one {# house convention} other {# house conventions}} extracted from {repo}",
+    "type": "Type",
+    "enabled": "Enabled",
+    "enabledHint": "Whether this block is added to agents' prompts.",
+    "body": "Skill body",
+    "bodyTabs": "Body view",
+    "viewEdit": "Edit",
+    "viewRaw": "Raw",
+    "unsaved": "unsaved",
+    "tokens": "≈{count} tokens",
+    "rawCommentWarning": "This body contains HTML comments, hidden from the rendered view.",
+    "rawInvisibleWarning": "This body contains invisible or bidirectional characters, marked below.",
+    "attach": "Attach to agents",
+    "attachHint": "Up to {max} agents. The skill is linked to each in the same step.",
+    "attachPlaceholder": "Search agents…",
+    "attachAdd": "Add agent",
+    "attachRemove": "Remove {name}",
+    "attachNone": "No agents attached.",
+    "budget": {
+      "title": "Skills budget (24 KB per agent)",
+      "size": "This body: {size}",
+      "line": "{name}: {remaining} left",
+      "over": "{name}: over budget, {remaining} left",
+      "loading": "Reading the agents' current skills…",
+      "unknownRemaining": "Remaining budget of the selected agents is not available."
+    },
+    "errors": {
+      "budget": "Attaching would push {name} over its 24 KB skills budget. Shorten the body, disable the skill or detach that agent.",
+      "budgetUnknown": "One of the selected agents would exceed its 24 KB skills budget. Shorten the body or detach agents.",
+      "notAccepted": "One of the selected conventions is no longer accepted. Close this dialog and review the selection.",
+      "generic": "Could not create the skill."
+    },
+    "footerNote": "Saved as v1 · added to Skills Lab",
+    "cancel": "Cancel",
+    "create": "Create skill",
+    "creating": "Creating…",
+    "dirty": {
+      "title": "Discard this skill?",
+      "body": "You have edited this skill. Closing now throws the edits away.",
+      "confirm": "Discard",
+      "cancel": "Keep editing"
+    },
+    "success": {
+      "title": "Skill created",
+      "body": "\"{name}\" was saved as v1 and added to Skills Lab.",
+      "linked": "{count, plural, one {Linked to # agent.} other {Linked to # agents.}}",
+      "openSkill": "Open skill",
+      "openAgent": "Open {name} Skills tab",
+      "done": "Done"
+    }
   }
 }

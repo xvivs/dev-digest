@@ -245,16 +245,22 @@ export function Gallery() {
           </FormField>
         </div>
         <div style={s.w220}>
-          <FormField label="Model">
-            <SelectInput value={sel} onChange={setSel} options={[...MODEL_OPTIONS]} />
+          <FormField label="Model" htmlFor="showcase-model">
+            <SelectInput id="showcase-model" value={sel} onChange={setSel} options={[...MODEL_OPTIONS]} />
+          </FormField>
+        </div>
+        <div style={s.w220}>
+          <FormField label="Type (fixed)">
+            <SelectInput aria-label="Type (fixed)" value={sel} options={[...MODEL_OPTIONS]} disabled />
           </FormField>
         </div>
         <div style={s.w280}>
           <FormField label="Notes">
-            <Textarea value={text} onChange={setText} placeholder="Free text…" rows={3} />
+            <Textarea aria-label="Notes" value={text} onChange={setText} placeholder="Free text…" rows={3} />
           </FormField>
         </div>
         <Checkbox checked={check} onChange={setCheck} label="On new PR" />
+        <Checkbox checked={check} onChange={setCheck} aria-label="Select this row" />
       </Group>
 
       <Group title="Tabs / Dropdown / Overlays">
@@ -263,6 +269,7 @@ export function Gallery() {
             value={tab}
             onChange={setTab}
             pad="0"
+            ariaLabel="Showcase sections"
             tabs={[
               { key: "a", label: "Config", icon: "Settings" },
               { key: "b", label: "Skills", icon: "Sparkles", count: 3 },

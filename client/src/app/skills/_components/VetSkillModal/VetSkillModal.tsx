@@ -10,8 +10,8 @@ import React from "react";
 import { useTranslations } from "next-intl";
 import { Button, Modal } from "@devdigest/ui";
 import { useVetSkill, useUpdateSkill } from "@/lib/hooks";
-import { hasHtmlComment, splitInvisibleChars } from "../../helpers";
-import { InvisibleCharSegments } from "../InvisibleCharSegments";
+import { hasHtmlComment, splitInvisibleChars } from "@/lib/invisible-chars";
+import { InvisibleCharSegments } from "@/components/invisible-char-segments";
 import { s } from "./styles";
 
 export function VetSkillModal({

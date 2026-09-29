@@ -52,7 +52,7 @@ function renderEditor(agent: Agent) {
 describe("A2 Agent Editor", () => {
   it("renders the Config tab fields", () => {
     renderEditor(AGENT);
-    expect(screen.getByRole("button", { name: "Config" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Config" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Configuration" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Save agent" })).toBeInTheDocument();
   });
