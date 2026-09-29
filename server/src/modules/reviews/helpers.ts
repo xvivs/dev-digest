@@ -22,7 +22,6 @@ export interface ReviewDto {
   pr_id: string;
   agent_id: string | null;
   run_id: string | null;
-  agent_name?: string | null;
   kind: 'summary' | 'review';
   verdict: string | null;
   summary: string | null;
@@ -54,17 +53,12 @@ export function findingRowToDto(row: FindingRow): ReviewDtoFinding {
   };
 }
 
-export function reviewToDto(
-  review: ReviewRow,
-  findings: FindingRow[],
-  agentName?: string | null,
-): ReviewDto {
+export function reviewToDto(review: ReviewRow, findings: FindingRow[]): ReviewDto {
   return {
     id: review.id,
     pr_id: review.prId,
     agent_id: review.agentId,
     run_id: review.runId,
-    agent_name: agentName ?? null,
     kind: review.kind as 'summary' | 'review',
     verdict: review.verdict,
     summary: review.summary,

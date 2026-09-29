@@ -161,16 +161,7 @@ export class ReviewService {
     const pull = await this.repo.getPull(workspaceId, prId);
     if (!pull) throw new NotFoundError('Pull request not found');
     const rows = await this.repo.reviewsForPull(prId);
-    const names = new Map<string, string>();
-    for (const { review } of rows) {
-      if (review.agentId && !names.has(review.agentId)) {
-        const a = await this.agents.getById(workspaceId, review.agentId);
-        if (a) names.set(review.agentId, a.name);
-      }
-    }
-    return rows.map(({ review, findings }) =>
-      reviewToDto(review, findings, review.agentId ? names.get(review.agentId) : null),
-    );
+    return rows.map(({ review, findings }) => reviewToDto(review, findings));
   }
 
   async getRunTrace(runId: string): Promise<RunTrace | undefined> {
