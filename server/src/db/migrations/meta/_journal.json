@@ -127,6 +127,27 @@
       "when": 1790638786654,
       "tag": "0017_elite_rogue",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1790639982571,
+      "tag": "0018_eval_suites",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1790639992423,
+      "tag": "0019_eval_cases_skill_backfill",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1790640007083,
+      "tag": "0020_eval_cases_skill_fk",
+      "breakpoints": true
     }
   ]
 }
