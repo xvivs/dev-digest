@@ -32,6 +32,8 @@ lives in the engineering-insights skill).
 
 - **`find role link click --name X` fails with `✗ Element not found` on every link, even the plain sidebar "Settings" `<a>`, while `find role button --name` and `find text X click` work** — measured on agent-browser 0.27.0 against the isolated stack (port 3100): `find role link click --name "Settings"` and `--name "Performance Reviewer"` both failed, and `find text "Security Reviewer" click` navigated to `/agents/<id>?tab=config`. Open a link by its visible text (`find text`), not by role. Also: after a click that navigates to a not-yet-compiled `next dev` route, `get url` still shows the old page for a few seconds — use `wait --url` before asserting (`e2e/specs/09-disclosure-a11y.flow.json:9-10`: `find text … click` then `wait --url`). _(2026-09-28)_
 
+- **In the skill editor, a click fired right after `scrollintoview` is lost, `scroll up` does not move the editor pane, and `find role button focus --name Save` exits non-zero** — the editor scrolls in its own container, not the window. On agent-browser 0.27.0 `click "button[aria-label='Restore v1']"` printed `✓ Done` without opening the popup, and a second identical click opened it. Working pattern: `scrollintoview <css>`, then `wait 500`, then click. The tab bar has no role or label; `main div:has(> button:nth-child(5):last-child)` is the only anchor (`e2e/specs/11-skills.flow.json:34-35,45-47`). _(2026-09-29)_
+
 ## Recurring Errors & Fixes
 
 - **A flow fails on your dev DB with healthy code because the seed never repairs an existing repo — it inserts the demo repo only when it is missing** (`server/src/db/seed.ts:84`, `if (!repo)`). A database seeded before a fixture was widened keeps the old rows forever, and re-running `pnpm db:seed` does not touch them: live #482 carried 2 findings and `1/1 passed` grounding where `seed.ts` says 4 and `4/4`, so `wait --text "4 findings"` timed out against correct code. Symptom to pattern-match: a count assertion fails locally but the same flow passes under `./scripts/e2e.sh`, whose Postgres is ephemeral and therefore always matches `seed.ts`. Trust the hermetic run; do not "fix" the flow to match a stale database. _(2026-09-20)_
@@ -51,6 +53,9 @@ Renamed `e2e/CLAUDE.md` to `AGENTS.md` and added a one-line `@AGENTS.md` stub `C
 
 ### 2026-09-28 — e2e session (SPEC-02 Skills)
 Added read-only `11-skills.flow.json`. Ran all 11 flows against a hand-built isolated stack (fresh DB, API :3401, web :3400) because `./scripts/e2e.sh` dies on pnpm's IGNORED_BUILDS preflight here; 11/11 green. Starting that second `next dev` in the same `client/` broke the :3300 dev web (known root INSIGHTS entry), fixed by restarting it.
+
+### 2026-09-29 — e2e session (skill impact)
+Extended `11-skills.flow.json` with Versions (diff, Restore popup, Cancel), Stats (window switch) and Evals (paste-diff case, Quick estimate, no Start). `./scripts/e2e.sh` ran 11/11 twice; the pnpm IGNORED_BUILDS preflight from 2026-09-28 did not reproduce. For iterating, a copy of `e2e.sh` that keeps the stack alive, plus a small step runner, was much faster than a full hermetic boot on every try.
 
 ## Open Questions
 

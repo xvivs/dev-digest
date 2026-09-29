@@ -71,6 +71,8 @@ lives in the engineering-insights skill).
 
 - **Reading a run's trace right after `waitForPrRuns` races the executor: `agent_runs` turns terminal before `run_traces` is written, so under full-suite load `/runs/:id/trace` comes back empty (`Cannot read properties of undefined (reading 'skills_used')`)** — `completeAgentRun` runs before `saveRunTrace` in `src/modules/reviews/run-executor.ts`, and `test/helpers/runs.ts` polls status only. The test passed alone and failed 2 of 3 full runs. Fix: poll for the `run_traces` row (`waitForTrace`, `test/run-executor-skills.it.test.ts:113`); `run_skills` is written just before the trace, so the trace also implies those rows. _(2026-09-29)_
 
+- **An eval suite stuck at `running N-1/N` with one run still `running` and its `jobs` row `failed: Operation timed out after 360000ms` means the job timeout fired and nothing failed the run** — the handler owns run status, and before the fix a JobRunner timeout only freed the queue slot. The suite then stayed open until a reboot and blocked every new suite in the workspace through the one-running-suite index. Fix: the rejected `job.done` calls `EvalsService.timeOutJob`, which fails the run guarded on `status='running'` and counts it once (`server/src/modules/evals/wiring.ts:86`, `server/src/modules/evals/service.ts:364`). A tsx-watch restart also heals it, because boot recovery fails orphans. _(2026-09-29)_
+
 ## Session Notes
 
 ### 2026-09-19 — Cost Badge (server) session
@@ -103,6 +105,11 @@ Added `run_skills` (migration 0017, PK run_id+skill_id, index skill_id+run_id), 
 ### 2026-09-29 — server session (skill evals, Phase 3)
 Added the `evals` module: skill eval cases (paste or PR files, diff snapshotted), estimated suites with trust gate / price / job-cap / budget guards, single-use start, cancel, and the ablation runner on `container.evalJobs` (concurrency 2, retries 0, per-job timeout) with handler-owned run status, an atomic `done_jobs` close and boot recovery. Migrations 0018-0020 (column → `--custom` backfill → FK + CHECK). `GET /skills` `latest_verdict` and Stats `impact` are live. 41 files / 364 tests green. Left: nothing ran against the shared dev Postgres; the client decides how to show a server-chosen default carrier.
 
+### 2026-09-29 — server session (skill impact integration QA)
+Applied migrations 0015-0020 to the shared dev Postgres, after a pg_dump backup, and ran `db:backfill:run-skills` twice: 3 rows the first time, 0 the second. Drove Versions, Stats and Evals in a browser against the real API, including one real Quick suite on OpenRouter (about $0.0004). That run found the timeout gap that `e1c836b` fixes. Not checked live: the trust gate 409, because no imported skill exists in the dev DB (testcontainers still cover it).
+
 ## Open Questions
 
 - **Stale entry: "no `.dependency-cruiser.*` config and no arch-check script" (Codebase Patterns, 2026-09-28) is no longer true** — `server/.dependency-cruiser.cjs` and `pnpm arch:check` now exist (`docs/adr/0005-onion-layering-for-server-modules.md`); the runtime-library half (`src/adapters/depgraph/index.ts:17`) still holds. Prune or rewrite the entry during cleanup. _(2026-09-28)_
+
+- **Is the eval job timeout (5 min per chunk + 60 s) shorter than one OpenRouter review call can legally take?** — the adapter defaults to a 90 s request timeout with 2 SDK retries (`reviewer-core/src/llm/openrouter.ts:55-56`), and structured-output reprompts multiply that. `EVAL_CHUNK_TIMEOUT_MS` is 5 min (`server/src/modules/evals/domain.ts:65`). Live on deepseek/deepseek-v4-flash, the `with` arm of a one-case Quick suite ran more than 12 minutes. The run is now failed at the timeout, but the call is still billed and can land late. _(2026-09-29)_
