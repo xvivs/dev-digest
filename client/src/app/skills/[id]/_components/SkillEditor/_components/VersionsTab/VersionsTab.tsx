@@ -22,7 +22,7 @@ const VersionDiff = dynamic(() => import("./_components/VersionDiff").then((m) =
   loading: () => <Skeleton height={DIFF_SKELETON_HEIGHT} />,
 });
 
-export function VersionsTab({ skill, onEditVersion }: { skill: Skill; onEditVersion: (version: number) => void }) {
+export function VersionsTab({ skill }: { skill: Skill; onEditVersion: (version: number) => void }) {
   const t = useTranslations("skills");
   const versions = useSkillVersions(skill.id);
   const { refetch: refetchSkill } = useSkill(skill.id);
@@ -32,11 +32,6 @@ export function VersionsTab({ skill, onEditVersion }: { skill: Skill; onEditVers
   const reload = () => {
     void refetchSkill();
     void versions.refetch();
-  };
-
-  const edit = (version: number) => {
-    setRestoring(null);
-    onEditVersion(version);
   };
 
   return (
@@ -82,7 +77,6 @@ export function VersionsTab({ skill, onEditVersion }: { skill: Skill; onEditVers
         <RestoreVersionModal
           skill={skill}
           version={restoring}
-          onEdit={edit}
           onClose={() => setRestoring(null)}
           onReload={reload}
         />

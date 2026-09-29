@@ -3,10 +3,8 @@ import type { CSSProperties } from "react";
 /** Co-located styles for RestoreVersionModal. */
 export const s = {
   body: { display: "flex", flexDirection: "column", gap: 10, padding: 20 } satisfies CSSProperties,
-  options: { listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 8 } satisfies CSSProperties,
-  option: { display: "flex", alignItems: "center", gap: 12 } satisfies CSSProperties,
-  optionButton: { minWidth: 96 } satisfies CSSProperties,
-  hint: { fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.45 } satisfies CSSProperties,
+  text: { margin: 0, fontSize: 14, lineHeight: 1.5, color: "var(--text-secondary)" } satisfies CSSProperties,
+  footer: { display: "flex", justifyContent: "flex-end", gap: 8 } satisfies CSSProperties,
   warning: {
     fontSize: 13,
     lineHeight: 1.45,

@@ -1,10 +1,12 @@
-/* RestoreVersionModal — the Edit / Restore / Cancel popup (ADR 0016 decision 4).
- * - Edit hands vN to the Config tab as an unsaved draft; nothing is written.
+/* RestoreVersionModal: a confirmation dialog with one action, Restore (ADR 0016
+ * decision 4). The Edit path (open vN in Config as a draft) was removed from
+ * this modal; only Restore and Cancel remain.
  * - Restore calls the guarded endpoint and appends vN+1 at once.
  * - Cancel closes.
- * Focus trap, Escape and focus return come from `Modal` (ADR 0009). The
- * mutation owns its error surface (ADR 0011): a 409 reads "skill changed —
- * reload" with a Reload action, never a generic toast. */
+ * Focus trap, Escape and focus return come from `Modal` (ADR 0009). Restore
+ * takes initial focus via `autoFocus` plus a mount effect. The mutation owns
+ * its error surface (ADR 0011): a 409 reads "skill changed, reload" with a Reload action, never
+ * a generic toast. */
 "use client";
 
 import React from "react";
@@ -20,14 +22,11 @@ import { s } from "./styles";
 export function RestoreVersionModal({
   skill,
   version,
-  onEdit,
   onClose,
   onReload,
 }: {
   skill: Skill;
   version: number;
-  /** Open vN in Config as a draft. */
-  onEdit: (version: number) => void;
   onClose: () => void;
   /** Refetch the skill and its versions after a 409. */
   onReload: () => void;
@@ -37,7 +36,14 @@ export function RestoreVersionModal({
   const toast = useToast();
   const restore = useRestoreSkillVersion({ meta: { errorSurface: "local" } });
   const next = skill.version + 1;
-  const ids = { edit: React.useId(), restore: React.useId(), cancel: React.useId() };
+  const footerRef = React.useRef<HTMLDivElement>(null);
+  // `autoFocus` alone loses to StrictMode's dev-only effect replay: `Modal`'s
+  // cleanup hands focus back to the opener, and the replay then lands on the
+  // first focusable (the close button). This runs after Modal's effect, so
+  // Restore keeps focus in dev too.
+  React.useEffect(() => {
+    footerRef.current?.querySelector<HTMLButtonElement>("button[data-restore]")?.focus();
+  }, []);
 
   const onRestore = () =>
     restore.mutate(
@@ -65,45 +71,22 @@ export function RestoreVersionModal({
     <Modal
       width={RESTORE_MODAL_WIDTH}
       title={t("versions.restoreModal.title", { version })}
-      subtitle={t("versions.restoreModal.subtitle", { version })}
       closeLabel={tShell("ui.close")}
       onClose={onClose}
+      footer={
+        <div ref={footerRef} style={s.footer}>
+          <Button kind="ghost" onClick={onClose}>
+            {t("versions.restoreModal.cancel")}
+          </Button>
+          <Button kind="primary" icon="History" autoFocus data-restore="" onClick={onRestore} disabled={restore.isPending || stale}>
+            {restore.isPending ? t("versions.restoreModal.restoring") : t("versions.restoreModal.restore", { next })}
+          </Button>
+        </div>
+      }
     >
       <div style={s.body}>
+        <p style={s.text}>{t("versions.restoreModal.body", { version, next })}</p>
         {restoreResetsVetting(skill.source) && <div style={s.warning}>{t("versions.restoreModal.importedWarning")}</div>}
-        <ul style={s.options}>
-          <li style={s.option}>
-            <Button kind="secondary" icon="Edit" style={s.optionButton} aria-describedby={ids.edit} onClick={() => onEdit(version)}>
-              {t("versions.restoreModal.edit")}
-            </Button>
-            <span id={ids.edit} style={s.hint}>
-              {t("versions.restoreModal.editHint", { version })}
-            </span>
-          </li>
-          <li style={s.option}>
-            <Button
-              kind="primary"
-              icon="History"
-              style={s.optionButton}
-              aria-describedby={ids.restore}
-              onClick={onRestore}
-              disabled={restore.isPending || stale}
-            >
-              {restore.isPending ? t("versions.restoreModal.restoring") : t("versions.restoreModal.restore")}
-            </Button>
-            <span id={ids.restore} style={s.hint}>
-              {t("versions.restoreModal.restoreHint", { version, next })}
-            </span>
-          </li>
-          <li style={s.option}>
-            <Button kind="ghost" style={s.optionButton} aria-describedby={ids.cancel} onClick={onClose}>
-              {t("versions.restoreModal.cancel")}
-            </Button>
-            <span id={ids.cancel} style={s.hint}>
-              {t("versions.restoreModal.cancelHint")}
-            </span>
-          </li>
-        </ul>
         {restore.isError && (
           <div role="alert" style={s.error}>
             <span style={s.errorText}>
