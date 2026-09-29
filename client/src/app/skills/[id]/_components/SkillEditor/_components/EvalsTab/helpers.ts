@@ -60,3 +60,21 @@ export function caseIconState(result: Pick<EvalSuiteCaseResult, "outcome" | "wit
   if (result.outcome === "pending") return "pending";
   return result.with.total > 0 && result.with.passed === result.with.total ? "pass" : "fail";
 }
+
+export type PassingBadgeTone = "neutral" | "ok" | "warn" | "crit";
+
+/**
+ * The header's "P / T passing" badge. Nothing settled (total 0, e.g. the only
+ * case errored) has no ratio to colour, so it is neutral and reads "— passing".
+ * Otherwise: all passing ok, some failing warn, none passing crit.
+ */
+export function passingBadge(results: { passing: number; total: number; errored: number }): {
+  tone: PassingBadgeTone;
+  label: "none" | "ratio";
+  errored: number;
+} {
+  const { passing, total, errored } = results;
+  if (total === 0) return { tone: "neutral", label: "none", errored };
+  const tone = passing >= total ? "ok" : passing === 0 ? "crit" : "warn";
+  return { tone, label: "ratio", errored };
+}

@@ -262,6 +262,8 @@
       }
     },
     "passingBadge": "{passing} / {total} passing",
+    "passingBadgeNone": "— passing",
+    "passingBadgeErrored": "· {count} errored",
     "passingBadgeTitle": "Settled cases whose with-skill arm passed in every repeat, out of settled cases. Errored cases are not counted."
   },
   "drawer": {

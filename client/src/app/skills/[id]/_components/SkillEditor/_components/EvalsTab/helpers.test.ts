@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import type { EvalSuite, EvalSuiteCaseResult, EvalSuiteDetail, SkillEvalCase } from "@devdigest/shared";
 import {
   caseIconState,
+  passingBadge,
   mergeCaseResults,
   newerPartialSuite,
   runBlockedReason,
@@ -81,5 +82,23 @@ describe("per-case suites vs the whole-skill suite", () => {
     expect(merged.get("c1")?.outcome).toBe("caught");
     expect(merged.get("c2")?.outcome).toBe("caught");
     expect(mergeCaseResults(null, null).size).toBe(0);
+  });
+});
+
+describe("passingBadge", () => {
+  const r = (passing: number, total: number, errored = 0) => ({ passing, total, errored });
+
+  it("0 / 0 with nothing errored: neutral, no ratio", () => {
+    expect(passingBadge(r(0, 0))).toEqual({ tone: "neutral", label: "none", errored: 0 });
+  });
+
+  it("0 / 0 with errored cases: neutral and carries the errored count", () => {
+    expect(passingBadge(r(0, 0, 2))).toEqual({ tone: "neutral", label: "none", errored: 2 });
+  });
+
+  it("colours by ratio once something settled: all passing ok, some failing warn, none passing crit", () => {
+    expect(passingBadge(r(20, 20))).toMatchObject({ tone: "ok", label: "ratio" });
+    expect(passingBadge(r(17, 20))).toMatchObject({ tone: "warn", label: "ratio" });
+    expect(passingBadge(r(0, 4))).toMatchObject({ tone: "crit", label: "ratio" });
   });
 });

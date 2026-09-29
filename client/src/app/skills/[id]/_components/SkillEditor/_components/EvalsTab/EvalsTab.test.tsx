@@ -615,8 +615,41 @@ describe("EvalsTab — errored cases", () => {
     errored();
     renderTab();
     const summary = await screen.findByRole("region", { name: "Latest suite" });
-    expect(screen.getByText("0 / 0 passing")).toBeInTheDocument();
+    expect(screen.queryByText("0 / 0 passing")).not.toBeInTheDocument();
     expect(within(summary).getByText("1 errored")).toBeInTheDocument();
+  });
+
+  it("nothing settled: the badge is neutral '— passing · 1 errored', never a green 0 / 0", async () => {
+    errored();
+    renderTab();
+    const badge = await screen.findByText("— passing");
+    expect(badge).toHaveTextContent("— passing · 1 errored");
+    expect(badge.style.color).toBe("var(--text-secondary)");
+    expect(screen.getByText("· 1 errored").style.color).toBe("var(--warn)");
+  });
+
+  it("0 settled and 0 errored: neutral '— passing' with no errored part", async () => {
+    errored();
+    const quiet = { ...world.suites![0]!, results: { ...world.suites![0]!.results!, errored: 0 } };
+    world = { ...world, suites: [quiet], detail: { ...DETAIL, ...quiet, cases: [], runs: [] } };
+    renderTab();
+    const badge = await screen.findByText("— passing");
+    expect(badge.style.color).toBe("var(--text-secondary)");
+    expect(badge).not.toHaveTextContent("errored");
+  });
+
+  it("some failing: amber; all passing: green; none passing: red", async () => {
+    const look = async (passing: number, total: number) => {
+      world = { ...world, suites: [{ ...SUITE, results: { ...SUITE.results!, passing, total } }], detail: { ...DETAIL, results: { ...SUITE.results!, passing, total } } };
+      renderTab();
+      const el = await screen.findByText(`${passing} / ${total} passing`);
+      const color = el.style.color;
+      cleanup();
+      return color;
+    };
+    expect(await look(17, 20)).toBe("var(--warn)");
+    expect(await look(20, 20)).toBe("var(--ok)");
+    expect(await look(0, 4)).toBe("var(--crit)");
   });
 
   it("no errored chip on a clean suite", async () => {

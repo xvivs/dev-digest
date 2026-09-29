@@ -21,8 +21,8 @@ import { CaseList } from "./_components/CaseList";
 import { EvalCaseDrawer } from "./_components/EvalCaseDrawer";
 import { RunEvalModal } from "./_components/RunEvalModal";
 import { SuiteSummary } from "./_components/SuiteSummary";
-import { DELETE_MODAL_WIDTH, SKELETON_ROWS, SKELETON_ROW_HEIGHT } from "./constants";
-import { mergeCaseResults, newerPartialSuite, runBlockedReason, runnableCaseCount, runningSuite, wholeSkillSuite } from "./helpers";
+import { DELETE_MODAL_WIDTH, PASSING_BADGE_LOOK, SKELETON_ROWS, SKELETON_ROW_HEIGHT } from "./constants";
+import { mergeCaseResults, newerPartialSuite, passingBadge, runBlockedReason, runnableCaseCount, runningSuite, wholeSkillSuite } from "./helpers";
 import { s } from "./styles";
 
 /** Which case the editor is open on: a new one, an existing one, or closed. */
@@ -144,16 +144,7 @@ export function EvalsTab({
     <div ref={wrapRef} style={s.wrap}>
       <div style={s.header}>
         <h2 style={s.title}>{t("skillEvals.title")}</h2>
-        {wholeResults && (
-          <span title={t("skillEvals.passingBadgeTitle")}>
-            <Badge
-              color={wholeResults.passing < wholeResults.total ? "var(--warn)" : "var(--ok)"}
-              bg={wholeResults.passing < wholeResults.total ? "var(--warn-bg)" : "var(--ok-bg)"}
-            >
-              {t("skillEvals.passingBadge", { passing: wholeResults.passing, total: wholeResults.total })}
-            </Badge>
-          </span>
-        )}
+        {wholeResults && <PassingBadge results={wholeResults} />}
         <div style={s.actions}>
           <Button kind="secondary" size="sm" icon="Plus" onClick={() => setEditing({ kind: "new" })}>
             {t("skillEvals.newCase")}
@@ -273,5 +264,22 @@ export function EvalsTab({
         </Modal>
       )}
     </div>
+  );
+}
+
+/** "P / T passing", or "— passing · N errored" when nothing settled (no ratio to colour). */
+function PassingBadge({ results }: { results: { passing: number; total: number; errored: number } }) {
+  const t = useTranslations("eval");
+  const b = passingBadge(results);
+  const look = PASSING_BADGE_LOOK[b.tone];
+  return (
+    <span title={t("skillEvals.passingBadgeTitle")}>
+      <Badge color={look.color} bg={look.bg}>
+        {b.label === "none" ? t("skillEvals.passingBadgeNone") : t("skillEvals.passingBadge", { passing: results.passing, total: results.total })}
+        {b.label === "none" && b.errored > 0 && (
+          <span style={s.badgeErrored}> {t("skillEvals.passingBadgeErrored", { count: b.errored })}</span>
+        )}
+      </Badge>
+    </span>
   );
 }

@@ -1,5 +1,6 @@
 import type { IconName } from "@devdigest/ui";
 import type { EvalCaseOutcome } from "@devdigest/shared";
+import type { PassingBadgeTone } from "./helpers";
 
 /** Loading placeholder (px). */
 export const SKELETON_ROW_HEIGHT = 56;
@@ -32,3 +33,11 @@ export const CASE_ICON_LOOK: Readonly<Record<CaseIconState, { icon: IconName; co
 };
 
 export const CASE_ICON_SIZE = 15;
+
+/** Header "P / T passing" badge colours per tone. */
+export const PASSING_BADGE_LOOK: Readonly<Record<PassingBadgeTone, { color: string; bg: string }>> = {
+  neutral: { color: "var(--text-secondary)", bg: "var(--bg-hover)" },
+  ok: { color: "var(--ok)", bg: "var(--ok-bg)" },
+  warn: { color: "var(--warn)", bg: "var(--warn-bg)" },
+  crit: { color: "var(--crit)", bg: "var(--crit-bg)" },
+};
