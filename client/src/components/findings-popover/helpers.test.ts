@@ -77,8 +77,8 @@ function finding(o: Partial<FindingRecord>): FindingRecord {
     category: "bug",
     title: "Title",
     file: "src/a.ts",
-    start_line: 1,
-    end_line: 1,
+    line_start: 1,
+    line_end: 1,
     rationale: "because",
     suggestion: null,
     confidence: 0.9,
@@ -108,7 +108,7 @@ describe("sortBySeverity", () => {
 
 describe("lineLabel", () => {
   it("renders a single line as one number and a span as a range", () => {
-    expect(lineLabel({ start_line: 12, end_line: 12 })).toBe("12");
-    expect(lineLabel({ start_line: 12, end_line: 18 })).toBe("12-18");
+    expect(lineLabel({ line_start: 12, line_end: 12 })).toBe("12");
+    expect(lineLabel({ line_start: 12, line_end: 18 })).toBe("12-18");
   });
 });

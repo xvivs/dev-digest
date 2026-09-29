@@ -12,7 +12,9 @@ import { Intent, SmartDiff } from './brief.js';
  * state and the `review_id` it belongs to.
  */
 
-export const FindingRecord = Finding.extend({
+export const FindingRecord = Finding.omit({ start_line: true, end_line: true }).extend({
+  line_start: z.number().int(),
+  line_end: z.number().int(),
   review_id: z.string(),
   accepted_at: z.string().nullable(),
   dismissed_at: z.string().nullable(),

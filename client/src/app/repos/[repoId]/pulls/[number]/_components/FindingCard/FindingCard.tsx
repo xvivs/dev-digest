@@ -48,7 +48,7 @@ export function FindingCard({
   const sevColor = SEV[f.severity].c;
   const fileHref =
     repoFullName && headSha
-      ? githubBlobUrl(repoFullName, headSha, f.file, f.start_line, f.end_line)
+      ? githubBlobUrl(repoFullName, headSha, f.file, f.line_start, f.line_end)
       : undefined;
   const accepted = !!f.accepted_at;
   const dismissed = !!f.dismissed_at;

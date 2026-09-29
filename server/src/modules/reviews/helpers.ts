@@ -9,7 +9,9 @@ import type { FindingRow, PullRow, ReviewRow } from './repository.js';
 // shared with the CI runner); re-exported here for backward-compatible imports.
 export { reduceReviews, sliceDiff } from '@devdigest/reviewer-core';
 
-export interface ReviewDtoFinding extends Finding {
+export interface ReviewDtoFinding extends Omit<Finding, 'start_line' | 'end_line'> {
+  line_start: number;
+  line_end: number;
   review_id: string;
   accepted_at: string | null;
   dismissed_at: string | null;
@@ -38,8 +40,8 @@ export function findingRowToDto(row: FindingRow): ReviewDtoFinding {
     category: row.category as Finding['category'],
     title: row.title,
     file: row.file,
-    start_line: row.startLine,
-    end_line: row.endLine,
+    line_start: row.startLine,
+    line_end: row.endLine,
     rationale: row.rationale,
     suggestion: row.suggestion ?? null,
     confidence: row.confidence,

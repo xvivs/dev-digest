@@ -24,8 +24,8 @@ function finding(
   return {
     category: "security",
     file: "src/config.ts",
-    start_line: 11,
-    end_line: 11,
+    line_start: 11,
+    line_end: 11,
     rationale: "Because.",
     suggestion: null,
     confidence: 0.95,

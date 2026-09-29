@@ -64,6 +64,6 @@ export function sortBySeverity(findings: readonly FindingRecord[]): FindingRecor
 }
 
 /** `12` for a single-line finding, `12–18` for a span. */
-export function lineLabel(f: { start_line: number; end_line: number }): string {
-  return f.start_line === f.end_line ? String(f.start_line) : `${f.start_line}-${f.end_line}`;
+export function lineLabel(f: { line_start: number; line_end: number }): string {
+  return f.line_start === f.line_end ? String(f.line_start) : `${f.line_start}-${f.line_end}`;
 }
