@@ -1,6 +1,6 @@
 # Spec: Skill impact API (versions, stats, evals)
 
-**Status:** contracts landed, endpoints not built · **Branch:** `feat/skill-impact`
+**Status:** implemented (server + client) · **Branch:** `feat/skill-impact`
 
 This file is the handshake between the server and client work for Phases 1-3 of the
 skill-impact plan. Every request and response schema named here is exported from
