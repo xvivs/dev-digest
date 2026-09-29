@@ -77,6 +77,6 @@ export interface SkillStatsReader {
 
 /** The eval suite behind the Stats `impact` block (`container.evalsRepo`). */
 export interface SkillImpactReader {
-  /** Latest done Full suite of the skill, else its latest suite of any mode. */
+  /** Latest done Full suite of the skill, else its latest suite of any mode (per-case suites excluded). */
   findImpactSuite(workspaceId: string, skillId: string): Promise<EvalSuiteView | undefined>;
 }

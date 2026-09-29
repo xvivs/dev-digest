@@ -750,6 +750,231 @@ d('evals: cases, suites and the ablation runner (Testcontainers pg)', () => {
     });
   });
 
+  // ---------------------------------------------------------------- per-case suites + drawer
+
+  describe('per-case suites and the case detail (drawer)', () => {
+    let skill: { id: string; version: number; name: string };
+    let agent: { id: string; name: string };
+    let cases: { id: string; name: string }[];
+    let fullId: string;
+    let partialId: string;
+
+    const runSuite = async (mode: 'quick' | 'full', caseIds?: string[]) => {
+      await linkAgent(agent.id, skill.id);
+      const res = await app.inject({
+        method: 'POST',
+        url: `/skills/${skill.id}/eval-suites`,
+        payload: { mode, carrier_agent_id: agent.id, ...(caseIds ? { case_ids: caseIds } : {}) },
+      });
+      expect(res.statusCode).toBe(201);
+      const created = res.json();
+      expect((await app.inject({ method: 'POST', url: `/eval-suites/${created.id}/start` })).statusCode).toBe(200);
+      return { created, done: await waitSuite(app, created.id) };
+    };
+
+    beforeAll(async () => {
+      skill = await createSkill();
+      agent = await createAgent();
+      await addCases(skill.id, 5);
+      cases = (await app.inject({ method: 'GET', url: `/skills/${skill.id}/eval-cases` })).json();
+      fullId = (await runSuite('full')).done.id;
+    });
+
+    it('suite detail carries per-case summary fields derived from the runs', async () => {
+      const detail = (await app.inject({ method: 'GET', url: `/eval-suites/${fullId}` })).json();
+      expect(detail.case_ids).toBeNull();
+      expect(detail.partial).toBe(false);
+      for (const c of detail.cases) {
+        expect(c).toMatchObject({ expected_count: 1, matched_median: 1, unexpected_median: 0, is_clean: false });
+      }
+    });
+
+    it('per-case suite: only that case runs, the subset is stored, total_jobs reflects it', async () => {
+      const callsBefore = llm.calls;
+      const { created, done } = await runSuite('full', [cases[0]!.id]);
+      partialId = created.id;
+      expect(created).toMatchObject({ status: 'estimated', total_jobs: 6, case_ids: [cases[0]!.id], partial: true });
+      expect(done.status).toBe('done');
+      expect(llm.calls - callsBefore).toBe(6);
+      expect(done.cases.map((c: { case_id: string }) => c.case_id)).toEqual([cases[0]!.id]);
+      expect(done.runs).toHaveLength(6);
+      // 1 case can never produce a verdict, and a partial suite never does anyway
+      expect(done.results.verdict).toBe('indicative');
+      const listed = (await app.inject({ method: 'GET', url: `/skills/${skill.id}/eval-suites` })).json();
+      expect(listed.find((x: { id: string }) => x.id === partialId)).toMatchObject({ partial: true });
+    });
+
+    it('a case id that is not a runnable case of the skill is 422 eval_case_not_found; an empty list is a route 422', async () => {
+      const other = await createSkill();
+      await addCases(other.id, 1);
+      const [foreign] = (await app.inject({ method: 'GET', url: `/skills/${other.id}/eval-cases` })).json();
+      await linkAgent(agent.id, skill.id);
+      const suitesBefore = (await app.inject({ method: 'GET', url: `/skills/${skill.id}/eval-suites` })).json().length;
+      for (const ids of [[crypto.randomUUID()], [cases[0]!.id, foreign.id]]) {
+        const res = await app.inject({
+          method: 'POST',
+          url: `/skills/${skill.id}/eval-suites`,
+          payload: { mode: 'quick', carrier_agent_id: agent.id, case_ids: ids },
+        });
+        expect(res.statusCode).toBe(422);
+        expect(res.json().error.code).toBe('eval_case_not_found');
+      }
+      const empty = await app.inject({
+        method: 'POST',
+        url: `/skills/${skill.id}/eval-suites`,
+        payload: { mode: 'quick', carrier_agent_id: agent.id, case_ids: [] },
+      });
+      expect(empty.statusCode).toBe(422);
+      expect(empty.json().error.code).toBe('validation_error');
+      const suitesAfter = (await app.inject({ method: 'GET', url: `/skills/${skill.id}/eval-suites` })).json().length;
+      expect(suitesAfter).toBe(suitesBefore);
+    });
+
+    it('a finished partial suite is never the Impact or latest verdict source', async () => {
+      const list = (await app.inject({ method: 'GET', url: '/skills' })).json();
+      expect(list.find((x: { id: string }) => x.id === skill.id).latest_verdict).toEqual({
+        verdict: 'helps',
+        carrier_name: agent.name,
+        stale: false,
+      });
+      const stats = (await app.inject({ method: 'GET', url: `/skills/${skill.id}/stats` })).json();
+      expect(stats.impact.suite.id).toBe(fullId);
+      expect(stats.impact.verdict).toBe('helps');
+    });
+
+    it('a skill that only ever ran per-case suites has no latest verdict and no impact block', async () => {
+      const lone = await createSkill();
+      await addCases(lone.id, 1);
+      const [c] = (await app.inject({ method: 'GET', url: `/skills/${lone.id}/eval-cases` })).json();
+      await linkAgent(agent.id, lone.id);
+      const created = (
+        await app.inject({
+          method: 'POST',
+          url: `/skills/${lone.id}/eval-suites`,
+          payload: { mode: 'quick', carrier_agent_id: agent.id, case_ids: [c.id] },
+        })
+      ).json();
+      await app.inject({ method: 'POST', url: `/eval-suites/${created.id}/start` });
+      expect((await waitSuite(app, created.id)).status).toBe('done');
+      const list = (await app.inject({ method: 'GET', url: '/skills' })).json();
+      expect(list.find((x: { id: string }) => x.id === lone.id).latest_verdict).toBeNull();
+      const stats = (await app.inject({ method: 'GET', url: `/skills/${lone.id}/stats` })).json();
+      expect(stats.impact).toBeNull();
+    });
+
+    describe('GET /eval-cases/:id', () => {
+      it('defaults to the latest started suite containing the case and details both arms', async () => {
+        const res = await app.inject({ method: 'GET', url: `/eval-cases/${cases[0]!.id}` });
+        expect(res.statusCode).toBe(200);
+        const d = res.json();
+        expect(d.case).toMatchObject({
+          id: cases[0]!.id,
+          skill_id: skill.id,
+          name: cases[0]!.name,
+          input_source: { kind: 'paste' },
+          input_diff_preview: DIFF,
+          input_diff_chars: DIFF.length,
+          input_diff_truncated: false,
+        });
+        expect(d.case.expectation.must_find).toHaveLength(1);
+        expect(d.suite).toMatchObject({ id: partialId, mode: 'full', status: 'done', carrier_name: agent.name, partial: true, stale: false });
+        expect(d.outcome).toBe('caught');
+        expect(d.expectation_changed).toBe(false);
+        expect(d.arms.with).toMatchObject({ passed: 3, total: 3, matched_median: 1, unexpected_median: 0 });
+        expect(d.arms.with.runs.map((r: { repeat_idx: number }) => r.repeat_idx)).toEqual([0, 1, 2]);
+        expect(d.arms.with.runs[0]).toMatchObject({
+          status: 'done',
+          pass: true,
+          matched_must_find: [0],
+          missed_must_find: [],
+          unexpected: 0,
+          unexpected_findings: [],
+          cost_usd: 0.002,
+          cost_source: 'estimated',
+          error: null,
+        });
+        expect(d.arms.with.runs[0].duration_ms).toBeGreaterThanOrEqual(0);
+        expect(d.arms.without).toMatchObject({ passed: 0, total: 3 });
+        expect(d.arms.without.runs[0]).toMatchObject({ pass: false, matched_must_find: [], missed_must_find: [0] });
+        expect(d.history.map((h: { suite_id: string }) => h.suite_id)).toEqual([partialId, fullId]);
+        expect(d.history[0]).toMatchObject({ mode: 'full', outcome: 'caught', skill_version: skill.version, stale: false, partial: true });
+        expect(d.history[1]).toMatchObject({ outcome: 'caught', partial: false });
+      });
+
+      it('suite_id picks another suite; a case outside the partial suite falls back to the full one', async () => {
+        const picked = (await app.inject({ method: 'GET', url: `/eval-cases/${cases[0]!.id}?suite_id=${fullId}` })).json();
+        expect(picked.suite.id).toBe(fullId);
+        const other = (await app.inject({ method: 'GET', url: `/eval-cases/${cases[1]!.id}` })).json();
+        expect(other.suite.id).toBe(fullId);
+        expect(other.history).toHaveLength(1);
+      });
+
+      it('a case that never ran: no suite, empty arms, no outcome', async () => {
+        await addCases(skill.id, 1);
+        const all = (await app.inject({ method: 'GET', url: `/skills/${skill.id}/eval-cases` })).json();
+        const fresh = all[all.length - 1];
+        const d = (await app.inject({ method: 'GET', url: `/eval-cases/${fresh.id}` })).json();
+        expect(d.suite).toBeNull();
+        expect(d.outcome).toBeNull();
+        expect(d.history).toEqual([]);
+        expect(d.arms.with.runs).toEqual([]);
+        expect(d.arms.without.runs).toEqual([]);
+        await app.inject({ method: 'DELETE', url: `/eval-cases/${fresh.id}` });
+      });
+
+      it('lists the findings that matched no must_find and truncates a long diff preview', async () => {
+        const skill2 = await createSkill();
+        await addCases(skill2.id, 1);
+        const [c] = (await app.inject({ method: 'GET', url: `/skills/${skill2.id}/eval-cases` })).json();
+        // Run once so a with-arm output exists, then rewrite what was stored to plant a stray finding.
+        const agent2 = await createAgent();
+        await linkAgent(agent2.id, skill2.id);
+        const created = (await createSuite(app, skill2.id, agent2.id, 'quick')).json();
+        await app.inject({ method: 'POST', url: `/eval-suites/${created.id}/start` });
+        await waitSuite(app, created.id);
+        const stray = {
+          id: 'x', severity: 'CRITICAL', category: 'bug', title: 'Stray finding', file: 'src/other.ts',
+          start_line: 7, end_line: 7, rationale: 'r', confidence: 0.5,
+        };
+        await pg.handle.db
+          .update(t.evalRuns)
+          .set({ unexpected: 1, actualOutput: { findings: [stray], grounding: '1/1 passed' } })
+          .where(and(eq(t.evalRuns.suiteId, created.id), eq(t.evalRuns.arm, 'with')));
+        await pg.handle.db
+          .update(t.evalCases)
+          .set({ inputDiff: 'x'.repeat(5000), updatedAt: new Date(Date.now() + 60_000) })
+          .where(eq(t.evalCases.id, c.id));
+        const d = (await app.inject({ method: 'GET', url: `/eval-cases/${c.id}` })).json();
+        expect(d.arms.with.runs[0]).toMatchObject({
+          unexpected: 1,
+          matched_must_find: [],
+          missed_must_find: [0],
+          unexpected_findings: [{ file: 'src/other.ts', line: 7, severity: 'CRITICAL', category: 'bug', title: 'Stray finding' }],
+        });
+        expect(d.case).toMatchObject({ input_diff_chars: 5000, input_diff_truncated: true });
+        expect(d.case.input_diff_preview).toHaveLength(4000);
+        // editing the case after the run is surfaced
+        expect(d.expectation_changed).toBe(true);
+      });
+
+      it('404 for an unknown case, a case of another workspace, an unknown suite, or a suite without the case; 422 for a bad suite_id', async () => {
+        expect((await app.inject({ method: 'GET', url: `/eval-cases/${crypto.randomUUID()}` })).statusCode).toBe(404);
+        expect(
+          (await app.inject({ method: 'GET', url: `/eval-cases/${cases[0]!.id}?suite_id=${crypto.randomUUID()}` })).statusCode,
+        ).toBe(404);
+        expect((await app.inject({ method: 'GET', url: `/eval-cases/${cases[1]!.id}?suite_id=${partialId}` })).statusCode).toBe(404);
+        expect((await app.inject({ method: 'GET', url: `/eval-cases/${cases[0]!.id}?suite_id=x` })).statusCode).toBe(422);
+
+        await addCases(skill.id, 1);
+        const all = (await app.inject({ method: 'GET', url: `/skills/${skill.id}/eval-cases` })).json();
+        const doomed = all[all.length - 1];
+        const [otherWs] = await pg.handle.db.insert(t.workspaces).values({ name: `other-${uniq()}` }).returning();
+        await pg.handle.db.update(t.evalCases).set({ workspaceId: otherWs!.id }).where(eq(t.evalCases.id, doomed.id));
+        expect((await app.inject({ method: 'GET', url: `/eval-cases/${doomed.id}` })).statusCode).toBe(404);
+      });
+    });
+  });
+
   // ---------------------------------------------------------------- boot recovery
 
   it('boot recovery: an orphaned running run fails, queued runs re-run, the suite closes exactly once', async () => {

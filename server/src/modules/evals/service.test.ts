@@ -148,6 +148,22 @@ class InMemoryEvalStore implements EvalStore {
   async listRuns(suiteId: string) {
     return [...this.runs.values()].filter((r) => r.suiteId === suiteId);
   }
+  async listCaseRuns(suiteId: string, caseId: string) {
+    return [...this.runs.values()]
+      .filter((r) => r.suiteId === suiteId && r.caseId === caseId)
+      .map((r) => ({ ...r, actualOutput: (r as { actualOutput?: unknown }).actualOutput ?? null }));
+  }
+  async caseSuites(ws: string, caseId: string, limit: number) {
+    return [...this.suites.values()]
+      .filter((s) => s.workspaceId === ws && s.status !== 'estimated')
+      .filter((s) => [...this.runs.values()].some((r) => r.suiteId === s.id && r.caseId === caseId))
+      .reverse()
+      .slice(0, limit)
+      .map((s) => ({
+        suite: this.view(s),
+        runs: [...this.runs.values()].filter((r) => r.suiteId === s.id && r.caseId === caseId),
+      }));
+  }
   async suiteCases(suiteId: string) {
     const ids = new Set((await this.listRuns(suiteId)).map((r) => r.caseId));
     return [...ids].map((id) => ({ id, name: this.cases.get(id)?.name ?? id }));
@@ -171,7 +187,7 @@ class InMemoryEvalStore implements EvalStore {
     const s = this.suites.get(suiteId);
     if (!s) return undefined;
     s.doneJobs++;
-    return { doneJobs: s.doneJobs, totalJobs: s.totalJobs, status: s.status, mode: s.mode, repeats: s.repeats };
+    return { doneJobs: s.doneJobs, totalJobs: s.totalJobs, status: s.status, mode: s.mode, repeats: s.repeats, partial: s.caseIds !== null };
   }
   async closeSuite(suiteId: string, patch: Parameters<EvalStore['closeSuite']>[1]) {
     const s = this.suites.get(suiteId);
@@ -196,7 +212,7 @@ class InMemoryEvalStore implements EvalStore {
         const runs = [...this.runs.values()].filter((r) => r.suiteId === s.id);
         s.doneJobs = runs.filter((r) => r.status === 'done' || r.status === 'failed').length;
         s.totalJobs = runs.length;
-        return { suiteId: s.id, doneJobs: s.doneJobs, totalJobs: s.totalJobs, status: s.status, mode: s.mode, repeats: s.repeats };
+        return { suiteId: s.id, doneJobs: s.doneJobs, totalJobs: s.totalJobs, status: s.status, mode: s.mode, repeats: s.repeats, partial: s.caseIds !== null };
       });
   }
   async queuedRunsOfRunningSuites() {
@@ -388,6 +404,111 @@ describe('EvalsService.createSuite', () => {
 
   it('undefined for a skill outside the workspace', async () => {
     expect(await env.service.createSuite('other', 'sk', { carrierAgentId: 'ag', mode: 'quick' })).toBeUndefined();
+  });
+});
+
+describe('EvalsService.createSuite with case_ids (per-case run)', () => {
+  let env: ReturnType<typeof setup>;
+  beforeEach(() => {
+    env = setup();
+  });
+
+  it('runs only the chosen cases: total_jobs, runs and estimate reflect the subset; the subset is stored', async () => {
+    const full = await env.service.createSuite(WS, 'sk', { carrierAgentId: 'ag', mode: 'full' });
+    const one = await env.service.createSuite(WS, 'sk', { carrierAgentId: 'ag', mode: 'full', caseIds: ['c2'] });
+    expect(full).toMatchObject({ totalJobs: 12, caseIds: null });
+    expect(one).toMatchObject({ totalJobs: 6, caseIds: ['c2'] });
+    expect(one!.estimateUsd).toBeCloseTo(full!.estimateUsd / 2, 10);
+    const runs = await env.store.listRuns(one!.id);
+    expect(new Set(runs.map((r) => r.caseId))).toEqual(new Set(['c2']));
+  });
+
+  it('a case id that is not a runnable case of the skill is 422 eval_case_not_found and stores nothing', async () => {
+    await expect(
+      env.service.createSuite(WS, 'sk', { carrierAgentId: 'ag', mode: 'quick', caseIds: ['c1', 'ghost'] }),
+    ).rejects.toMatchObject({ code: 'eval_case_not_found', statusCode: 422, details: { case_ids: ['ghost'] } });
+    // a case of another skill and a legacy (unparseable) case are not runnable either
+    env.store.cases.set('foreign', { ...env.store.cases.get('c1')!, id: 'foreign', skillId: 'other-skill' });
+    env.store.cases.set('legacy', { ...env.store.cases.get('c1')!, id: 'legacy', expectation: null });
+    await expect(
+      env.service.createSuite(WS, 'sk', { carrierAgentId: 'ag', mode: 'quick', caseIds: ['foreign', 'legacy'] }),
+    ).rejects.toMatchObject({ code: 'eval_case_not_found' });
+    expect(env.store.inserts).toBe(0);
+  });
+
+  it('duplicate ids collapse to one case; the gates (trust, budget) still apply', async () => {
+    const dup = await env.service.createSuite(WS, 'sk', { carrierAgentId: 'ag', mode: 'quick', caseIds: ['c1', 'c1'] });
+    expect(dup).toMatchObject({ totalJobs: 2, caseIds: ['c1'] });
+    env.deps.maxBudgetUsd = 0;
+    await expect(
+      env.service.createSuite(WS, 'sk', { carrierAgentId: 'ag', mode: 'quick', caseIds: ['c1'] }),
+    ).rejects.toMatchObject({ code: 'eval_budget_exceeded' });
+  });
+
+  it('a partial suite closes with an indicative verdict and reads back as partial', async () => {
+    const suite = await env.service.createSuite(WS, 'sk', { carrierAgentId: 'ag', mode: 'quick', caseIds: ['c1'] });
+    await env.service.startSuite(WS, suite!.id);
+    await env.drain();
+    const detail = await env.service.getSuiteDetail(WS, suite!.id);
+    expect(detail!.suite).toMatchObject({ status: 'done', caseIds: ['c1'] });
+    expect(detail!.suite.results?.verdict).toBe('indicative');
+    expect(detail!.cases).toHaveLength(1);
+  });
+});
+
+describe('EvalsService.getCaseDetail', () => {
+  let env: ReturnType<typeof setup>;
+  beforeEach(() => {
+    env = setup();
+  });
+
+  async function runQuick(caseIds?: string[]) {
+    const suite = await env.service.createSuite(WS, 'sk', { carrierAgentId: 'ag', mode: 'quick', ...(caseIds ? { caseIds } : {}) });
+    await env.service.startSuite(WS, suite!.id);
+    await env.drain();
+    return suite!.id;
+  }
+
+  it('undefined for an unknown case or a case of another workspace', async () => {
+    expect(await env.service.getCaseDetail(WS, 'nope', {})).toBeUndefined();
+    expect(await env.service.getCaseDetail('other', 'c1', {})).toBeUndefined();
+  });
+
+  it('a case that never ran: suite null, empty arms, no outcome, empty history', async () => {
+    const d = await env.service.getCaseDetail(WS, 'c1', {});
+    expect(d).toMatchObject({ suite: null, outcome: null, history: [], expectationChanged: false });
+    expect(d!.arms.with.runs).toEqual([]);
+    expect(d!.arms.without.runs).toEqual([]);
+  });
+
+  it('defaults to the latest started suite containing the case, with per-arm runs and history', async () => {
+    const first = await runQuick();
+    const second = await runQuick(['c1']);
+    const d = await env.service.getCaseDetail(WS, 'c1', {});
+    expect(d!.suite?.id).toBe(second);
+    expect(d!.outcome).toBe('caught');
+    expect(d!.arms.with.runs[0]).toMatchObject({ status: 'done', pass: true, matched_must_find: [0], missed_must_find: [] });
+    expect(d!.arms.without.runs[0]).toMatchObject({ pass: false, matched_must_find: [], missed_must_find: [0] });
+    expect(d!.history.map((h) => h.suite.id)).toEqual([second, first]);
+    expect(d!.history.map((h) => h.outcome)).toEqual(['caught', 'caught']);
+    // a case only ever run in the first (full) suite must not see the second
+    const c2 = await env.service.getCaseDetail(WS, 'c2', {});
+    expect(c2!.suite?.id).toBe(first);
+  });
+
+  it('an explicit suite id picks that suite; a suite that does not contain the case is refused', async () => {
+    const first = await runQuick();
+    const second = await runQuick(['c1']);
+    const d = await env.service.getCaseDetail(WS, 'c1', { suiteId: first });
+    expect(d!.suite?.id).toBe(first);
+    await expect(env.service.getCaseDetail(WS, 'c2', { suiteId: second })).rejects.toMatchObject({ statusCode: 404 });
+    await expect(env.service.getCaseDetail(WS, 'c1', { suiteId: 'ghost' })).rejects.toMatchObject({ statusCode: 404 });
+  });
+
+  it('flags a case edited after the suite started', async () => {
+    await runQuick();
+    env.store.cases.get('c1')!.updatedAt = new Date(Date.now() + 60_000);
+    expect((await env.service.getCaseDetail(WS, 'c1', {}))!.expectationChanged).toBe(true);
   });
 });
 

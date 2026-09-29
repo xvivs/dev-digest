@@ -8,7 +8,7 @@
  * module import; see `modules-no-cross-import` in `.dependency-cruiser.cjs`).
  */
 import { createHash } from 'node:crypto';
-import { and, asc, count, desc, eq, ilike, inArray, or, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, ilike, inArray, isNull, or, sql } from 'drizzle-orm';
 import type { Db } from '../../db/client.js';
 import * as t from '../../db/schema.js';
 import {
@@ -173,6 +173,8 @@ export class SkillsRepository implements SkillStore, SkillStatsReader {
           eq(t.evalSuites.workspaceId, workspaceId),
           eq(t.evalSuites.mode, 'full'),
           eq(t.evalSuites.status, 'done'),
+          // A per-case suite lacks the full case set: never a verdict source (ADR 0017).
+          isNull(t.evalSuites.caseIds),
         ),
       )
       .orderBy(t.evalSuites.skillId, desc(t.evalSuites.finishedAt), desc(t.evalSuites.createdAt))

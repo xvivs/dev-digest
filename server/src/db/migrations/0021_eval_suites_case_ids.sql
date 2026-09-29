@@ -1,0 +1,1 @@
+ALTER TABLE "eval_suites" ADD COLUMN "case_ids" uuid[];

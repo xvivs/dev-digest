@@ -322,6 +322,9 @@ export const EVAL_REPEATS: Readonly<Record<EvalSuiteMode, number>> = { quick: 1,
 /** Server cap: `cases × 2 arms × repeats` per suite (Full on 25 cases). */
 export const EVAL_MAX_JOBS_PER_SUITE = 150;
 
+/** Upper bound of `CreateEvalSuiteBody.case_ids`; the job cap still applies on top. */
+export const EVAL_CASE_IDS_MAX = 50;
+
 export const EvalSuiteStatus = z.enum(['estimated', 'running', 'done', 'failed', 'cancelled']);
 export type EvalSuiteStatus = z.infer<typeof EvalSuiteStatus>;
 
@@ -384,6 +387,17 @@ export const EvalSuite = z.object({
   stale: z.boolean(),
   results: EvalSuiteResults.nullable(),
   error: z.string().nullable(),
+  /**
+   * Subset of cases this suite covers (a per-case run); null = the skill's whole
+   * runnable case set. Optional in the schema only so older payloads still parse.
+   */
+  case_ids: z.array(z.string()).nullable().optional(),
+  /**
+   * True when `case_ids` is set. A partial suite is never the Impact / latest
+   * verdict source and its own verdict is always `indicative` (ADR 0017: a
+   * verdict needs the full case set).
+   */
+  partial: z.boolean().optional(),
   created_at: z.string(),
   started_at: z.string().nullable(),
   finished_at: z.string().nullable(),
@@ -411,6 +425,11 @@ export const CreateEvalSuiteBody = z
     /** Must link the skill with an enabled link, else 422 `eval_carrier_not_linked`. */
     carrier_agent_id: z.string().uuid(),
     mode: EvalSuiteMode,
+    /**
+     * Run only these cases (a per-case run). Each must be a runnable case of the
+     * skill, else 422 `eval_case_not_found`. Omitted = every runnable case.
+     */
+    case_ids: z.array(z.string().uuid()).min(1).max(EVAL_CASE_IDS_MAX).optional(),
   })
   .strict();
 export type CreateEvalSuiteBody = z.infer<typeof CreateEvalSuiteBody>;
@@ -467,12 +486,25 @@ export const EvalArmTally = z.object({
 });
 export type EvalArmTally = z.infer<typeof EvalArmTally>;
 
+/**
+ * The four summary fields are derived from the runs (`expected` / `matched` /
+ * `unexpected` on `eval_runs`), never stored. They are null until a `with`-arm
+ * repeat is done. Optional in the schema only so older payloads still parse.
+ */
 export const EvalSuiteCaseResult = z.object({
   case_id: z.string(),
   case_name: z.string(),
   with: EvalArmTally,
   without: EvalArmTally,
   outcome: EvalCaseOutcome,
+  /** must_find entries the case expects (0 = clean case). */
+  expected_count: z.number().int().nonnegative().nullable().optional(),
+  /** Median over the `with` arm's done repeats of matched must_find entries. */
+  matched_median: z.number().nonnegative().nullable().optional(),
+  /** Median over the `with` arm's done repeats of findings that matched no must_find. */
+  unexpected_median: z.number().nonnegative().nullable().optional(),
+  /** Clean case: expects no findings (`expected_count === 0`). */
+  is_clean: z.boolean().nullable().optional(),
 });
 export type EvalSuiteCaseResult = z.infer<typeof EvalSuiteCaseResult>;
 
@@ -482,6 +514,118 @@ export const EvalSuiteDetail = EvalSuite.extend({
   runs: z.array(EvalSuiteRun),
 });
 export type EvalSuiteDetail = z.infer<typeof EvalSuiteDetail>;
+
+// ---- Case detail (the eval drawer) ----
+
+/** Findings listed per run in the case detail; `unexpected` on the run keeps the true count. */
+export const EVAL_CASE_UNEXPECTED_FINDINGS_MAX = 20;
+/** Characters of the case diff sent in the detail; the full diff stays on `SkillEvalCase`. */
+export const EVAL_CASE_DIFF_PREVIEW_MAX = 4000;
+/** Suites listed in the detail's per-case history. */
+export const EVAL_CASE_HISTORY_MAX = 10;
+
+/** `GET /eval-cases/:id?suite_id=` — omitted suite = the latest started suite containing the case. */
+export const EvalCaseDetailQuery = z.object({
+  suite_id: z.string().uuid().optional(),
+});
+export type EvalCaseDetailQuery = z.infer<typeof EvalCaseDetailQuery>;
+
+/** A finding the review produced that matched no must_find entry. */
+export const EvalCaseUnexpectedFinding = z.object({
+  file: z.string(),
+  line: z.number().int().nonnegative(),
+  severity: Severity,
+  category: FindingCategory,
+  title: z.string(),
+});
+export type EvalCaseUnexpectedFinding = z.infer<typeof EvalCaseUnexpectedFinding>;
+
+/**
+ * One job of the case in the chosen suite. `matched_must_find` / `missed_must_find`
+ * are indexes into `case.expectation.must_find`, computed with the same matcher
+ * that scored the run; both are empty until the run is done.
+ */
+export const EvalCaseRunDetail = z.object({
+  repeat_idx: z.number().int().nonnegative(),
+  status: EvalRunStatus,
+  pass: z.boolean().nullable(),
+  matched_must_find: z.array(z.number().int().nonnegative()),
+  missed_must_find: z.array(z.number().int().nonnegative()),
+  /** Stored count of findings matching no must_find (can exceed `unexpected_findings.length`). */
+  unexpected: z.number().int().nonnegative().nullable(),
+  /** At most `EVAL_CASE_UNEXPECTED_FINDINGS_MAX`. */
+  unexpected_findings: z.array(EvalCaseUnexpectedFinding),
+  duration_ms: z.number().int().nonnegative().nullable(),
+  cost_usd: z.number().nonnegative().nullable(),
+  cost_source: CostSource.nullable(),
+  error: z.string().nullable(),
+});
+export type EvalCaseRunDetail = z.infer<typeof EvalCaseRunDetail>;
+
+export const EvalCaseArmDetail = EvalArmTally.extend({
+  matched_median: z.number().nonnegative().nullable(),
+  unexpected_median: z.number().nonnegative().nullable(),
+  runs: z.array(EvalCaseRunDetail),
+});
+export type EvalCaseArmDetail = z.infer<typeof EvalCaseArmDetail>;
+
+export const EvalCaseDetailCase = z.object({
+  id: z.string(),
+  skill_id: z.string().nullable(),
+  name: z.string(),
+  notes: z.string().nullable(),
+  expectation: EvalExpectation.nullable(),
+  input_source: EvalCaseSourceMeta.nullable(),
+  input_files: z.array(z.string()),
+  /** First `EVAL_CASE_DIFF_PREVIEW_MAX` characters of the diff. */
+  input_diff_preview: z.string(),
+  input_diff_chars: z.number().int().nonnegative(),
+  input_diff_truncated: z.boolean(),
+  created_at: z.string(),
+  updated_at: z.string(),
+});
+export type EvalCaseDetailCase = z.infer<typeof EvalCaseDetailCase>;
+
+export const EvalCaseDetailSuite = z.object({
+  id: z.string(),
+  mode: EvalSuiteMode,
+  status: EvalSuiteStatus,
+  carrier_name: z.string().nullable(),
+  skill_version: z.number().int().positive(),
+  repeats: z.number().int().positive(),
+  stale: z.boolean(),
+  partial: z.boolean(),
+  created_at: z.string(),
+});
+export type EvalCaseDetailSuite = z.infer<typeof EvalCaseDetailSuite>;
+
+export const EvalCaseHistoryItem = z.object({
+  suite_id: z.string(),
+  created_at: z.string(),
+  mode: EvalSuiteMode,
+  outcome: EvalCaseOutcome,
+  skill_version: z.number().int().positive(),
+  stale: z.boolean(),
+  partial: z.boolean(),
+});
+export type EvalCaseHistoryItem = z.infer<typeof EvalCaseHistoryItem>;
+
+/**
+ * `GET /eval-cases/:id` — everything the eval drawer shows. `suite` is null
+ * (and both arms empty, `outcome` null) for a case that never ran.
+ * `expectation_changed` is true when the case was edited after the suite
+ * started, so the matched/missed indexes may no longer line up.
+ */
+export const EvalCaseDetail = z.object({
+  case: EvalCaseDetailCase,
+  suite: EvalCaseDetailSuite.nullable(),
+  arms: z.object({ with: EvalCaseArmDetail, without: EvalCaseArmDetail }),
+  outcome: EvalCaseOutcome.nullable(),
+  expectation_changed: z.boolean(),
+  /** Newest first, at most `EVAL_CASE_HISTORY_MAX`; started suites only. */
+  history: z.array(EvalCaseHistoryItem),
+});
+export type EvalCaseDetail = z.infer<typeof EvalCaseDetail>;
 
 // ===========================================================================
 // Stats response (needs EvalSuite, hence defined last)

@@ -21,9 +21,15 @@ import type {
   EvalSuiteCaseResult,
   EvalSuiteMode,
 } from '@devdigest/shared';
+import type { EvalCaseArmDetail, EvalCaseOutcome } from '@devdigest/shared';
 import { NotFoundError, ValidationError } from '../../platform/errors.js';
 import {
   armSkills,
+  classifyCase,
+  EVAL_CASE_HISTORY_MAX,
+  expectationChangedSince,
+  mapCaseArm,
+  pickSuiteCases,
   assertEvalTrusted,
   assertJobLimit,
   assertWithinBudget,
@@ -56,6 +62,7 @@ import {
   type EvalSuiteRecord,
   type EvalSuiteView,
 } from './domain.js';
+import { isPartialSuite } from '../_shared/eval-suite.js';
 import type { ClaimedRun, EvalJobPayload, EvalsDeps, SuiteCounter } from './ports.js';
 import { CANCELLED_RUN_ERROR, ORPHAN_RUN_ERROR, timedOutRunError } from './constants.js';
 
@@ -72,12 +79,24 @@ export interface CreateSuiteInput {
   /** Omitted → the enabled-link agent with the most runs with the skill. Must link the skill (enabled). */
   carrierAgentId?: string;
   mode: EvalSuiteMode;
+  /** Run only these cases (a per-case run); each must be a runnable case of the skill. */
+  caseIds?: string[];
 }
 
 export interface EvalSuiteDetail {
   suite: EvalSuiteView;
   cases: EvalSuiteCaseResult[];
   runs: EvalRunRecord[];
+}
+
+/** `GET /eval-cases/:id`: the drawer's read model (arms are already wire-shaped). */
+export interface EvalCaseDetailResult {
+  case: EvalCase;
+  suite: EvalSuiteView | null;
+  arms: { with: EvalCaseArmDetail; without: EvalCaseArmDetail };
+  outcome: EvalCaseOutcome | null;
+  expectationChanged: boolean;
+  history: { suite: EvalSuiteView; outcome: EvalCaseOutcome }[];
 }
 
 interface DiffSnapshot {
@@ -227,8 +246,9 @@ export class EvalsService {
     if (!carrier) throw new NotFoundError('Carrier agent not found', { carrier_agent_id: carrierId });
     if (!candidates.some((c) => c.agentId === carrier.id)) throw new EvalCarrierNotLinkedError(carrier.id);
 
-    const cases = (await store.listCases(workspaceId, skillId)).filter((c) => c.expectation !== null);
-    if (cases.length === 0) throw new EvalNoCasesError();
+    const runnable = (await store.listCases(workspaceId, skillId)).filter((c) => c.expectation !== null);
+    if (runnable.length === 0) throw new EvalNoCasesError();
+    const cases = pickSuiteCases(runnable, input.caseIds);
     const repeats = EVAL_REPEATS[input.mode];
     assertJobLimit(cases.length, repeats);
 
@@ -274,6 +294,7 @@ export class EvalsService {
         repeats,
         totalJobs: totalJobsFor(cases.length, repeats),
         estimateUsd,
+        caseIds: input.caseIds === undefined ? null : cases.map((c) => c.id),
       },
       cases.map((c) => c.id),
     );
@@ -320,12 +341,69 @@ export class EvalsService {
     const suite = await this.deps.store.findSuite(workspaceId, id);
     if (!suite) return undefined;
     const [runs, cases] = await Promise.all([this.deps.store.listRuns(id), this.deps.store.suiteCases(id)]);
-    const { cases: rows, results } = summarizeSuite({ mode: suite.mode, repeats: suite.repeats, cases, runs });
+    const { cases: rows, results } = summarizeSuite({
+      mode: suite.mode,
+      repeats: suite.repeats,
+      cases,
+      runs,
+      partial: isPartialSuite(suite),
+    });
     // Header and rows share ONE derivation. The stored `results` column can
     // predate a summary change (e.g. `errored`), so a done suite with runs
     // reports the live figures; the column itself is never rewritten here.
     const live = suite.status === 'done' && suite.results && runs.length > 0 ? results : suite.results;
     return { suite: { ...suite, results: live }, cases: rows, runs };
+  }
+
+  /**
+   * The drawer read model. The suite is the requested one (it must contain the
+   * case, else 404) or the latest started suite containing it; a case that
+   * never ran has `suite: null` and empty arms. Undefined = unknown case.
+   */
+  async getCaseDetail(
+    workspaceId: string,
+    caseId: string,
+    opts: { suiteId?: string },
+  ): Promise<EvalCaseDetailResult | undefined> {
+    const { store } = this.deps;
+    const evalCase = await store.findCase(workspaceId, caseId);
+    if (!evalCase || evalCase.ownerKind !== 'skill') return undefined;
+
+    const history = await store.caseSuites(workspaceId, caseId, EVAL_CASE_HISTORY_MAX);
+    const summary = history.map((h) => ({ suite: h.suite, outcome: classifyCase(h.runs, h.suite.repeats).outcome }));
+
+    let suite: EvalSuiteView | undefined;
+    if (opts.suiteId !== undefined) {
+      suite = await store.findSuite(workspaceId, opts.suiteId);
+      if (!suite) throw new NotFoundError('Eval suite not found');
+    } else {
+      suite = history[0]?.suite;
+    }
+    if (!suite) {
+      const empty = mapCaseArm([], 'with', 0, evalCase.expectation);
+      return {
+        case: evalCase,
+        suite: null,
+        arms: { with: empty, without: mapCaseArm([], 'without', 0, evalCase.expectation) },
+        outcome: null,
+        expectationChanged: false,
+        history: summary,
+      };
+    }
+
+    const runs = await store.listCaseRuns(suite.id, caseId);
+    if (runs.length === 0) throw new NotFoundError('Eval suite not found');
+    return {
+      case: evalCase,
+      suite,
+      arms: {
+        with: mapCaseArm(runs, 'with', suite.repeats, evalCase.expectation),
+        without: mapCaseArm(runs, 'without', suite.repeats, evalCase.expectation),
+      },
+      outcome: classifyCase(runs, suite.repeats).outcome,
+      expectationChanged: expectationChangedSince(evalCase.updatedAt, suite.startedAt ?? suite.createdAt),
+      history: summary,
+    };
   }
 
   private async enqueueRuns(
@@ -447,7 +525,7 @@ export class EvalsService {
     if (c.status !== 'running' || c.doneJobs < c.totalJobs) return;
     const [runs, cases] = await Promise.all([this.deps.store.listRuns(suiteId), this.deps.store.suiteCases(suiteId)]);
     const closing = closingStatus(runs);
-    const { results } = summarizeSuite({ mode: c.mode, repeats: c.repeats, cases, runs });
+    const { results } = summarizeSuite({ mode: c.mode, repeats: c.repeats, cases, runs, partial: c.partial });
     await this.deps.store.closeSuite(suiteId, {
       ...closing,
       results: closing.status === 'done' ? results : null,

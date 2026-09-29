@@ -108,6 +108,13 @@ export const evalSuites = pgTable(
     /** `EvalSuiteResults`, written once when the suite closes. */
     results: jsonb('results'),
     error: text('error'),
+    /**
+     * Cases a per-case suite covers; NULL = the skill's whole runnable case set.
+     * A suite with this set is "partial": never the Impact / latest-verdict
+     * source (ADR 0017: a verdict needs the full case set). No FK: an array
+     * cannot carry one, and a deleted case just leaves a dead id here.
+     */
+    caseIds: uuid('case_ids').array(),
     createdAt: now(),
     startedAt: timestamp('started_at', { withTimezone: true }),
     finishedAt: timestamp('finished_at', { withTimezone: true }),

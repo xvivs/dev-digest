@@ -12,6 +12,7 @@
  *   POST   /eval-suites/:id/start     → EvalSuite (single-use; a replay is a no-op)
  *   POST   /eval-suites/:id/cancel    → EvalSuite (terminal → no-op)
  *   GET    /eval-suites/:id           → EvalSuiteDetail (the polling target)
+ *   GET    /eval-cases/:id            → EvalCaseDetail (the eval drawer; ?suite_id= optional)
  *
  * Registration also boots the module: the job handler is registered in
  * `wiring.ts`, then `recoverOnBoot` runs before the server accepts requests
@@ -23,8 +24,10 @@ import { z } from 'zod';
 import {
   CreateEvalCaseBody,
   CreateEvalSuiteBody,
+  EvalCaseDetailQuery,
   UpdateEvalCaseBody,
   type EvalCarrier as EvalCarrierDto,
+  type EvalCaseDetail as EvalCaseDetailDto,
   type EvalSuite as EvalSuiteDto,
   type EvalSuiteDetail as EvalSuiteDetailDto,
   type EvalSuiteRun as EvalSuiteRunDto,
@@ -32,10 +35,12 @@ import {
 } from '@devdigest/shared';
 import { getContext } from '../_shared/context.js';
 import { IdParams } from '../_shared/schemas.js';
-import { toEvalSuiteDto } from '../_shared/eval-suite.js';
+import { isPartialSuite, toEvalSuiteDto } from '../_shared/eval-suite.js';
 import { NotFoundError } from '../../platform/errors.js';
 import type { EvalCase, EvalRunRecord } from './domain.js';
 import { buildEvalsService } from './wiring.js';
+import { caseDiffPreview } from './domain.js';
+import type { EvalCaseDetailResult } from './service.js';
 
 /**
  * The contract requires `carrier_agent_id`; the server also accepts it
@@ -62,6 +67,50 @@ function toCaseDto(c: EvalCase): SkillEvalCaseDto {
     input_source: c.inputSource,
     created_at: c.createdAt.toISOString(),
     updated_at: c.updatedAt.toISOString(),
+  };
+}
+
+function toCaseDetailDto(d: EvalCaseDetailResult): EvalCaseDetailDto {
+  const c = d.case;
+  const diff = caseDiffPreview(c.inputDiff);
+  return {
+    case: {
+      id: c.id,
+      skill_id: c.skillId,
+      name: c.name,
+      notes: c.notes,
+      expectation: c.expectation,
+      input_source: c.inputSource,
+      input_files: Array.isArray(c.inputFiles) ? c.inputFiles.filter((f): f is string => typeof f === 'string') : [],
+      input_diff_preview: diff.preview,
+      input_diff_chars: diff.chars,
+      input_diff_truncated: diff.truncated,
+      created_at: c.createdAt.toISOString(),
+      updated_at: c.updatedAt.toISOString(),
+    },
+    suite: d.suite && {
+      id: d.suite.id,
+      mode: d.suite.mode,
+      status: d.suite.status,
+      carrier_name: d.suite.carrierName,
+      skill_version: d.suite.skillVersion,
+      repeats: d.suite.repeats,
+      stale: d.suite.stale,
+      partial: isPartialSuite(d.suite),
+      created_at: d.suite.createdAt.toISOString(),
+    },
+    arms: d.arms,
+    outcome: d.outcome,
+    expectation_changed: d.expectationChanged,
+    history: d.history.map((h) => ({
+      suite_id: h.suite.id,
+      created_at: h.suite.createdAt.toISOString(),
+      mode: h.suite.mode,
+      outcome: h.outcome,
+      skill_version: h.suite.skillVersion,
+      stale: h.suite.stale,
+      partial: isPartialSuite(h.suite),
+    })),
   };
 }
 
@@ -133,6 +182,19 @@ export default async function evalsRoutes(appBase: FastifyInstance) {
     },
   );
 
+  app.get(
+    '/eval-cases/:id',
+    { schema: { params: IdParams, querystring: EvalCaseDetailQuery } },
+    async (req): Promise<EvalCaseDetailDto> => {
+      const { workspaceId } = await getContext(app.container, req);
+      const detail = await service.getCaseDetail(workspaceId, req.params.id, {
+        ...(req.query.suite_id ? { suiteId: req.query.suite_id } : {}),
+      });
+      if (!detail) throw new NotFoundError('Eval case not found');
+      return toCaseDetailDto(detail);
+    },
+  );
+
   app.delete('/eval-cases/:id', { schema: { params: IdParams } }, async (req) => {
     const { workspaceId } = await getContext(app.container, req);
     const ok = await service.deleteCase(workspaceId, req.params.id);
@@ -163,6 +225,7 @@ export default async function evalsRoutes(appBase: FastifyInstance) {
       const { workspaceId } = await getContext(app.container, req);
       const suite = await service.createSuite(workspaceId, req.params.id, {
         mode: req.body.mode,
+        ...(req.body.case_ids ? { caseIds: req.body.case_ids } : {}),
         ...(req.body.carrier_agent_id ? { carrierAgentId: req.body.carrier_agent_id } : {}),
       });
       if (!suite) throw new NotFoundError('Skill not found');

@@ -7,6 +7,7 @@
 import type { CostSource, Finding } from '@devdigest/shared';
 import type {
   CarrierCandidate,
+  CaseRunWithOutput,
   DiffFileStat,
   EvalCarrier,
   EvalCase,
@@ -34,6 +35,8 @@ export interface SuiteCounter {
   status: EvalSuiteRecord['status'];
   mode: EvalSuiteRecord['mode'];
   repeats: number;
+  /** A per-case suite (`case_ids` set): closes with an indicative verdict. */
+  partial: boolean;
 }
 
 /** A queued run of a running suite, with what re-enqueueing it needs. */
@@ -75,6 +78,13 @@ export interface EvalStore {
   /** Estimated/running → cancelled; undefined when already terminal (no-op). */
   cancelSuite(workspaceId: string, id: string): Promise<EvalSuiteRecord | undefined>;
   listRuns(suiteId: string): Promise<EvalRunRecord[]>;
+  /** Runs of ONE case in a suite with the stored model output (drawer detail only). */
+  listCaseRuns(suiteId: string, caseId: string): Promise<CaseRunWithOutput[]>;
+  /**
+   * Started suites (status past `estimated`) that ran the case, newest first,
+   * each with that case's runs (no model output). Workspace-scoped.
+   */
+  caseSuites(workspaceId: string, caseId: string, limit: number): Promise<{ suite: EvalSuiteView; runs: EvalRunRecord[] }[]>;
   /** Cases of a suite (id + name), including ones whose runs were all deleted. */
   suiteCases(suiteId: string): Promise<{ id: string; name: string }[]>;
 

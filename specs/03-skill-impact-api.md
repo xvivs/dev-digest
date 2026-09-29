@@ -70,7 +70,8 @@ Notes:
 - `runs_30d` and `latest_verdict` are computed in the same list query (no N+1).
   The server always sends both. `latest_verdict: null` means "no evals".
   They are optional in the schema only so older payloads still parse.
-- `latest_verdict` comes from the latest **Full** suite with status `done`.
+- `latest_verdict` comes from the latest **Full** suite with status `done` that
+  covers the whole case set (per-case suites, `case_ids` set, are ignored).
   `stale` is true when the skill's current `prompt_sha256 = sha256(name + body)`
   or the carrier's version differs from the one the suite ran on.
 - Stats count only runs with `agent_runs.status = 'completed'`. Runs without
@@ -80,7 +81,7 @@ Notes:
   default eval carrier from this list (the agent with the most runs).
 - `cost.cost_source` is `estimated` (skill tokens × model price). When no model
   in the window has a price, `cost_usd` and `cost_source` are both null.
-- `impact` is always null until Phase 3 ships.
+- `impact` is null until a whole-skill suite exists (Phase 3); per-case suites never fill it.
 
 ## Phase 3: Evals
 
@@ -92,6 +93,7 @@ Notes:
 | POST | `/skills/:id/eval-cases` | `CreateEvalCaseBody` | 201 `SkillEvalCase` | 404 (skill or `pr_id`) · 422 `validation_error` (see below) · 422 `eval_case_file_not_in_pr` |
 | PUT | `/eval-cases/:id` | `UpdateEvalCaseBody` | `SkillEvalCase` | 404 · 422 `validation_error` (see below) · 422 `eval_case_file_not_in_pr` |
 | DELETE | `/eval-cases/:id` | none | `{ ok: true }` | 404 |
+| GET | `/eval-cases/:id` | `EvalCaseDetailQuery` (`?suite_id=` optional uuid) | `EvalCaseDetail` (the eval drawer) | 404 (case, suite, or a suite that has no run of the case) · 422 (`suite_id` not a uuid) |
 
 - `source.kind = 'paste'` stores the diff as given. `source.kind = 'pr'` builds
   a unified diff from the listed files' patches of a synced PR. Either way the
@@ -117,7 +119,7 @@ Notes:
 |---|---|---|---|---|
 | GET | `/skills/:id/eval-carriers` | none | `EvalCarrier[]`, default first | 404 |
 | GET | `/skills/:id/eval-suites` | none | `EvalSuite[]`, newest first | 404 |
-| POST | `/skills/:id/eval-suites` | `CreateEvalSuiteBody` (`carrier_agent_id` optional on the server) | 201 `EvalSuite` (`status: 'estimated'`) | 404 (skill or carrier) · 409 `eval_skill_not_vetted` · 422 `eval_no_carrier` · 422 `eval_carrier_not_linked` · 422 `eval_no_cases` · 422 `eval_price_unknown` · 422 `eval_too_many_jobs` · 422 `eval_budget_exceeded` |
+| POST | `/skills/:id/eval-suites` | `CreateEvalSuiteBody` (`carrier_agent_id` optional on the server; optional `case_ids`) | 201 `EvalSuite` (`status: 'estimated'`) | 404 (skill or carrier) · 409 `eval_skill_not_vetted` · 422 `eval_no_carrier` · 422 `eval_carrier_not_linked` · 422 `eval_no_cases` · 422 `eval_case_not_found` · 422 `eval_price_unknown` · 422 `eval_too_many_jobs` · 422 `eval_budget_exceeded` |
 | POST | `/eval-suites/:id/start` | none (body-less) | `EvalSuite` | 404 · 409 `eval_suite_busy` · 409 `eval_suite_stale` |
 | POST | `/eval-suites/:id/cancel` | none (body-less) | `EvalSuite` | 404 |
 | GET | `/eval-suites/:id` | none | `EvalSuiteDetail` | 404 |
@@ -167,8 +169,93 @@ Notes:
   `helps`/`neutral`/`hurts`. A Quick suite always returns `indicative`, and so
   does any suite with fewer than 5 non-flaky cases. `results` stays null until
   `done`.
+- Per-case run (2026-09-29, the card's run button): `case_ids` is an optional
+  array of 1..`EVAL_CASE_IDS_MAX` (50) uuids on `CreateEvalSuiteBody`. It is the
+  same estimate → start flow, so the trust gate, the budget, the job cap, the
+  one-running-suite rule and the idempotent start all apply unchanged.
+  - Every id must be a **runnable** case of the skill (parseable expectation).
+    An id that is unknown, belongs to another skill or is a legacy row is 422
+    `eval_case_not_found` with `details: { case_ids: [...missing] }`, and nothing
+    is stored. Duplicates collapse to one; list order is the skill's case order.
+  - `total_jobs`, the runs and `estimate_usd` cover the subset only.
+  - The subset is stored on `eval_suites.case_ids` (`uuid[]`, migration 0021;
+    NULL = the whole runnable set). `EvalSuite.case_ids` echoes it and
+    `EvalSuite.partial` is `case_ids !== null`. Both are optional in the schema
+    so older payloads parse; the server always sends them.
+  - A **partial suite is never a verdict source** (ADR 0017: a verdict needs the
+    full case set). `GET /skills` `latest_verdict` and `GET /skills/:id/stats`
+    `impact` ignore partial suites entirely, so a skill that only ever ran
+    per-case suites has `latest_verdict: null` and `impact: null`. The partial
+    suite's own `results.verdict` is always `indicative`, whatever its mode.
+  - `GET /skills/:id/eval-suites` still lists partial suites (newest first);
+    clients that want "the latest whole-skill run" filter on `partial`.
+- `EvalSuiteCaseResult` gains four summary fields, derived from the runs and
+  never stored (`eval_runs.expected/matched/unexpected` already hold the inputs):
+  - `expected_count`: `must_find` size as the runs recorded it (0 = clean case),
+    taken from a done `with` run, else a done `without` run.
+  - `matched_median`: median over the `with` arm's **done** repeats of `matched`.
+  - `unexpected_median`: same for `unexpected`.
+  - `is_clean`: `expected_count === 0`.
+  - All four are `null` until a run of the case is done (the card shows "never
+    run"). An even count of repeats gives the mean of the two middle values, so
+    a median can end in `.5`. Optional in the schema only for older payloads.
 - `EvalSuite.cost_source` holds the single source of its runs. There is one
   carrier and therefore one provider, so a suite never mixes sources.
+
+### Case detail (the drawer)
+
+`GET /eval-cases/:id?suite_id=` returns `EvalCaseDetail`. Workspace-scoped: a case
+of another workspace, or a non-skill case, is 404.
+
+```
+{
+  case:  { id, skill_id, name, notes, expectation, input_source, input_files,
+           input_diff_preview, input_diff_chars, input_diff_truncated,
+           created_at, updated_at },
+  suite: { id, mode, status, carrier_name, skill_version, repeats, stale,
+           partial, created_at } | null,
+  arms:  { with: Arm, without: Arm },
+  outcome: EvalCaseOutcome | null,
+  expectation_changed: boolean,
+  history: [{ suite_id, created_at, mode, outcome, skill_version, stale, partial }]
+}
+Arm = { passed, total, matched_median, unexpected_median, runs: Run[] }
+Run = { repeat_idx, status, pass, matched_must_find: number[],
+        missed_must_find: number[], unexpected, unexpected_findings: Finding[],
+        duration_ms, cost_usd, cost_source, error }
+Finding = { file, line, severity, category, title }
+```
+
+- Suite choice: `suite_id` given selects that suite (any status). It must be in
+  the workspace and must contain a run of the case, else 404. Omitted, it is the
+  latest **started** suite (status past `estimated`) that contains the case,
+  partial ones included. A case that never ran has `suite: null`, both arms with
+  `total: 0` and `runs: []`, `outcome: null` and `history: []`.
+- `outcome` is `classifyCase` over the case's runs in that suite, the same
+  function as the suite table. A suite still running reports `pending`; a failed
+  run makes it `error`.
+- `arms.*.passed/total` are the arm tally (`total` = the suite's repeats). The
+  medians are over that arm's done repeats. Runs are ordered by `repeat_idx`.
+- `matched_must_find` and `missed_must_find` are **indexes into
+  `case.expectation.must_find`**, computed with the scoring matcher
+  (`matchesMustFind`) over the findings stored in `eval_runs.actual_output`.
+  Both are empty for a run that is not `done` and for a legacy case whose
+  expectation does not parse. They are computed against the *current*
+  expectation, so `expectation_changed` is true when `case.updated_at` is after
+  the suite's `started_at` (or `created_at`); the UI should then say the
+  indexes may not line up. Any edit to the case sets it, including a rename.
+- `unexpected_findings` lists the findings that matched no `must_find` entry,
+  most severe first, capped at `EVAL_CASE_UNEXPECTED_FINDINGS_MAX` (20).
+  `unexpected` keeps the stored true count, so it can exceed the list length.
+  Malformed entries in the stored jsonb are dropped, not an error.
+- `case.input_diff_preview` is the first `EVAL_CASE_DIFF_PREVIEW_MAX` (4000)
+  characters; `input_diff_chars` is the full size. The complete diff stays on
+  `SkillEvalCase.input_diff` (`GET /skills/:id/eval-cases`).
+- `history` is the last `EVAL_CASE_HISTORY_MAX` (10) started suites containing
+  the case, newest first, each with the case's outcome in that suite. `stale`
+  is the suite's own stale flag (skill prompt or carrier moved since).
+- Cost is the run's own pair (ADR 0002): `cost_usd` and `cost_source` are both
+  null or both set. A failed run has neither.
 
 ## Client cache keys touched
 
@@ -176,6 +263,7 @@ Notes:
 |---|---|
 | restore | `["skill", id]`, `["skill-versions", id]`, `["skill-stats", id]`, `["skills"]`, `["agent-skills"]` |
 | PUT skill | as today, plus `["skill-versions", id]` |
-| case create/update/delete | `["skill-eval-cases", id]` |
+| case create/update/delete | `["skill-eval-cases", id]`, and `["eval-case", caseId]` for the case detail |
 | suite create/start/cancel | `["skill-eval-suites", id]`, `["eval-suite", suiteId]` |
+| suite reaches terminal status | also `["eval-case", caseId]` for every case the suite covered |
 | suite reaches terminal status | `["skill-stats", id]`, `["skill", id]`, `["skills"]` |

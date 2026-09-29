@@ -9,8 +9,16 @@ import {
   assertEvalTrusted,
   assertJobLimit,
   assertWithinBudget,
+  caseDiffPreview,
   citationAccuracyOf,
   classifyCase,
+  findingsOf,
+  mapCaseArm,
+  mapCaseRun,
+  expectationChangedSince,
+  EVAL_CASE_DIFF_PREVIEW_MAX,
+  EVAL_CASE_UNEXPECTED_FINDINGS_MAX,
+  type CaseRunWithOutput,
   estimateJob,
   isSuiteStale,
   jobTimeoutMs,
@@ -19,6 +27,7 @@ import {
   EVAL_JOB_TIMEOUT_HEADROOM_MS,
   LINE_TOLERANCE,
   matchesMustFind,
+  median,
   matchesMustNotFind,
   pickDefaultCarrier,
   rankCarriers,
@@ -486,5 +495,224 @@ describe('unifiedDiffFromPatches', () => {
     ]);
     expect(raw).toContain('diff --git a/src/a.ts b/src/a.ts\n--- a/src/a.ts\n+++ b/src/a.ts\n@@ -1 +1 @@');
     expect(raw).toContain('+++ b/src/b.ts');
+  });
+});
+
+// ---- per-case summary fields (card subtitle) ----------------------------
+
+describe('median', () => {
+  it('odd count: the middle value; even count: mean of the two middle values; empty: null', () => {
+    expect(median([3, 1, 2])).toBe(2);
+    expect(median([1, 4])).toBe(2.5);
+    expect(median([7])).toBe(7);
+    expect(median([])).toBeNull();
+  });
+});
+
+describe('summarizeSuite per-case summary', () => {
+  const doneRun = (
+    caseId: string,
+    arm: 'with' | 'without',
+    matched: number,
+    unexpected: number,
+    expected = 2,
+  ): RunLite & { caseId: string; matched: number; expected: number } => ({
+    caseId,
+    arm,
+    status: 'done',
+    pass: matched === expected,
+    matched,
+    expected,
+    unexpected,
+  });
+
+  it('with-arm medians over done repeats; without-arm runs never leak in', () => {
+    const runs = [
+      doneRun('a', 'with', 0, 5),
+      doneRun('a', 'with', 2, 1),
+      doneRun('a', 'with', 1, 3),
+      doneRun('a', 'without', 2, 0),
+      doneRun('a', 'without', 2, 0),
+      doneRun('a', 'without', 2, 0),
+    ];
+    const { cases } = summarizeSuite({ mode: 'full', repeats: 3, cases: [{ id: 'a', name: 'a' }], runs });
+    expect(cases[0]).toMatchObject({ expected_count: 2, matched_median: 1, unexpected_median: 3, is_clean: false });
+  });
+
+  it('a clean case (expected 0) reports is_clean and the unexpected median', () => {
+    const runs = [
+      doneRun('c', 'with', 0, 2, 0),
+      doneRun('c', 'without', 0, 0, 0),
+    ];
+    const { cases } = summarizeSuite({ mode: 'quick', repeats: 1, cases: [{ id: 'c', name: 'c' }], runs });
+    expect(cases[0]).toMatchObject({ expected_count: 0, matched_median: 0, unexpected_median: 2, is_clean: true });
+  });
+
+  it('no done with-arm run: medians and expected_count are null, not 0', () => {
+    const queued: RunLite & { caseId: string } = { caseId: 'n', arm: 'with', status: 'queued', pass: null, unexpected: null };
+    const { cases } = summarizeSuite({ mode: 'quick', repeats: 1, cases: [{ id: 'n', name: 'n' }], runs: [queued] });
+    expect(cases[0]).toMatchObject({ expected_count: null, matched_median: null, unexpected_median: null, is_clean: null });
+  });
+
+  it('expected_count falls back to a done without-arm run when no with-arm run is done', () => {
+    const runs = [doneRun('w', 'without', 1, 0, 3)];
+    const { cases } = summarizeSuite({ mode: 'quick', repeats: 1, cases: [{ id: 'w', name: 'w' }], runs });
+    expect(cases[0]).toMatchObject({ expected_count: 3, is_clean: false, matched_median: null });
+  });
+});
+
+describe('summarizeSuite partial', () => {
+  it('a partial suite never yields a verdict, even with 5+ clear cases (needs the full case set)', () => {
+    const ids = ['a', 'b', 'c', 'd', 'e', 'f'];
+    const cases = ids.map((id) => ({ id, name: id }));
+    const runs = ids.flatMap((id) => arms([true, true, true], [false, false, false]).map((r) => ({ ...r, caseId: id })));
+    expect(summarizeSuite({ mode: 'full', repeats: 3, cases, runs }).results.verdict).toBe('helps');
+    expect(summarizeSuite({ mode: 'full', repeats: 3, cases, runs, partial: true }).results.verdict).toBe('indicative');
+  });
+});
+
+// ---- case detail mapping (the drawer) -------------------------------------
+
+describe('findingsOf', () => {
+  it('reads findings from the stored actual_output and drops anything malformed', () => {
+    const good = finding();
+    expect(findingsOf({ findings: [good, null, 'x', { file: 1 }], grounding: '1/1 passed' })).toEqual([good]);
+    expect(findingsOf(null)).toEqual([]);
+    expect(findingsOf({ findings: 'nope' })).toEqual([]);
+    expect(findingsOf(undefined)).toEqual([]);
+  });
+});
+
+describe('mapCaseRun', () => {
+  const twoMust: EvalExpectation = {
+    must_find: [
+      mustFind,
+      { file: 'src/other.ts', min_severity: 'WARNING', category: 'bug' },
+    ],
+    must_not_find: [],
+  };
+  const record = (over: Partial<CaseRunWithOutput> = {}): CaseRunWithOutput => ({
+    id: 'r',
+    suiteId: 's',
+    caseId: 'c',
+    arm: 'with',
+    repeatIdx: 0,
+    status: 'done',
+    pass: false,
+    matched: 1,
+    expected: 2,
+    unexpected: 1,
+    citationAccuracy: 1,
+    tokensIn: 1,
+    tokensOut: 1,
+    costUsd: 0.01,
+    costSource: 'estimated',
+    durationMs: 1234,
+    error: null,
+    ranAt: null,
+    actualOutput: { findings: [finding(), finding({ id: 'x', file: 'src/z.ts', title: 'Stray', severity: 'SUGGESTION', category: 'style', start_line: 4 })] },
+    ...over,
+  });
+
+  it('splits must_find into matched and missed indexes and lists the unexpected findings', () => {
+    const d = mapCaseRun(record(), twoMust);
+    expect(d).toMatchObject({
+      repeat_idx: 0,
+      status: 'done',
+      pass: false,
+      matched_must_find: [0],
+      missed_must_find: [1],
+      unexpected: 1,
+      duration_ms: 1234,
+      cost_usd: 0.01,
+      cost_source: 'estimated',
+      error: null,
+    });
+    expect(d.unexpected_findings).toEqual([
+      { file: 'src/z.ts', line: 4, severity: 'SUGGESTION', category: 'style', title: 'Stray' },
+    ]);
+  });
+
+  it('bounds the unexpected list, most severe first, and keeps the stored count', () => {
+    const many = Array.from({ length: EVAL_CASE_UNEXPECTED_FINDINGS_MAX + 5 }, (_, i) =>
+      finding({ id: `f${i}`, file: 'src/z.ts', start_line: i + 1, severity: i === 24 ? 'CRITICAL' : 'SUGGESTION', category: 'style', title: `t${i}` }),
+    );
+    const d = mapCaseRun(record({ unexpected: many.length, actualOutput: { findings: many } }), twoMust);
+    expect(d.unexpected).toBe(many.length);
+    expect(d.unexpected_findings).toHaveLength(EVAL_CASE_UNEXPECTED_FINDINGS_MAX);
+    expect(d.unexpected_findings[0]?.severity).toBe('CRITICAL');
+  });
+
+  it('a failed or queued run carries the error and no match detail', () => {
+    const d = mapCaseRun(
+      record({ status: 'failed', pass: null, matched: null, expected: null, unexpected: null, error: 'timeout', actualOutput: null }),
+      twoMust,
+    );
+    expect(d).toMatchObject({ status: 'failed', pass: null, matched_must_find: [], missed_must_find: [], unexpected: null, unexpected_findings: [], error: 'timeout' });
+  });
+
+  it('a legacy case with no parsed expectation gets no match detail (nothing to judge against)', () => {
+    const d = mapCaseRun(record(), null);
+    expect(d).toMatchObject({ matched_must_find: [], missed_must_find: [], unexpected_findings: [] });
+  });
+});
+
+describe('mapCaseArm', () => {
+  const rec = (arm: 'with' | 'without', repeatIdx: number, matched: number, unexpected: number, pass: boolean): CaseRunWithOutput => ({
+    id: `${arm}${repeatIdx}`,
+    suiteId: 's',
+    caseId: 'c',
+    arm,
+    repeatIdx,
+    status: 'done',
+    pass,
+    matched,
+    expected: 1,
+    unexpected,
+    citationAccuracy: null,
+    tokensIn: 1,
+    tokensOut: 1,
+    costUsd: null,
+    costSource: null,
+    durationMs: 5,
+    error: null,
+    ranAt: null,
+    actualOutput: { findings: [] },
+  });
+  const exp: EvalExpectation = { must_find: [mustFind], must_not_find: [] };
+
+  it('tally, medians and runs ordered by repeat for ONE arm', () => {
+    const runs = [
+      rec('with', 2, 1, 4, true),
+      rec('with', 0, 0, 0, false),
+      rec('with', 1, 1, 2, true),
+      rec('without', 0, 0, 9, false),
+    ];
+    const arm = mapCaseArm(runs, 'with', 3, exp);
+    expect(arm).toMatchObject({ passed: 2, total: 3, matched_median: 1, unexpected_median: 2 });
+    expect(arm.runs.map((r) => r.repeat_idx)).toEqual([0, 1, 2]);
+  });
+
+  it('an arm with no runs is an empty tally, medians null', () => {
+    expect(mapCaseArm([], 'without', 3, exp)).toEqual({ passed: 0, total: 3, matched_median: null, unexpected_median: null, runs: [] });
+  });
+});
+
+describe('caseDiffPreview', () => {
+  it('short diffs pass through whole', () => {
+    expect(caseDiffPreview('abc')).toEqual({ preview: 'abc', chars: 3, truncated: false });
+  });
+  it('long diffs are cut at the cap and flagged, with the true size kept', () => {
+    const big = 'x'.repeat(EVAL_CASE_DIFF_PREVIEW_MAX + 10);
+    const r = caseDiffPreview(big);
+    expect(r.preview).toHaveLength(EVAL_CASE_DIFF_PREVIEW_MAX);
+    expect(r).toMatchObject({ chars: big.length, truncated: true });
+  });
+});
+
+describe('expectationChangedSince', () => {
+  it('true when the case was updated after the suite started', () => {
+    expect(expectationChangedSince(new Date('2026-01-02'), new Date('2026-01-01'))).toBe(true);
+    expect(expectationChangedSince(new Date('2026-01-01'), new Date('2026-01-02'))).toBe(false);
   });
 });

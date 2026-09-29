@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest';
 import {
   CreateEvalCaseBody,
   CreateEvalSuiteBody,
+  EvalCaseDetail,
+  EvalCaseDetailQuery,
   EvalExpectation,
   EvalLineRange,
   RestoreSkillVersionBody,
@@ -97,6 +99,35 @@ describe('versions / stats / suites', () => {
     expect(CreateEvalSuiteBody.safeParse({ carrier_agent_id, mode: 'full' }).success).toBe(true);
     expect(CreateEvalSuiteBody.safeParse({ carrier_agent_id, mode: 'deep' }).success).toBe(false);
     expect(CreateEvalSuiteBody.safeParse({ carrier_agent_id: 'nope', mode: 'quick' }).success).toBe(false);
+  });
+
+  it('CreateEvalSuiteBody accepts an optional non-empty list of uuid case_ids', () => {
+    const carrier_agent_id = '11111111-1111-4111-8111-111111111111';
+    const id = '22222222-2222-4222-8222-222222222222';
+    expect(CreateEvalSuiteBody.safeParse({ carrier_agent_id, mode: 'quick', case_ids: [id] }).success).toBe(true);
+    expect(CreateEvalSuiteBody.safeParse({ carrier_agent_id, mode: 'quick', case_ids: [] }).success).toBe(false);
+    expect(CreateEvalSuiteBody.safeParse({ carrier_agent_id, mode: 'quick', case_ids: ['nope'] }).success).toBe(false);
+  });
+
+  it('EvalCaseDetailQuery: suite_id is an optional uuid', () => {
+    expect(EvalCaseDetailQuery.safeParse({}).success).toBe(true);
+    expect(EvalCaseDetailQuery.safeParse({ suite_id: 'x' }).success).toBe(false);
+  });
+
+  it('EvalCaseDetail parses a never-run case (suite null, empty arms)', () => {
+    const empty = { passed: 0, total: 0, matched_median: null, unexpected_median: null, runs: [] };
+    const r = EvalCaseDetail.safeParse({
+      case: {
+        id: 'c', skill_id: 's', name: 'n', notes: null, expectation: null, input_source: null, input_files: [],
+        input_diff_preview: '', input_diff_chars: 0, input_diff_truncated: false, created_at: 'x', updated_at: 'y',
+      },
+      suite: null,
+      arms: { with: empty, without: empty },
+      outcome: null,
+      expectation_changed: false,
+      history: [],
+    });
+    expect(r.success).toBe(true);
   });
 
   it('SkillListItem stays backward compatible without the new card fields', () => {

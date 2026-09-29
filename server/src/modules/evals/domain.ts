@@ -13,7 +13,10 @@ import type {
   CostSource,
   EvalArm,
   EvalArmTally,
+  EvalCaseArmDetail,
   EvalCaseOutcome,
+  EvalCaseRunDetail,
+  EvalCaseUnexpectedFinding,
   EvalCaseSourceMeta,
   EvalExpectation,
   EvalMustFind,
@@ -52,6 +55,12 @@ export const EVAL_REPEATS: Readonly<Record<EvalSuiteMode, number>> = { quick: 1,
 /** Server cap on `cases × 2 arms × repeats` (mirrors `EVAL_MAX_JOBS_PER_SUITE`). */
 export const EVAL_MAX_JOBS_PER_SUITE = 150;
 export const EVAL_ARMS: readonly EvalArm[] = ['with', 'without'];
+/** Mirrors the contract's `EVAL_CASE_UNEXPECTED_FINDINGS_MAX`: findings listed per run in the case detail. */
+export const EVAL_CASE_UNEXPECTED_FINDINGS_MAX = 20;
+/** Mirrors the contract's `EVAL_CASE_DIFF_PREVIEW_MAX`: diff characters sent in the case detail. */
+export const EVAL_CASE_DIFF_PREVIEW_MAX = 4000;
+/** Mirrors the contract's `EVAL_CASE_HISTORY_MAX`: suites in a case's history. */
+export const EVAL_CASE_HISTORY_MAX = 10;
 
 /** Mirrors reviewer-core `DEFAULT_MAP_THRESHOLD_LINES` (auto strategy). */
 export const MAP_THRESHOLD_LINES = 400;
@@ -208,6 +217,8 @@ export interface EvalSuiteRecord {
   costSource: CostSource | null;
   results: EvalSuiteResults | null;
   error: string | null;
+  /** Cases this suite covers (a per-case run); null = the skill's whole runnable set. */
+  caseIds: string[] | null;
   createdAt: Date;
   startedAt: Date | null;
   finishedAt: Date | null;
@@ -316,6 +327,17 @@ export class EvalSuiteStaleError extends AppError {
       'eval_suite_stale',
       'The skill prompt or the carrier agent changed since this estimate. Create a new suite.',
       409,
+    );
+  }
+}
+
+export class EvalCaseNotFoundError extends AppError {
+  constructor(caseIds: string[]) {
+    super(
+      'eval_case_not_found',
+      `Not a runnable eval case of this skill: ${caseIds.join(', ')}`,
+      422,
+      { case_ids: caseIds },
     );
   }
 }
@@ -441,7 +463,8 @@ export function citationAccuracyOf(grounding: string): number | null {
 // Per-case classification + suite verdict (ADR 0017 §5-6)
 // ---------------------------------------------------------------------------
 
-export type ClassifiableRun = Pick<EvalRunRecord, 'arm' | 'status' | 'pass' | 'unexpected'>;
+export type ClassifiableRun = Pick<EvalRunRecord, 'arm' | 'status' | 'pass' | 'unexpected'> &
+  Partial<Pick<EvalRunRecord, 'matched' | 'expected'>>;
 
 export interface CaseClassification {
   with: EvalArmTally;
@@ -501,6 +524,36 @@ export function verdictFor(input: {
 
 const mean = (xs: number[]) => (xs.length === 0 ? 0 : xs.reduce((a, b) => a + b, 0) / xs.length);
 
+/** Median; the mean of the two middle values for an even count; null for none. */
+export function median(xs: number[]): number | null {
+  if (xs.length === 0) return null;
+  const sorted = [...xs].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 1 ? sorted[mid]! : (sorted[mid - 1]! + sorted[mid]!) / 2;
+}
+
+const isNum = (n: number | null | undefined): n is number => typeof n === 'number';
+
+/**
+ * The card's per-case figures, derived from the runs (nothing stored twice).
+ * `expected_count` = must_find size as the runs recorded it (with arm first, so
+ * a case edited mid-suite still reads as scored); medians are over the `with`
+ * arm's done repeats only.
+ */
+export function caseSummary(
+  runs: ClassifiableRun[],
+): Pick<EvalSuiteCaseResult, 'expected_count' | 'matched_median' | 'unexpected_median' | 'is_clean'> {
+  const done = (arm: EvalArm) => runs.filter((r) => r.arm === arm && r.status === 'done');
+  const withDone = done('with');
+  const expected = [...withDone, ...done('without')].map((r) => r.expected).find(isNum) ?? null;
+  return {
+    expected_count: expected,
+    matched_median: median(withDone.map((r) => r.matched).filter(isNum)),
+    unexpected_median: median(withDone.map((r) => r.unexpected).filter(isNum)),
+    is_clean: expected === null ? null : expected === 0,
+  };
+}
+
 /**
  * Per case first, then summed (ADR 0017). `delta_unexpected` averages, over
  * cases whose jobs all finished (flaky included: the unexpected count is a
@@ -514,13 +567,22 @@ export function summarizeSuite(input: {
   repeats: number;
   cases: { id: string; name: string }[];
   runs: (ClassifiableRun & { caseId: string })[];
+  /** A per-case suite (`case_ids`): never a verdict, it lacks the full case set. */
+  partial?: boolean;
 }): { results: EvalSuiteResults; cases: EvalSuiteCaseResult[] } {
   const rows: EvalSuiteCaseResult[] = [];
   const deltas: number[] = [];
   for (const c of input.cases) {
     const runs = input.runs.filter((r) => r.caseId === c.id);
     const cls = classifyCase(runs, input.repeats);
-    rows.push({ case_id: c.id, case_name: c.name, with: cls.with, without: cls.without, outcome: cls.outcome });
+    rows.push({
+      case_id: c.id,
+      case_name: c.name,
+      with: cls.with,
+      without: cls.without,
+      outcome: cls.outcome,
+      ...caseSummary(runs),
+    });
     if (cls.outcome !== 'error' && cls.outcome !== 'pending') {
       const unexpectedIn = (arm: EvalArm) =>
         mean(runs.filter((r) => r.arm === arm && r.status === 'done').map((r) => r.unexpected ?? 0));
@@ -545,7 +607,9 @@ export function summarizeSuite(input: {
       regressed,
       flaky: count('flaky'),
       delta_unexpected: deltaUnexpected,
-      verdict: verdictFor({ mode: input.mode, nonFlaky, caught, regressed, deltaUnexpected }),
+      verdict: input.partial
+        ? 'indicative'
+        : verdictFor({ mode: input.mode, nonFlaky, caught, regressed, deltaUnexpected }),
     },
   };
 }
@@ -597,6 +661,19 @@ export function assertEvalTrusted(
   if (skill.source !== 'manual' && skill.vettedBodyHash !== targetBodySha256) {
     throw new EvalSkillNotVettedError();
   }
+}
+
+/**
+ * The cases a suite runs. No request = every runnable case. A request must name
+ * runnable cases of the skill (duplicates collapse, list order is kept);
+ * anything else is `eval_case_not_found`.
+ */
+export function pickSuiteCases<C extends { id: string }>(runnable: C[], requested: string[] | undefined): C[] {
+  if (requested === undefined) return runnable;
+  const wanted = new Set(requested);
+  const missing = [...wanted].filter((id) => !runnable.some((c) => c.id === id));
+  if (missing.length > 0) throw new EvalCaseNotFoundError(missing);
+  return runnable.filter((c) => wanted.has(c.id));
 }
 
 export function totalJobsFor(cases: number, repeats: number): number {
@@ -726,4 +803,93 @@ export function expectationFilesOutsideDiff(expectation: EvalExpectation, diffFi
   const inDiff = new Set(diffFiles.map(normalizePath));
   const named = [...expectation.must_find, ...expectation.must_not_find].map((e) => e.file);
   return [...new Set(named.filter((f) => !inDiff.has(normalizePath(f))))];
+}
+
+// ---------------------------------------------------------------------------
+// Case detail (the eval drawer): pure mapping of stored runs
+// ---------------------------------------------------------------------------
+
+/** A run with the stored model output (`eval_runs.actual_output`), only loaded for one case. */
+export type CaseRunWithOutput = EvalRunRecord & { actualOutput: unknown };
+
+const SEVERITIES: ReadonlySet<string> = new Set(['SUGGESTION', 'WARNING', 'CRITICAL']);
+
+function isFindingLike(x: unknown): x is Finding {
+  if (typeof x !== 'object' || x === null) return false;
+  const f = x as Record<string, unknown>;
+  return (
+    typeof f.file === 'string' &&
+    typeof f.title === 'string' &&
+    typeof f.category === 'string' &&
+    typeof f.severity === 'string' &&
+    SEVERITIES.has(f.severity) &&
+    typeof f.start_line === 'number' &&
+    typeof f.end_line === 'number'
+  );
+}
+
+/**
+ * Findings of a stored `actual_output` (`{ findings, grounding }`). The column
+ * is untyped jsonb, so anything that does not look like a finding is dropped
+ * instead of failing the whole drawer.
+ */
+export function findingsOf(actualOutput: unknown): Finding[] {
+  if (typeof actualOutput !== 'object' || actualOutput === null) return [];
+  const list = (actualOutput as { findings?: unknown }).findings;
+  return Array.isArray(list) ? list.filter(isFindingLike) : [];
+}
+
+/** One job → its drawer row; match detail only for a done run of a case that still has an expectation. */
+export function mapCaseRun(run: CaseRunWithOutput, expectation: EvalExpectation | null): EvalCaseRunDetail {
+  const base = {
+    repeat_idx: run.repeatIdx,
+    status: run.status,
+    pass: run.status === 'done' ? run.pass : null,
+    unexpected: run.unexpected,
+    duration_ms: run.durationMs,
+    cost_usd: run.costUsd,
+    cost_source: run.costSource,
+    error: run.error,
+  };
+  if (run.status !== 'done' || !expectation) {
+    return { ...base, matched_must_find: [], missed_must_find: [], unexpected_findings: [] };
+  }
+  const findings = findingsOf(run.actualOutput);
+  const matched: number[] = [];
+  const missed: number[] = [];
+  expectation.must_find.forEach((e, i) => (findings.some((f) => matchesMustFind(f, e)) ? matched : missed).push(i));
+  const unexpected: EvalCaseUnexpectedFinding[] = findings
+    .filter((f) => !expectation.must_find.some((e) => matchesMustFind(f, e)))
+    .sort((a, b) => SEVERITY_RANK[b.severity] - SEVERITY_RANK[a.severity])
+    .slice(0, EVAL_CASE_UNEXPECTED_FINDINGS_MAX)
+    .map((f) => ({ file: f.file, line: f.start_line, severity: f.severity, category: f.category, title: f.title }));
+  return { ...base, matched_must_find: matched, missed_must_find: missed, unexpected_findings: unexpected };
+}
+
+/** One arm of the case in one suite: tally, with-arm style medians, runs by repeat. */
+export function mapCaseArm(
+  runs: CaseRunWithOutput[],
+  arm: EvalArm,
+  repeats: number,
+  expectation: EvalExpectation | null,
+): EvalCaseArmDetail {
+  const armRuns = runs.filter((r) => r.arm === arm).sort((a, b) => a.repeatIdx - b.repeatIdx);
+  const done = armRuns.filter((r) => r.status === 'done');
+  return {
+    ...tally(runs, arm, repeats),
+    matched_median: median(done.map((r) => r.matched).filter(isNum)),
+    unexpected_median: median(done.map((r) => r.unexpected).filter(isNum)),
+    runs: armRuns.map((r) => mapCaseRun(r, expectation)),
+  };
+}
+
+/** First `EVAL_CASE_DIFF_PREVIEW_MAX` characters; the true size stays visible. */
+export function caseDiffPreview(diff: string): { preview: string; chars: number; truncated: boolean } {
+  const truncated = diff.length > EVAL_CASE_DIFF_PREVIEW_MAX;
+  return { preview: truncated ? diff.slice(0, EVAL_CASE_DIFF_PREVIEW_MAX) : diff, chars: diff.length, truncated };
+}
+
+/** The case was edited after the suite started: stored match indexes may no longer line up. */
+export function expectationChangedSince(caseUpdatedAt: Date, suiteStartedAt: Date): boolean {
+  return caseUpdatedAt.getTime() > suiteStartedAt.getTime();
 }

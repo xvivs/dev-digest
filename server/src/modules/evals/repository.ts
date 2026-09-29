@@ -11,7 +11,7 @@
  * to `expectation: null` / `inputSource: null` instead of failing the read.
  */
 import { createHash } from 'node:crypto';
-import { and, asc, desc, eq, inArray, isNotNull, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNotNull, isNull, ne, sql } from 'drizzle-orm';
 import { EvalCaseSourceMeta, EvalExpectation, EvalSuiteResults } from '@devdigest/shared';
 import type { Db } from '../../db/client.js';
 import * as t from '../../db/schema.js';
@@ -20,6 +20,7 @@ import {
   EvalSuiteBusyError,
   isSuiteStale,
   type CarrierCandidate,
+  type CaseRunWithOutput,
   type EvalCarrier,
   type EvalCase,
   type EvalCasePatch,
@@ -48,6 +49,9 @@ function sha256Hex(text: string): string {
 
 /** SQL twin of `sha256(promptHashInput(name, body))` (skills/domain.ts): name + "\n" + body. */
 const CURRENT_PROMPT_SHA256 = sql<string>`encode(sha256(convert_to(${t.skills.name} || chr(10) || ${t.skills.body}, 'UTF8')), 'hex')`;
+
+/** SQL twin of `isPartialSuite`: a per-case suite has `case_ids` set. */
+const PARTIAL_SUITE = sql<boolean>`(${t.evalSuites.caseIds} IS NOT NULL)`;
 
 function isUniqueViolation(err: unknown, constraint: string): boolean {
   // drizzle may wrap the driver error; check both levels.
@@ -104,6 +108,7 @@ function toSuite(row: SuiteRow): EvalSuiteRecord {
     costSource: row.costSource,
     results: results.success ? results.data : null,
     error: row.error,
+    caseIds: row.caseIds ?? null,
     createdAt: row.createdAt,
     startedAt: row.startedAt,
     finishedAt: row.finishedAt,
@@ -290,6 +295,7 @@ export class EvalsRepository implements EvalStore {
           repeats: input.repeats,
           totalJobs: input.totalJobs,
           estimateUsd: input.estimateUsd,
+          caseIds: input.caseIds,
         })
         .returning({ id: t.evalSuites.id });
       if (!suite) throw new Error('insert into eval_suites returned no row');
@@ -359,11 +365,19 @@ export class EvalsRepository implements EvalStore {
 
   /**
    * Stats tab `impact` (SkillImpact.suite): the latest done Full suite, else
-   * the latest suite of any mode or status. One query.
+   * the latest suite of any mode or status. One query. Per-case suites
+   * (`case_ids` set) are excluded: they lack the full case set, so they are
+   * never a verdict source (ADR 0017).
    */
   async findImpactSuite(workspaceId: string, skillId: string): Promise<EvalSuiteView | undefined> {
     const [row] = await this.suiteViews()
-      .where(and(eq(t.evalSuites.workspaceId, workspaceId), eq(t.evalSuites.skillId, skillId)))
+      .where(
+        and(
+          eq(t.evalSuites.workspaceId, workspaceId),
+          eq(t.evalSuites.skillId, skillId),
+          isNull(t.evalSuites.caseIds),
+        ),
+      )
       .orderBy(
         desc(sql`(${t.evalSuites.mode} = 'full' AND ${t.evalSuites.status} = 'done')`),
         desc(t.evalSuites.finishedAt),
@@ -429,6 +443,41 @@ export class EvalsRepository implements EvalStore {
       .where(eq(t.evalRuns.suiteId, suiteId))
       .orderBy(asc(t.evalRuns.caseId), asc(t.evalRuns.arm), asc(t.evalRuns.repeatIdx));
     return rows.map(toRun);
+  }
+
+  async listCaseRuns(suiteId: string, caseId: string): Promise<CaseRunWithOutput[]> {
+    const rows = await this.db
+      .select()
+      .from(t.evalRuns)
+      .where(and(eq(t.evalRuns.suiteId, suiteId), eq(t.evalRuns.caseId, caseId)))
+      .orderBy(asc(t.evalRuns.arm), asc(t.evalRuns.repeatIdx));
+    return rows.map((r) => ({ ...toRun(r), actualOutput: r.actualOutput }));
+  }
+
+  async caseSuites(
+    workspaceId: string,
+    caseId: string,
+    limit: number,
+  ): Promise<{ suite: EvalSuiteView; runs: EvalRunRecord[] }[]> {
+    const suites = await this.suiteViews()
+      .where(
+        and(
+          eq(t.evalSuites.workspaceId, workspaceId),
+          ne(t.evalSuites.status, 'estimated'),
+          sql`EXISTS (SELECT 1 FROM ${t.evalRuns} WHERE ${t.evalRuns.suiteId} = ${t.evalSuites.id} AND ${t.evalRuns.caseId} = ${caseId})`,
+        ),
+      )
+      .orderBy(desc(t.evalSuites.createdAt), desc(t.evalSuites.id))
+      .limit(limit);
+    if (suites.length === 0) return [];
+    const runs = await this.db
+      .select()
+      .from(t.evalRuns)
+      .where(and(eq(t.evalRuns.caseId, caseId), inArray(t.evalRuns.suiteId, suites.map((r) => r.suite.id))));
+    return suites.map((r) => ({
+      suite: this.toView(r),
+      runs: runs.filter((run) => run.suiteId === r.suite.id).map(toRun),
+    }));
   }
 
   async suiteCases(suiteId: string): Promise<{ id: string; name: string }[]> {
@@ -519,6 +568,7 @@ export class EvalsRepository implements EvalStore {
         status: t.evalSuites.status,
         mode: t.evalSuites.mode,
         repeats: t.evalSuites.repeats,
+        partial: PARTIAL_SUITE,
       });
     return row;
   }
@@ -569,6 +619,7 @@ export class EvalsRepository implements EvalStore {
         status: t.evalSuites.status,
         mode: t.evalSuites.mode,
         repeats: t.evalSuites.repeats,
+        partial: PARTIAL_SUITE,
       });
   }
 

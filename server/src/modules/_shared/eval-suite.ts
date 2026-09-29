@@ -37,6 +37,8 @@ export interface EvalSuiteView {
   stale: boolean;
   results: EvalSuiteResults | null;
   error: string | null;
+  /** Cases a per-case suite covers; null = the skill's whole runnable set (see `isPartialSuite`). */
+  caseIds: string[] | null;
   createdAt: Date;
   startedAt: Date | null;
   finishedAt: Date | null;
@@ -49,6 +51,11 @@ export interface EvalSuiteView {
  */
 export function suiteImpactVerdict(suite: Pick<EvalSuiteView, 'status' | 'results'>): ImpactVerdict {
   return suite.status === 'done' && suite.results ? suite.results.verdict : 'unknown';
+}
+
+/** A per-case suite lacks the full case set, so it is never an Impact / latest-verdict source. */
+export function isPartialSuite(suite: Pick<EvalSuiteView, 'caseIds'>): boolean {
+  return suite.caseIds !== null;
 }
 
 export function toEvalSuiteDto(s: EvalSuiteView): EvalSuiteDto {
@@ -72,6 +79,8 @@ export function toEvalSuiteDto(s: EvalSuiteView): EvalSuiteDto {
     stale: s.stale,
     results: s.results,
     error: s.error,
+    case_ids: s.caseIds,
+    partial: isPartialSuite(s),
     created_at: s.createdAt.toISOString(),
     started_at: s.startedAt?.toISOString() ?? null,
     finished_at: s.finishedAt?.toISOString() ?? null,
