@@ -142,17 +142,26 @@ describe("VersionsTab diff", () => {
     expect(table.compareDocumentPosition(bodyTitle) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
-  it("the current version compares only with its predecessor", async () => {
-    h.get.mockImplementation((p: string) =>
-      p === "/skills/sk1/versions" ? Promise.resolve([4, 3].map((v) => summary(SNAPSHOTS[v]!))) : routeGet(p),
-    );
+  it("the current row shows only the Current pill: no Diff, no Restore", async () => {
     renderTab();
-    const [v4] = await rows();
-    fireEvent.click(within(v4!).getByRole("button", { name: "Diff" }));
-    const region = await screen.findByRole("region", { name: "Changes in v4" });
-    expect(within(region).getByRole("button", { name: "vs current" })).toBeDisabled();
-    expect(within(region).getByRole("button", { name: "vs previous" })).toHaveAttribute("aria-pressed", "true");
-    expect(await within(region).findByText("v3 → v4")).toBeInTheDocument();
+    const [v4, v3, , v1] = await rows();
+    expect(within(v4!).getByText("Current")).toBeInTheDocument();
+    expect(within(v4!).queryByRole("button")).not.toBeInTheDocument();
+    // Older snapshot rows keep both actions.
+    for (const li of [v3!, v1!]) {
+      expect(within(li).getByRole("button", { name: "Diff" })).toBeInTheDocument();
+      expect(within(li).getByRole("button", { name: /^Restore v/ })).toBeInTheDocument();
+    }
+  });
+
+  it("a lone v1 that is current shows just the pill", async () => {
+    h.get.mockImplementation((p: string) =>
+      p === "/skills/sk1/versions" ? Promise.resolve([summary(SNAPSHOTS[1]!)]) : routeGet(p),
+    );
+    renderTab({ ...SKILL, version: 1 });
+    const [only] = await rows();
+    expect(within(only!).getByText("Current")).toBeInTheDocument();
+    expect(within(only!).queryByRole("button")).not.toBeInTheDocument();
   });
 });
 

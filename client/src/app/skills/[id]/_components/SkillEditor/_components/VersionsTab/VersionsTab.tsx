@@ -1,7 +1,7 @@
 /* VersionsTab — the skill's version history (ADR 0016): newest first, the
  * current version badged, lost history shown as "vN body unavailable". Each
- * snapshot row expands an inline diff and offers the Restore popup (Edit /
- * Restore / Cancel). The tab holds no draft of its own, so it never has to
+ * older snapshot row expands an inline diff and offers the Restore popup (Edit /
+ * Restore / Cancel); the current row shows only its pill. The tab holds no draft of its own, so it never has to
  * report dirty state to the navigation guard. */
 "use client";
 
@@ -146,32 +146,34 @@ function SnapshotRow({
               {t("versions.current")}
             </Badge>
           )}
-          <Button
-            kind="ghost"
-            size="sm"
-            icon="Eye"
-            style={s.button}
-            aria-expanded={diffOpen}
-            aria-controls={diffId}
-            onClick={onToggleDiff}
-          >
-            {diffOpen ? t("versions.hideDiff") : t("versions.showDiff")}
-          </Button>
           {!isCurrent && (
-            <Button
-              kind="secondary"
-              size="sm"
-              icon="History"
-              style={s.button}
-              aria-label={t("versions.restoreAria", { version })}
-              onClick={onRestore}
-            >
-              {t("versions.restore")}
-            </Button>
+            <>
+              <Button
+                kind="ghost"
+                size="sm"
+                icon="Eye"
+                style={s.button}
+                aria-expanded={diffOpen}
+                aria-controls={diffId}
+                onClick={onToggleDiff}
+              >
+                {diffOpen ? t("versions.hideDiff") : t("versions.showDiff")}
+              </Button>
+              <Button
+                kind="secondary"
+                size="sm"
+                icon="History"
+                style={s.button}
+                aria-label={t("versions.restoreAria", { version })}
+                onClick={onRestore}
+              >
+                {t("versions.restore")}
+              </Button>
+            </>
           )}
         </div>
       </div>
-      {diffOpen && <VersionDiff id={diffId} skill={skill} version={version} hasPrevSnapshot={row.hasPrevSnapshot} />}
+      {diffOpen && !isCurrent && <VersionDiff id={diffId} skill={skill} version={version} hasPrevSnapshot={row.hasPrevSnapshot} />}
     </>
   );
 }
