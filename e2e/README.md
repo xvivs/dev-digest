@@ -52,7 +52,9 @@ A spec lives in `specs/NN-name.flow.json`:
   expected values single-digit, since the check is a substring match.
 
 Flows target **read-only seeded data** (the demo repo `acme/payments-api`, PR
-#482, the seeded agents), so nothing triggers a model call.
+#482, the seeded agents), so nothing triggers a model call. One exception: the
+tail of `11-skills` writes a skill version and an eval case. It still calls no
+model, because it stops at the eval estimate and never presses Start.
 
 > **Precondition: a freshly-seeded DB.** The seed creates **two** repos —
 > `acme/payments-api`, which every flow here targets, and `xvivs/dev-digest` —
@@ -135,4 +137,4 @@ a CI artifact by `.github/workflows/e2e-web.yml`).
 | `08-findings-popover-severity` | hover/focus a severity chip → FindingsPopover scoped to that severity; sticky scope, Escape closes |
 | `09-disclosure-a11y` | `Collapse` disclosures: `aria-expanded` wiring, body unmount after `ddCollapseOut`, Enter on a card trigger |
 | `10-run-cost-and-timeline` | cost provenance (bare `$` vs `~$` vs `—`), timeline run badges, trace drawer duration/tokens |
-| `11-skills` | `/skills` → seeded skill cards + agent count → open a skill on Config; Test Quality Reviewer → Skills tab → `4 of 5 enabled` (SPEC-02, read-only) |
+| `11-skills` | `/skills` → seeded skill cards + agent count → open a skill on Config; Test Quality Reviewer → Skills tab → `4 of 5 enabled` (SPEC-02, read-only). Then a Config save makes v2 → Versions diff `v1 → v2` + Restore popup (Cancel only) → Stats `?window=7d` → Evals: paste-diff case + Quick estimate, never Start. This tail **writes** a skill version and an eval case, so run it on the hermetic stack |
