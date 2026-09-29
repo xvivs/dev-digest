@@ -296,6 +296,35 @@ d('conventions routes (Testcontainers pg)', () => {
     await app2.close();
   });
 
+  it('a reworded rule merges into a pending identity; a pending one the next scan missed is hidden (AC-4, AC-20)', async () => {
+    const repo = await makeRepo();
+    const SECOND = {
+      ...GOOD,
+      rule: 'Declare exported functions with the function keyword',
+      evidence: [{ path: 'src/a.ts', quote: 'export async function loadUser(id: string) {', line_hint: 1 }],
+      llm_confidence: 0.1,
+      category: 'structure',
+    };
+    const app1 = await makeApp([GOOD, SECOND]);
+    await app1.inject({ method: 'POST', url: `/repos/${repo.id}/conventions/extract` });
+    const page1 = await waitForScan(app1, repo.id);
+    expect(page1.candidates).toHaveLength(2);
+    const goodId = page1.candidates.find((c: { rule: string }) => c.rule === GOOD.rule).id as string;
+
+    // Pending identities of the latest scan are in the prior list: GOOD has the higher confidence, so it is P1.
+    const app2 = await makeApp([{ ...GOOD, rule: 'Raise NotFoundError on an empty lookup result', prior_ref: 'P1' }]);
+    await app2.inject({ method: 'POST', url: `/repos/${repo.id}/conventions/extract` });
+    const page2 = await waitForScan(app2, repo.id);
+    expect(page2.last_scan).toMatchObject({ status: 'done', matched_prior_count: 1 });
+    expect(page2.candidates.map((c: { id: string }) => c.id)).toEqual([goodId]);
+    expect(page2.candidates[0]).toMatchObject({ status: 'pending', rule: GOOD.rule, seen_in_latest: true });
+    // Filter only: the unseen identity is still in the table.
+    const rows = await pg.handle.db.select().from(t.conventions).where(eq(t.conventions.repoId, repo.id));
+    expect(rows).toHaveLength(2);
+    await app1.close();
+    await app2.close();
+  });
+
   it('a failed scan (empty sample) is visible in GET with its error', async () => {
     const app = await makeApp();
     const repo = await makeRepo({ ranked: false, files: { 'README.md': '# nothing to rank' } });

@@ -8,7 +8,7 @@
  * repositories the container builds (`skillsRepoOn(tx)`, `agentsRepoOn(tx)`),
  * handed in by `wiring.ts`. Only the lock and the link append are written here.
  */
-import { and, desc, eq, inArray, isNotNull, ne, or, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNotNull, isNull, ne, or, sql } from 'drizzle-orm';
 import type { Db, DbTx } from '../../db/client.js';
 import * as t from '../../db/schema.js';
 import type { ConventionEvidenceRow } from '../../db/schema/knowledge.js';
@@ -26,7 +26,7 @@ import {
   type RepoInfo,
   type ScanRecord,
 } from './domain.js';
-import type { AgentLinkState, ConventionStore, NewExtractedSkill, ScanCompletion } from './ports.js';
+import type { AgentLinkState, ConventionStore, NewExtractedSkill, ScanCompletion, ScanProgress } from './ports.js';
 
 type ScanRow = typeof t.conventionScans.$inferSelect;
 type ConventionRow = typeof t.conventions.$inferSelect;
@@ -215,6 +215,18 @@ export class ConventionsRepository implements ConventionStore {
     return rows.length > 0;
   }
 
+  async recordScanProgress(scanId: string, attempt: number, progress: ScanProgress): Promise<boolean> {
+    // Only defined keys: drizzle skips `undefined`, but an empty SET is a syntax error.
+    const set = Object.fromEntries(Object.entries(progress).filter(([, v]) => v !== undefined));
+    if (Object.keys(set).length === 0) return false;
+    const rows = await this.db
+      .update(t.conventionScans)
+      .set(set)
+      .where(this.ownedBy(scanId, attempt))
+      .returning({ id: t.conventionScans.id });
+    return rows.length > 0;
+  }
+
   async reapRunningScans(error: string): Promise<number> {
     const rows = await this.db
       .update(t.conventionScans)
@@ -226,8 +238,14 @@ export class ConventionsRepository implements ConventionStore {
 
   // ------------------------------------------------------------ identities (reads)
 
+  /**
+   * D6, AC-20: decided identities first (newest decision first), then pending
+   * ones the latest done scan observed (highest confidence first), all inside
+   * `limit`. The pending tail lets the model return a `prior_ref` for a
+   * reworded rule instead of proposing a duplicate identity.
+   */
   async listPrior(repoId: string, limit: number): Promise<PriorIdentity[]> {
-    const rows = await this.db
+    const decided = await this.db
       .select()
       .from(t.conventions)
       .where(
@@ -241,6 +259,31 @@ export class ConventionsRepository implements ConventionStore {
         desc(t.conventions.id),
       )
       .limit(limit);
+    let rows = decided;
+
+    const latestDone = limit > decided.length ? await this.latestDoneScanId(repoId) : null;
+    if (latestDone) {
+      const pending = await this.db
+        .select({ c: t.conventions })
+        .from(t.conventions)
+        .innerJoin(
+          t.conventionObservations,
+          and(
+            eq(t.conventionObservations.conventionId, t.conventions.id),
+            eq(t.conventionObservations.scanId, latestDone),
+          ),
+        )
+        .where(
+          and(
+            eq(t.conventions.repoId, repoId),
+            eq(t.conventions.status, 'pending'),
+            isNull(t.conventions.editedAt),
+          ),
+        )
+        .orderBy(desc(t.conventionObservations.confidence), desc(t.conventions.id))
+        .limit(limit - decided.length);
+      rows = [...decided, ...pending.map((p) => p.c)];
+    }
     return rows.map((r, i) => ({
       ref: `P${i + 1}`,
       id: r.id,

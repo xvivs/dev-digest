@@ -5,6 +5,7 @@
  *
  *   startScan      AC-1..3   checks, insert running scan, enqueue, done.catch(markFailed)
  *   runScanJob     AC-9..19  SAMPLE → PROPOSE → VERIFY → PERSIST, one attempt, 100 s deadline
+ *                            (terminal: only head_moved and LLM 429/5xx are retried)
  *   markFailed / reapStaleScans   AC-18
  *   getPage / update               AC-4, AC-5
  *   createSkill    AC-24..28 one unit of work
@@ -24,6 +25,7 @@ import {
   MAX_CONFIG_FILES,
   MAX_FORCED_FILES,
   MAX_OUTPUT_TOKENS,
+  CONVENTIONS_PROVIDER_ROUTING,
   PRIOR_LIMIT,
   RANKED_FETCH,
   REAPED_SCAN_ERROR,
@@ -46,6 +48,7 @@ import {
   RepoNotClonedError,
   RepoNotIndexedError,
   resolveAndMerge,
+  ScanDeadlineError,
   ScanRunningError,
   ScanTransientError,
   sortCandidates,
@@ -63,8 +66,8 @@ import {
   type ScanSignal,
   type VerifyResult,
 } from './domain.js';
-import { ConventionExtraction } from './llm-schema.js';
-import type { ConventionsDeps, ConventionStore, ScanCompletion } from './ports.js';
+import { SalvagedExtraction } from './llm-schema.js';
+import type { ConventionsDeps, ConventionStore, ScanCompletion, ScanProgress } from './ports.js';
 import { buildExtractionPrompt } from './prompt.js';
 
 export interface CreateSkillInput {
@@ -88,6 +91,12 @@ export interface ConventionPatchInput {
 }
 
 const unique = <T>(xs: readonly T[]): T[] => [...new Set(xs)];
+
+/** What the running attempt has reached, so a failed attempt can still record it. */
+interface AttemptState {
+  attempt?: number;
+  progress: ScanProgress;
+}
 
 function abortError(): DOMException {
   return new DOMException('The operation was aborted', 'AbortError');
@@ -141,23 +150,28 @@ export class ConventionsService {
   }
 
   /**
-   * One attempt of the scan job (JobRunner calls it again on a retryable error).
-   * The deadline starts here, at handler start, and aborts the LLM call (AC-17).
+   * One attempt of the scan job. JobRunner calls it again only on a retryable
+   * error: `head_moved` (503) or an LLM 429/5xx surfaced by the SDK. The
+   * deadline starts here, at handler start, aborts the LLM call (AC-17) and is
+   * terminal (`ScanDeadlineError`, 408). Before rethrowing, the attempt writes
+   * what it has counted so far, so a failed scan keeps its stats.
    */
   async runScanJob(payload: unknown): Promise<void> {
     const { scanId } = parseScanJobPayload(payload);
     const startedAt = Date.now();
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.deadlineMs);
+    const state: AttemptState = { progress: {} };
     try {
-      await this.runAttempt(scanId, controller.signal, startedAt);
+      await this.runAttempt(scanId, controller.signal, startedAt, state);
     } catch (err) {
       if (err instanceof StaleAttemptError) return;
+      if (state.attempt !== undefined) {
+        // Best effort: a failed stats write must not mask the real error.
+        await this.store.recordScanProgress(scanId, state.attempt, state.progress).catch(() => false);
+      }
       if (controller.signal.aborted && !(err instanceof ScanTransientError)) {
-        throw new ScanTransientError(
-          'scan_deadline_exceeded',
-          `The scan exceeded its ${Math.round(this.deadlineMs / 1000)}s deadline`,
-        );
+        throw new ScanDeadlineError(this.deadlineMs);
       }
       throw err;
     } finally {
@@ -175,10 +189,17 @@ export class ConventionsService {
     return this.store.reapRunningScans(REAPED_SCAN_ERROR);
   }
 
-  private async runAttempt(scanId: string, signal: AbortSignal, startedAt: number): Promise<void> {
+  private async runAttempt(
+    scanId: string,
+    signal: AbortSignal,
+    startedAt: number,
+    state: AttemptState,
+  ): Promise<void> {
     const scan = await this.store.bumpAttempt(scanId);
     if (!scan) return; // already done / failed: nothing to do
     const attempt = scan.attempt;
+    state.attempt = attempt;
+    const progress = state.progress;
 
     const repo = await this.store.findRepo(scan.workspaceId, scan.repoId);
     if (!repo) {
@@ -194,9 +215,11 @@ export class ConventionsService {
     // ---- SAMPLE
     const signals = await this.loadSignals(repo.id);
     const sent = await this.buildSample(repo, ref, signals);
+    progress.sampleFileCount = sent.length;
     const codeFiles = sent.filter((f) => f.kind === 'code');
     if (codeFiles.length === 0) {
       // AC-10a: no LLM call; not retryable (a retry would read the same files).
+      await this.store.recordScanProgress(scanId, attempt, progress);
       await this.store.failScan(scanId, 'empty_sample: no readable code files in the sample', attempt);
       return;
     }
@@ -205,15 +228,23 @@ export class ConventionsService {
 
     // ---- PROPOSE
     const choice = await this.deps.models.resolve(scan.workspaceId);
+    progress.model = choice.model;
     const llm = await this.deps.models.llm(choice.provider);
     const remaining = this.deadlineMs - (Date.now() - startedAt);
     if (remaining <= 0 || signal.aborted) throw abortError();
     const prompt = buildExtractionPrompt({ repoFullName: repo.fullName, files: sent, signals, prior });
-    const result = await llm.completeStructured({
+    const result = await llm.completeStructured<SalvagedExtraction>({
       model: choice.model,
-      schema: ConventionExtraction,
+      schema: SalvagedExtraction,
       schemaName: LLM_SCHEMA_NAME,
       messages: prompt.messages,
+      // JSON mode keeps the AC-13 key order (json_schema gets re-sorted
+      // upstream); the Zod schema still validates and drives the repair.
+      responseFormat: 'json_object',
+      // A hybrid reasoning model spends the 6000-token cap on hidden
+      // reasoning and returns no content; extraction needs none.
+      disableReasoning: true,
+      providerRouting: CONVENTIONS_PROVIDER_ROUTING,
       temperature: LLM_TEMPERATURE,
       maxTokens: MAX_OUTPUT_TOKENS,
       timeoutMs: remaining,
@@ -221,12 +252,30 @@ export class ConventionsService {
       signal,
     });
 
+    const stats = {
+      model: result.model,
+      tokensIn: result.tokensIn,
+      tokensOut: result.tokensOut,
+      costUsd: result.costUsd,
+      costSource: result.costSource,
+    };
+    Object.assign(progress, stats);
+
     // ---- VERIFY
     const verify = verifyCandidates({
       candidates: result.data.candidates,
       files: new Map(codeFiles.map((f) => [f.path, f.lines])),
       signals: new Map(signals.map((s) => [s.id, s])),
       priorRefs: new Set(prior.map((p) => p.ref)),
+    });
+    // Candidates the salvage parse dropped were proposed too: found and dropped (AC-15).
+    verify.found += result.data.rejected;
+    verify.dropped += result.data.rejected;
+    Object.assign(progress, {
+      foundCount: verify.found,
+      verifiedCount: verify.verified.length,
+      droppedCount: verify.dropped,
+      relocatedCount: verify.relocated,
     });
 
     // AC-9 / Trap 7: evidence was read from the working tree; it must still be `sha`.
@@ -242,13 +291,7 @@ export class ConventionsService {
       prior,
       verify,
       sampleFileCount: sent.length,
-      stats: {
-        model: result.model,
-        tokensIn: result.tokensIn,
-        tokensOut: result.tokensOut,
-        costUsd: result.costUsd,
-        costSource: result.costSource,
-      },
+      stats,
     });
   }
 
@@ -350,7 +393,13 @@ export class ConventionsService {
     const repo = await this.store.findRepo(workspaceId, repoId);
     if (!repo) return undefined;
     const page = await this.store.getPage(workspaceId, repoId);
-    return { ...page, candidates: sortCandidates(page.candidates) };
+    const latestId = page.latestDoneScan?.id ?? null;
+    // AC-4: a pending identity the latest done scan did not observe is stale noise.
+    // Accepted, edited and rejected ones stay (they carry a decision); nothing is deleted.
+    const visible = page.candidates.filter(
+      (c) => c.status !== 'pending' || c.editedAt !== null || (latestId !== null && c.lastSeenScanId === latestId),
+    );
+    return { ...page, candidates: sortCandidates(visible) };
   }
 
   /**

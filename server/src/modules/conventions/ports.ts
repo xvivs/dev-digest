@@ -35,6 +35,12 @@ export interface ScanCompletion {
   costSource: CostSource | null;
 }
 
+/**
+ * What an attempt has counted so far. Written before an attempt rethrows, so a
+ * scan that ends `failed` still shows how far it got (AC-23).
+ */
+export type ScanProgress = Partial<Omit<ScanCompletion, 'retryCount'>>;
+
 export interface NewExtractedSkill {
   workspaceId: string;
   name: string;
@@ -64,6 +70,8 @@ export interface ConventionStore {
   bumpAttempt(scanId: string): Promise<ScanRecord | undefined>;
   /** Pin HEAD on the scan, guarded by `status='running' AND attempt=?`. */
   setScanCommit(scanId: string, attempt: number, commitSha: string): Promise<boolean>;
+  /** Write the stats an attempt has so far, guarded by `status='running' AND attempt=?`. */
+  recordScanProgress(scanId: string, attempt: number, progress: ScanProgress): Promise<boolean>;
   /** Mark failed. With `attempt`, only if that attempt still owns the row. */
   failScan(scanId: string, error: string, attempt?: number): Promise<boolean>;
   /** Boot-time reaper (AC-18): every `running` scan becomes `failed`. */

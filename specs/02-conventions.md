@@ -124,7 +124,10 @@ spec.
 - **AC-4** When `GET /repos/:id/conventions` is called, the server shall return a
   `ConventionsPage` with `last_scan`, `running_scan`, `latest_done_scan` and `candidates`,
   including a failed scan. Candidates shall be ordered by status (pending, accepted,
-  rejected), then confidence descending, then `created_at` descending. (G12)
+  rejected), then confidence descending, then `created_at` descending. (G12) A `pending`
+  identity that was never edited and that the latest done scan did not observe
+  (`seen_in_latest = false`) shall not be returned; accepted, edited and rejected identities
+  are always returned. The filter hides rows only; no identity is deleted.
 - **AC-5** When `PATCH /conventions/:id` is called with a strict body `{status?, rule?
   (8..300), category?}`, the server shall return the updated `ConventionCandidate`. It shall
   return 422 for an empty rule or one with invisible characters.
@@ -164,7 +167,24 @@ spec.
   model as an `<untrusted>` signal with a short id and add its file to the sample.
 - **AC-13** The server shall call the model once per attempt with structured output, at most
   6000 output tokens, temperature 0, the remaining scan time as timeout and an abort signal.
-  The schema shall allow at most 12 candidates, each with 1–3 evidence quotes of at most 240
+  The call shall use JSON mode (`responseFormat: 'json_object'`) with the shape spelled out in
+  the system prompt, and reasoning disabled (`disableReasoning`). Measured on
+  `deepseek/deepseek-v4-flash`: with `json_schema` (strict or not) OpenRouter upstreams return
+  the keys sorted alphabetically, `category` and `llm_confidence` first, which defeats the order
+  below; with reasoning on, the whole 6000-token cap went to hidden reasoning and `content` came
+  back `null` (`finish_reason: length`, ~50 s). A `finish_reason: length` reply shall fail the
+  call at once, with no repair attempt. The reply shall be parsed per item: an invalid quote is
+  dropped, an invalid `counter_example` becomes null, an invalid candidate is dropped and counted
+  in `found_count` and `dropped_count`; only a reply without a `candidates` array goes to repair.
+  The reply shall start with an `observed_patterns` survey of at most 5 notes under 15 words
+  each, before `candidates` (ignored by the parse; with reasoning off, some upstreams otherwise
+  answered `[]` in 7-9 tokens). The prompt shall say the survey does not cap the candidates.
+  On OpenRouter the call shall send provider routing `CONVENTIONS_PROVIDER_ROUTING`
+  (`constants.ts`): `sort: 'throughput'`, `ignore: ['deepinfra', 'digitalocean']`, fallbacks
+  on. The default price-weighted balancing picks a random upstream per call; measured with a
+  13-file sample, the fastest upstream answered in 10-16 s, while the previous round saw two
+  upstreams return `[]` and one send nothing before the deadline.
+  The schema shall allow at most 8 candidates, each with 1–3 evidence quotes of at most 240
   characters. Fields shall be declared in generation order `rule → evidence →
   counter_example → origin → signal_id → prior_ref → category → llm_confidence`, so the
   model classifies and scores after it has written the rule and its evidence. (G2: with
@@ -190,9 +210,15 @@ spec.
   confidence as `clamp(0.45·llm + 0.45·min(support,3)/3 + 0.10·signal − 0.30·counter)`.
   If support is below 2, then confidence shall not exceed 0.59.
 - **AC-17** When the scan runs longer than 100 seconds from handler start, the server shall
-  abort the LLM call and mark the scan `failed` with an error message.
+  abort the LLM call and mark the scan `failed` with `scan_deadline_exceeded`. The deadline is
+  terminal: it shall not be retried, so `failed` arrives at most ~100 s after the handler
+  started (a retry gets the same budget against the same model and sample; with 3 attempts the
+  scan took 301 s to fail).
 - **AC-18** If the job throws or its retries run out, then the server shall mark the scan
-  `failed`. At boot, the server shall mark scans still `running` as `failed`.
+  `failed`. Only `head_moved` and an LLM 429/5xx are retried. Before an attempt rethrows, it
+  shall store the stats it reached (sample file count, model; tokens, cost and VERIFY counts
+  once the LLM call returned), so a failed scan shows how far it got. At boot, the server shall
+  mark scans still `running` as `failed`.
 
 ### Persistence
 
@@ -201,7 +227,11 @@ spec.
   the transaction shall roll back and write nothing.
 - **AC-20** When a candidate matches a prior identity through a validated `prior_ref`, or by
   exact fingerprint, the server shall reuse that identity. Otherwise it shall create a new
-  identity with status `pending`.
+  identity with status `pending`. The prior list sent to the model shall hold decided
+  identities first, then `pending` identities observed by the latest done scan (highest
+  confidence first), so a reworded pending rule can return its `prior_ref` and merge instead
+  of creating a duplicate. Pending entries are marked `[pending]` in the prompt: they are
+  not bans and not approvals.
 - **AC-20a** If two candidates of one scan resolve to the same identity, then the server shall
   merge them into one observation: the candidate with the higher confidence keeps its rule,
   evidence from both is unioned (deduplicated by path and lines, capped at 3), and
@@ -318,7 +348,8 @@ spec.
 | Scan failed or timed out | State 4: error text, Retry. Older candidates stay readable |
 | Scan done, 0 verified | State 5: message with dropped count |
 | Every candidate rejected | State 6: message pointing to the Rejected tab |
-| Accepted convention absent from the latest scan | Stays visible with "not seen in latest scan" and its last evidence, linked at that scan's SHA |
+| Pending convention absent from the latest scan | Not returned by `GET` (AC-4); the identity stays in the table and reappears if a later scan finds it |
+| Accepted or edited convention absent from the latest scan | Stays visible with "not seen in latest scan" and its last evidence, linked at that scan's SHA |
 | Reject a convention already in a skill | Confirm dialog; skill untouched |
 | Two scans start at once | Partial unique index lets one win; the other gets 409 with the winner's id |
 | Stale job retry writes after a newer attempt | CAS on `attempt` updates zero rows; nothing written |
@@ -346,12 +377,13 @@ spec.
 | Budget | Value |
 |---|---|
 | Sample input | ≤ 60 KB; ≤ 200 lines and ≤ 6 KB per file; ≤ 12 code files plus ≤ 4 config files |
-| Model output | ≤ 6000 tokens; ≤ 12 candidates; quote ≤ 240 characters; snippet ≤ 12 lines |
+| Model output | ≤ 6000 tokens; ≤ 8 candidates; ≤ 5 `observed_patterns` notes; quote ≤ 240 characters; snippet ≤ 12 lines. Measured reply ≈ 1.4-2.3k tokens |
+| Scan latency | Target ≤ 90 s per `done` scan on the default model; measured 15-16 s on 3 consecutive scans with provider routing (AC-13) |
 | Deadline | 100 s per scan handler, from handler start |
-| Retries | LLM `maxRetries` 1 (structured repair only), SDK retries 0, job retries 2. Worst case 3 attempts, each bounded by the deadline; retry count recorded in stats |
+| Retries | LLM `maxRetries` 1 (structured repair only; never after `finish_reason: length`), SDK retries 0, job retries 2 for `head_moved` and LLM 429/5xx only. `scan_deadline_exceeded` is terminal (status 408, not retried). Retry count recorded in stats |
 | Rate limit | Extract 5 per minute |
 | Retention | 10 scans per repo, plus referenced ones |
-| Prior list | ≤ 40 decided identities, short ids `P1..Pn` |
+| Prior list | ≤ 40 identities, short ids `P1..Pn`: decided first (accepted, rejected, edited), then pending ones seen in the latest done scan by confidence descending |
 | Skill body | Counts toward the 24 KB per-agent budget of SPEC-02 |
 | Cost | Recorded per scan with `cost_source`. Default model price is $0.14 in / $0.28 out per million tokens (`pricing.ts:40`) |
 | Polling | Client refetches only while `running_scan` is set |

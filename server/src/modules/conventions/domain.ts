@@ -223,14 +223,26 @@ export class SnippetTooLongError extends AppError {
 }
 
 /**
- * An attempt failed for a reason a fresh attempt can fix (HEAD moved, deadline).
+ * An attempt failed for a reason a fresh attempt can fix (HEAD moved).
  * Status 503 is deliberate: JobRunner's `withRetry` retries only errors whose
  * `statusCode` is 429/5xx, so this is how a scan opts into the job's retries.
  * It never reaches HTTP.
  */
 export class ScanTransientError extends AppError {
-  constructor(code: 'head_moved' | 'scan_deadline_exceeded', message: string) {
+  constructor(code: 'head_moved', message: string) {
     super(code, message, 503);
+  }
+}
+
+/**
+ * The scan ran past its deadline (AC-17). Terminal: a fresh attempt gets the
+ * same budget against the same model and sample, so retrying only multiplies
+ * the wait (3 × 100 s). Status 408 is deliberately NOT 429/5xx, so JobRunner's
+ * `withRetry` does not retry it. It never reaches HTTP.
+ */
+export class ScanDeadlineError extends AppError {
+  constructor(deadlineMs: number) {
+    super('scan_deadline_exceeded', `The scan exceeded its ${Math.round(deadlineMs / 1000)}s deadline`, 408);
   }
 }
 

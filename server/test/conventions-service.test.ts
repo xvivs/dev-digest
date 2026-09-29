@@ -13,8 +13,10 @@ import type {
   StructuredResult,
 } from '@devdigest/shared';
 import { MockLLMProvider } from '../src/adapters/mocks.js';
+import { withRetry } from '../src/platform/resilience.js';
 import { UnsafePathError } from '../src/modules/_shared/safe-path.js';
 import {
+  ScanDeadlineError,
   ScanRunningError,
   RepoNotClonedError,
   RepoNotIndexedError,
@@ -36,8 +38,10 @@ import type {
   ConventionsDeps,
   NewExtractedSkill,
   ScanCompletion,
+  ScanProgress,
 } from '../src/modules/conventions/ports.js';
 import { ConventionsService } from '../src/modules/conventions/service.js';
+import { CONVENTIONS_PROVIDER_ROUTING } from '../src/modules/conventions/constants.js';
 
 // ------------------------------------------------------------ in-memory store
 
@@ -112,6 +116,11 @@ class InMemoryStore implements ConventionStore {
     if (scan) scan.commitSha = sha;
     return !!scan;
   }
+  async recordScanProgress(scanId: string, attempt: number, progress: ScanProgress) {
+    const scan = this.owned(scanId, attempt);
+    if (scan) Object.assign(scan, progress);
+    return !!scan;
+  }
   async failScan(scanId: string, error: string, attempt?: number) {
     const scan =
       attempt !== undefined
@@ -127,8 +136,13 @@ class InMemoryStore implements ConventionStore {
     return running.length;
   }
   async listPrior(repoId: string, limit: number): Promise<PriorIdentity[]> {
-    return this.s.conventions
-      .filter((c) => c.repoId === repoId && (c.status !== 'pending' || c.editedAt !== null))
+    const decided = this.s.conventions.filter((c) => c.repoId === repoId && (c.status !== 'pending' || c.editedAt !== null));
+    const latest = await this.latestDoneScanId(repoId);
+    const conf = (id: string) => this.s.observations.find((o) => o.conventionId === id && o.scanId === latest)?.o.confidence ?? 0;
+    const pending = this.s.conventions
+      .filter((c) => c.repoId === repoId && c.status === 'pending' && c.editedAt === null && latest !== null && c.lastSeenScanId === latest)
+      .sort((a, b) => conf(b.id) - conf(a.id));
+    return [...decided, ...pending]
       .slice(0, limit)
       .map((c, i) => ({ ref: `P${i + 1}`, id: c.id, status: c.status, category: c.category, rule: c.rule }));
   }
@@ -476,6 +490,12 @@ describe('ConventionsService scan job', () => {
     expect(h.store.s.observations[0]!.o).toMatchObject({ origin: 'review_history', reviewHits: 3 });
   });
 
+  it('a candidate the salvage parse drops still counts as found and dropped (AC-15)', async () => {
+    const h = harness({ structured: { candidates: [GOOD, { ...GOOD, category: 'style' }] } });
+    const scan = await scanOnce(h);
+    expect(scan).toMatchObject({ status: 'done', foundCount: 2, verifiedCount: 1, droppedCount: 1 });
+  });
+
   it('drops a path outside the sample', async () => {
     const h = harness({ structured: { candidates: [OUTSIDE] } });
     const scan = await scanOnce(h);
@@ -512,12 +532,78 @@ describe('ConventionsService scan job', () => {
     expect(h.store.s.conventions).toHaveLength(0);
   });
 
-  it('the deadline error is retryable by JobRunner (status 5xx)', async () => {
-    const h = harness({ llm: new HangingLLM(), deadlineMs: 10 });
+  it('the deadline error is terminal: JobRunner does not retry it', async () => {
+    const llm = new HangingLLM();
+    let calls = 0;
+    const counting = Object.assign(Object.create(llm) as HangingLLM, {
+      completeStructured<T>(req: StructuredRequest<T>) {
+        calls += 1;
+        return llm.completeStructured(req);
+      },
+    });
+    const h = harness({ llm: counting, deadlineMs: 10 });
+    const scan = await h.store.insertRunningScan(WS, REPO.id);
+    // The same retry policy JobRunner wraps every handler in (retries: 2).
+    const err = await withRetry(() => h.service.runScanJob({ scanId: scan.id }), { retries: 2, baseDelayMs: 1 }).catch(
+      (e: unknown) => e,
+    );
+    expect(err).toBeInstanceOf(ScanDeadlineError);
+    expect((err as ScanDeadlineError).code).toBe('scan_deadline_exceeded');
+    expect((err as ScanDeadlineError).statusCode).toBeLessThan(500);
+    expect((err as ScanDeadlineError).statusCode).not.toBe(429);
+    expect(calls).toBe(1);
+    expect(h.store.s.scans[0]!.attempt).toBe(1);
+  });
+
+  it('head_moved stays retryable (status 5xx)', async () => {
+    const h = harness({ heads: ['sha-1', 'sha-2'] });
     const scan = await h.store.insertRunningScan(WS, REPO.id);
     const err = await h.service.runScanJob({ scanId: scan.id }).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(ScanTransientError);
     expect((err as ScanTransientError).statusCode).toBeGreaterThanOrEqual(500);
+  });
+
+  it('a failed scan keeps the stats its attempt reached (AC-23)', async () => {
+    const h = harness({ llm: new HangingLLM(), deadlineMs: 30 });
+    const scan = await scanOnce(h);
+    expect(scan).toMatchObject({
+      status: 'failed',
+      sampleFileCount: 2,
+      model: 'deepseek/deepseek-v4-flash',
+      tokensIn: null,
+    });
+
+    // Past the LLM call (head_moved): tokens, cost and VERIFY counts are kept too.
+    const moved = await scanOnce(harness({ heads: ['sha-1', 'sha-2'] }));
+    expect(moved).toMatchObject({
+      status: 'failed',
+      sampleFileCount: 2,
+      model: 'deepseek/deepseek-v4-flash',
+      tokensIn: 100,
+      tokensOut: 50,
+      costUsd: 0.001,
+      foundCount: 2,
+      verifiedCount: 1,
+      droppedCount: 1,
+    });
+  });
+
+  it('sends every sampled file inside the user message, in JSON mode without reasoning (B3 regression)', async () => {
+    const h = harness();
+    await scanOnce(h);
+    const req = (h.llm as MockLLMProvider).calls[0]!.req as StructuredRequest<unknown>;
+    expect(req.messages.map((m) => m.role)).toEqual(['system', 'user']);
+    const user = req.messages[1]!.content;
+    const nonce = /<untrusted-([a-z0-9]+) source="code-file">/.exec(user)?.[1];
+    expect(nonce).toBeDefined();
+    for (const [path, content] of Object.entries(FILES)) {
+      const block = new RegExp(`<untrusted-${nonce} source="code-file">\npath: ${path.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&')}\n`);
+      expect(user).toMatch(block);
+      expect(user).toContain(`   1| ${content.split('\n')[0]}`);
+    }
+    expect(req).toMatchObject({ responseFormat: 'json_object', disableReasoning: true });
+    expect(req.providerRouting).toEqual(CONVENTIONS_PROVIDER_ROUTING);
+    expect(req.messages[0]!.content).toContain('"candidates"');
   });
 
   it('empty sample → failed without an LLM call (AC-10a)', async () => {
@@ -573,6 +659,72 @@ describe('ConventionsService scan job', () => {
     expect(h.store.s.conventions).toHaveLength(1);
     expect(h.store.s.conventions[0]).toMatchObject({ id, status: 'rejected', lastSeenScanId: second.id });
     expect(h.store.s.observations.filter((o) => o.conventionId === id)).toHaveLength(2);
+  });
+});
+
+describe('ConventionsService prior list and page filter (AC-4, AC-20)', () => {
+  const SECOND = {
+    ...GOOD,
+    rule: 'Declare exported functions with the function keyword',
+    evidence: [{ path: 'src/a.ts', quote: GOOD.evidence[0]!.quote, line_hint: 3 }],
+    llm_confidence: 0.2,
+  };
+  const userMessage = (h: Harness) => {
+    const calls = (h.llm as MockLLMProvider).calls.filter((x) => x.method === 'completeStructured');
+    const req = calls.at(-1)!.req as StructuredRequest<unknown>;
+    return req.messages[1]!.content as string;
+  };
+
+  it('the prior list carries pending identities of the latest done scan, marked [pending]', async () => {
+    const h = harness({ structured: { candidates: [GOOD, SECOND] } });
+    await scanOnce(h);
+    const h2 = harness({ state: h.store.s, structured: { candidates: [GOOD, SECOND] } });
+    await scanOnce(h2);
+    const user = userMessage(h2);
+    expect(user).toContain(`P1 [pending] [error-handling] ${GOOD.rule}`);
+    expect(user).not.toContain('(pending)');
+  });
+
+  it('decided identities come first and pending fills the rest of the limit', async () => {
+    const h = harness({ structured: { candidates: [GOOD, SECOND] } });
+    await scanOnce(h);
+    const second = h.store.s.conventions.find((c) => c.rule === SECOND.rule)!;
+    await h.service.update(WS, second.id, { status: 'accepted' });
+    const prior = await h.store.listPrior(REPO.id, 40);
+    expect(prior.map((p) => [p.ref, p.status])).toEqual([
+      ['P1', 'accepted'],
+      ['P2', 'pending'],
+    ]);
+    expect(await h.store.listPrior(REPO.id, 1)).toHaveLength(1);
+  });
+
+  it('a reworded rule with a pending prior_ref merges into the existing identity', async () => {
+    const h = harness({ structured: { candidates: [GOOD] } });
+    await scanOnce(h);
+    const id = h.store.s.conventions[0]!.id;
+    const h2 = harness({
+      state: h.store.s,
+      structured: { candidates: [{ ...GOOD, rule: 'Raise NotFoundError on an empty lookup result', prior_ref: 'P1' }] },
+    });
+    const second = await scanOnce(h2);
+    expect(second.matchedPriorCount).toBe(1);
+    expect(h.store.s.conventions).toHaveLength(1);
+    expect(h.store.s.conventions[0]).toMatchObject({ id, lastSeenScanId: second.id });
+  });
+
+  it('getPage hides pending identities the latest scan did not see; decided ones stay', async () => {
+    const h = harness({ structured: { candidates: [GOOD, SECOND] } });
+    await scanOnce(h);
+    const [first, other] = h.store.s.conventions;
+    await h.service.update(WS, other!.id, { status: 'accepted' });
+    await scanOnce(harness({ state: h.store.s, structured: { candidates: [] } }));
+    // `first` is pending and unseen now; `other` is accepted and unseen.
+    const page = await h.service.getPage(WS, REPO.id);
+    expect(page!.candidates.map((c) => c.id)).toEqual([other!.id]);
+    expect(h.store.s.conventions.map((c) => c.id)).toContain(first!.id); // not deleted
+    // An edited pending one stays.
+    await h.service.update(WS, first!.id, { rule: 'Throw NotFoundError on any empty lookup' });
+    expect((await h.service.getPage(WS, REPO.id))!.candidates.map((c) => c.id).sort()).toEqual([first!.id, other!.id].sort());
   });
 });
 

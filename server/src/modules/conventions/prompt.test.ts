@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { renderSampleFile, type PriorIdentity, type ScanSignal } from './domain.js';
-import { buildExtractionPrompt } from './prompt.js';
+import { CANDIDATE_FIELD_ORDER } from './llm-schema.js';
+import { buildExtractionPrompt, OUTPUT_SHAPE } from './prompt.js';
 
 const hostile = [
   'export const a = 1;',
@@ -50,11 +51,30 @@ describe('buildExtractionPrompt', () => {
     expect(system).toContain('rule, evidence, counter_example, origin, signal_id, prior_ref, category, llm_confidence');
   });
 
+  it('marks pending prior identities and forbids repeating a rule across categories', () => {
+    const p = buildExtractionPrompt({
+      repoFullName: 'acme/repo',
+      files,
+      signals,
+      prior: [{ ref: 'P2', id: 'id-2', status: 'pending', category: 'typing', rule: 'Prefer unknown over any' }],
+    });
+    expect(p.messages[1]!.content).toContain('P2 [pending] [typing] Prefer unknown over any');
+    expect(p.messages[0]!.content).toContain('Each rule appears once; do not repeat the same rule under a different category.');
+  });
+
   it('renders files with their path header and gutter, and configs as context', () => {
     expect(user).toContain('path: src/a.ts\n   1| export const a = 1;');
     expect(user).toMatch(/<untrusted-[a-z0-9]+ source="config-file">\npath: package.json/);
     expect(user).toContain('S1 [bug] Missing await (3 PRs; files: src/a.ts)');
     expect(user).toContain('P1 (rejected) [naming] Use var everywhere');
+  });
+
+  it('spells out the JSON shape with keys in generation order (JSON mode, AC-13)', () => {
+    expect(system).toContain(OUTPUT_SHAPE);
+    const keys = [...OUTPUT_SHAPE.matchAll(/"([a-z_]+)":/g)].map((m) => m[1]);
+    const candidateKeys = keys.filter((k) => (CANDIDATE_FIELD_ORDER as readonly string[]).includes(k!));
+    expect(candidateKeys).toEqual([...CANDIDATE_FIELD_ORDER]);
+    expect(system.indexOf(OUTPUT_SHAPE)).toBeLessThan(system.indexOf('SECURITY'));
   });
 
   it('draws a fresh nonce per call', () => {

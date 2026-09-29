@@ -1,4 +1,5 @@
 /** Constants for the conventions extractor (specs/02-conventions.md, Non-functional). */
+import type { ProviderRouting } from '@devdigest/shared';
 
 /** JobRunner kind for one scan. */
 export const CONVENTIONS_JOB_KIND = 'conventions.extract';
@@ -62,12 +63,32 @@ export const MAX_OUTPUT_TOKENS = 6000;
 /** Structured-output repair attempts only; SDK retries are 0 (per-request signal). */
 export const LLM_MAX_RETRIES = 1;
 export const LLM_TEMPERATURE = 0;
-export const MAX_CANDIDATES = 12;
+export const MAX_CANDIDATES = 8;
+/** `observed_patterns` survey written before the candidates (see prompt.ts). */
+export const MAX_OBSERVED_PATTERNS = 5;
 export const MAX_QUOTES = 3;
 export const QUOTE_MAX = 240;
 export const RULE_MIN = 8;
 export const RULE_MAX = 300;
 export const LLM_SCHEMA_NAME = 'ConventionExtraction';
+/**
+ * OpenRouter upstream routing for the PROPOSE call (AC-13, Non-functional).
+ * One model id is served by ~15 upstreams, and the default price-weighted load
+ * balancing picks a random one per call. Measured on deepseek-v4-flash with a
+ * 13-file, ~16k-token sample (2026-09-30): Alibaba (first under `throughput`)
+ * 10-15 s, 5/5 and 8/8 verified; Relace (first under `latency` and the price
+ * default) 7-10 s but once 0/5 verified. The previous round saw DeepInfra and
+ * DigitalOcean return `[]` in 2-3 s and one unknown upstream send nothing
+ * before the 100 s deadline. So: sort by throughput (a fast upstream finishes a
+ * ~2k-token answer well inside the deadline), skip the two that returned
+ * empty lists, and keep fallbacks on so one upstream outage does not fail the
+ * scan. Re-measure when the default model changes: the slugs are per model.
+ */
+export const CONVENTIONS_PROVIDER_ROUTING: ProviderRouting = {
+  sort: 'throughput',
+  ignore: ['deepinfra', 'digitalocean'],
+  allowFallbacks: true,
+};
 
 // ---- VERIFY (AC-14..16) ----------------------------------------------------
 /** A quote with fewer non-whitespace characters cannot identify a line (G3). */
