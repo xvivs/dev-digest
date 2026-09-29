@@ -90,10 +90,10 @@ describe("VersionsTab list", () => {
     renderTab();
     const items = await rows();
     expect(items.map((li) => li.textContent)).toEqual([
-      expect.stringMatching(/^v4Current.*Tightened wording/),
-      expect.stringMatching(/^v3.*No note/),
-      expect.stringMatching(/^v2 body unavailable/),
-      expect.stringMatching(/^v1.*No note/),
+      expect.stringMatching(/^v4Tightened wording.*Current/),
+      expect.stringMatching(/^v3No note/),
+      expect.stringMatching(/^v2Body unavailable/),
+      expect.stringMatching(/^v1No note/),
     ]);
   });
 

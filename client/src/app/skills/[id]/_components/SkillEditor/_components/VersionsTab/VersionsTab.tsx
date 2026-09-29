@@ -11,7 +11,6 @@ import { useTranslations } from "next-intl";
 import { Badge, Button, ErrorState, Skeleton } from "@devdigest/ui";
 import type { Skill } from "@devdigest/shared";
 import { useSkill, useSkillVersions } from "@/lib/hooks";
-import { LocalTime } from "@/components/local-time";
 import { RestoreVersionModal } from "./_components/RestoreVersionModal";
 import { DIFF_SKELETON_HEIGHT, SKELETON_ROWS, SKELETON_ROW_HEIGHT } from "./constants";
 import { buildVersionRows, type VersionRow } from "./helpers";
@@ -42,10 +41,11 @@ export function VersionsTab({ skill, onEditVersion }: { skill: Skill; onEditVers
 
   return (
     <div style={s.wrap}>
-      <div>
+      <div style={s.header}>
         <h2 style={s.title}>{t("versions.title")}</h2>
-        <p style={s.caption}>{t("versions.caption")}</p>
+        <Badge style={s.count}>{t("versions.count", { count: skill.version })}</Badge>
       </div>
+      <p style={s.caption}>{t("versions.caption")}</p>
 
       {versions.isLoading ? (
         <div style={s.skeleton}>
@@ -58,7 +58,10 @@ export function VersionsTab({ skill, onEditVersion }: { skill: Skill; onEditVers
       ) : (
         <ol aria-label={t("versions.listLabel")} style={s.list}>
           {buildVersionRows(versions.data, skill.version).map((row) => (
-            <li key={row.version} style={s.item}>
+            <li
+              key={row.version}
+              style={row.kind === "snapshot" && row.isCurrent ? { ...s.item, ...s.itemCurrent } : s.item}
+            >
               {row.kind === "gap" ? (
                 <GapRow version={row.version} />
               ) : (
@@ -92,8 +95,11 @@ function GapRow({ version }: { version: number }) {
   const t = useTranslations("skills");
   return (
     <div style={s.row}>
+      <span className="mono" style={s.badge}>
+        {t("versions.label", { version })}
+      </span>
       <div style={s.rowMain}>
-        <span style={s.gap}>{t("versions.unavailable", { version })}</span>
+        <span style={s.gap}>{t("versions.unavailable")}</span>
         <span style={s.gapHint}>{t("versions.unavailableHint")}</span>
       </div>
     </div>
@@ -119,16 +125,10 @@ function SnapshotRow({
   return (
     <>
       <div style={s.row}>
+        <span className="mono" style={isCurrent ? { ...s.badge, ...s.badgeCurrent } : s.badge}>
+          {t("versions.label", { version })}
+        </span>
         <div style={s.rowMain}>
-          <div style={s.rowTop}>
-            <Badge mono>{t("versions.label", { version })}</Badge>
-            {isCurrent && (
-              <Badge color="var(--accent)" bg="var(--accent-bg)">
-                {t("versions.current")}
-              </Badge>
-            )}
-            <LocalTime iso={summary.created_at} style={s.when} />
-          </div>
           {summary.change_note ? (
             <span style={s.note} title={summary.change_note}>
               {summary.change_note}
@@ -136,13 +136,36 @@ function SnapshotRow({
           ) : (
             <span style={s.noNote}>{t("versions.noNote")}</span>
           )}
+          <time dateTime={summary.created_at} style={s.when}>
+            {summary.created_at.slice(0, 10)}
+          </time>
         </div>
         <div style={s.actions}>
-          <Button kind="ghost" size="sm" icon="Code" aria-expanded={diffOpen} aria-controls={diffId} onClick={onToggleDiff}>
+          {isCurrent && (
+            <Badge dot color="var(--ok)" bg="var(--ok-bg)" style={s.pill}>
+              {t("versions.current")}
+            </Badge>
+          )}
+          <Button
+            kind="ghost"
+            size="sm"
+            icon="Eye"
+            style={s.button}
+            aria-expanded={diffOpen}
+            aria-controls={diffId}
+            onClick={onToggleDiff}
+          >
             {diffOpen ? t("versions.hideDiff") : t("versions.showDiff")}
           </Button>
           {!isCurrent && (
-            <Button kind="secondary" size="sm" icon="History" aria-label={t("versions.restoreAria", { version })} onClick={onRestore}>
+            <Button
+              kind="secondary"
+              size="sm"
+              icon="History"
+              style={s.button}
+              aria-label={t("versions.restoreAria", { version })}
+              onClick={onRestore}
+            >
               {t("versions.restore")}
             </Button>
           )}
