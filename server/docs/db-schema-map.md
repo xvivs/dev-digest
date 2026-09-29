@@ -41,6 +41,9 @@ grepping for `t.<table>` / `schema.<table>`.
 | `runTraces` | 3 | whole run log as one jsonb document |
 | `runSkills` | 4 | skills each run injected (relational copy of `skills_used`), feeds skill Stats |
 | `workspaceMembers` | 1 | membership |
+| `evalSuites` | 72 | one ablation eval of a skill on a carrier agent: frozen prompt, estimate, `done_jobs` counter, results (ADR 0017/0018, `modules/evals`) |
+| `evalRuns` | 45 | one job per (case, arm, repeat), UNIQUE on that key; the legacy L06 metric columns (`precision`) stay, deprecated |
+| `evalCases` | 26 | skill eval cases: diff snapshot + `EvalExpectation`; `skill_id` FK set iff `owner_kind='skill'` |
 
 ## Wired but unfed — a read path exists, nothing writes yet
 
@@ -58,7 +61,6 @@ Lesson scaffolding. Empty by design.
 conventions                        L02
 codeChunks · memory                L05/L07 (memory + RAG, pgvector)
 onboarding · prBrief               L05
-evalCases · evalRuns               L06
 conformanceChecks                  L06
 ciInstallations · ciRuns           L06
 multiAgentRuns · composedReviews   L07
@@ -78,6 +80,14 @@ installedPlugins · digests         L08
   creates an empty file, the DML goes in it (e.g. `0016_skill_versions_backfill.sql`
   snapshots each skill's current state). Write it idempotent (`ON CONFLICT DO
   NOTHING`, `WHERE … IS NULL`) and cover it with an `*.it.test.ts`.
+- A backfill that must run BETWEEN two schema steps is a sandwich of three
+  migrations: generate the column, `--custom` the DML, then generate the
+  constraint. `0018` adds `eval_cases.skill_id`, `0019` deletes orphans and
+  backfills it, `0020` adds the FK + CHECK (test: `test/evals-migrations.it.test.ts`).
+- One running eval suite per workspace is a partial unique index
+  (`eval_suites_one_running_per_workspace_uq`), so two concurrent starts cannot
+  both win; `eval_suites.carrier_agent_id` has no FK on purpose, so the verdict
+  history survives a deleted agent.
 - A backfill over a table that grows with usage (e.g. `run_traces`) is a
   batched script instead, so it never holds one long migration transaction:
   `pnpm db:backfill:run-skills [--after=<run_id>] [--batch=<n>]` copies

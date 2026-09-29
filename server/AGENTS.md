@@ -61,6 +61,9 @@ because native dynamic `import()` of `.ts` is not portable.
 - A DB-backed test MUST be named `*.it.test.ts`. Anything else is treated as
   hermetic by the CI split and will fail without Docker.
 - `JobRunner` has a hard 120s timeout per job; long indexing self-limits below it.
+  `enqueue(..., { timeoutMs })` overrides it per job (eval jobs size it from
+  the diff's chunk count). A timeout frees the queue slot but never stops the
+  handler's LLM call.
 
 ## Do not touch
 
