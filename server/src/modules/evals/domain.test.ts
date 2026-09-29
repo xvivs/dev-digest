@@ -14,6 +14,9 @@ import {
   estimateJob,
   isSuiteStale,
   jobTimeoutMs,
+  worstCaseCallMs,
+  LLM_LIMITS,
+  EVAL_JOB_TIMEOUT_HEADROOM_MS,
   LINE_TOLERANCE,
   matchesMustFind,
   matchesMustNotFind,
@@ -226,6 +229,7 @@ describe('summarizeSuite', () => {
       caught: 1,
       regressed: 0,
       flaky: 1,
+      errored: 0,
       delta_unexpected: 0,
       verdict: 'helps',
     });
@@ -250,6 +254,77 @@ describe('summarizeSuite', () => {
     const { results } = summarizeSuite({ mode: 'quick', repeats: 1, cases, runs });
     expect(results.caught).toBe(6);
     expect(results.verdict).toBe('indicative');
+  });
+});
+
+describe('summarizeSuite with errored cases', () => {
+  const cases = ['a', 'b', 'c', 'd', 'e', 'f', 'g'].map((id) => ({ id, name: `case ${id}` }));
+  const both = arms([true, true, true], [true, true, true]);
+  const failedRun = (caseId: string): RunLite & { caseId: string } => ({
+    arm: 'with',
+    status: 'failed',
+    pass: null,
+    unexpected: null,
+    caseId,
+  });
+  // 5 settled pass_both cases + one caught + one errored (with arm failed, without ok).
+  const settled = ['a', 'b', 'c', 'd', 'e'].flatMap((id) => both.map((r) => ({ ...r, caseId: id })));
+  const caughtF = arms([true, true, true], [false, false, false]).map((r) => ({ ...r, caseId: 'f' }));
+  const erroredG = [failedRun('g'), ...arms([], [true, true, true]).map((r) => ({ ...r, caseId: 'g' }))];
+
+  it('an errored case is counted as errored, not as failing', () => {
+    const { results, cases: rows } = summarizeSuite({
+      mode: 'full',
+      repeats: 3,
+      cases,
+      runs: [...settled, ...caughtF, ...erroredG],
+    });
+    expect(rows.find((r) => r.case_id === 'g')?.outcome).toBe('error');
+    expect(results.errored).toBe(1);
+    // passing / total are over settled cases only: 6 of 6, never 6 of 7
+    expect(results.passing).toBe(6);
+    expect(results.total).toBe(6);
+  });
+
+  it('an error can never lower passing, even when its with-arm runs all passed', () => {
+    const withOkWithoutFailed = [
+      ...arms([true, true, true], [true, true]).map((r) => ({ ...r, caseId: 'g' })),
+      { arm: 'without' as const, status: 'failed' as const, pass: null, unexpected: null, caseId: 'g' },
+    ];
+    const base = summarizeSuite({ mode: 'full', repeats: 3, cases, runs: [...settled, ...caughtF] });
+    const withErr = summarizeSuite({
+      mode: 'full',
+      repeats: 3,
+      cases,
+      runs: [...settled, ...caughtF, ...withOkWithoutFailed],
+    });
+    expect(withErr.results.passing).toBe(base.results.passing);
+    expect(withErr.results.total).toBe(base.results.total);
+    expect(withErr.results.errored).toBe(1);
+  });
+
+  it('verdict, caught and Δunexpected ignore error rows', () => {
+    const clean = summarizeSuite({ mode: 'full', repeats: 3, cases, runs: [...settled, ...caughtF] });
+    const withErr = summarizeSuite({
+      mode: 'full',
+      repeats: 3,
+      cases,
+      runs: [...settled, ...caughtF, ...erroredG.map((r) => ({ ...r, unexpected: r.arm === 'without' ? 99 : null }))],
+    });
+    expect(withErr.results.verdict).toBe(clean.results.verdict);
+    expect(withErr.results.caught).toBe(clean.results.caught);
+    expect(withErr.results.delta_unexpected).toBe(clean.results.delta_unexpected);
+  });
+
+  it('too many errors leave fewer than 5 settled non-flaky cases → indicative', () => {
+    const { results } = summarizeSuite({
+      mode: 'full',
+      repeats: 3,
+      cases,
+      runs: [...settled.filter((r) => r.caseId !== 'e' && r.caseId !== 'd'), ...caughtF, ...erroredG],
+    });
+    expect(results.verdict).toBe('indicative');
+    expect(results.errored).toBe(1);
   });
 });
 
@@ -363,6 +438,29 @@ describe('estimateJob', () => {
   });
   it('the job timeout grows with chunks', () => {
     expect(jobTimeoutMs(3)).toBeGreaterThan(3 * EVAL_CHUNK_TIMEOUT_MS);
+  });
+});
+
+describe('worstCaseCallMs / jobTimeoutMs', () => {
+  const l = { callTimeoutMs: 1000, transientRetries: 3, baseDelayMs: 100, maxDelayMs: 250, structuredRetries: 2 };
+
+  it('= structured attempts × (transient attempts × call timeout + backoff incl. jitter)', () => {
+    // backoff per structured attempt: min(250,100)+min(250,200)+min(250,400) = 550, + 3 × 100 jitter = 850
+    expect(worstCaseCallMs(l)).toBe(3 * (4 * 1000 + 850));
+  });
+
+  it('no retries at all is one bare call', () => {
+    expect(worstCaseCallMs({ ...l, transientRetries: 0, structuredRetries: 0 })).toBe(1000);
+  });
+
+  it('the shipped limits cover the >12 min a slow model really takes (60 s × 4 × 3)', () => {
+    expect(worstCaseCallMs(LLM_LIMITS)).toBeGreaterThanOrEqual(12 * 60_000);
+    expect(EVAL_CHUNK_TIMEOUT_MS).toBe(worstCaseCallMs(LLM_LIMITS));
+  });
+
+  it('job timeout = chunks × per-chunk worst case + headroom; at least one chunk', () => {
+    expect(jobTimeoutMs(2, l)).toBe(2 * worstCaseCallMs(l) + EVAL_JOB_TIMEOUT_HEADROOM_MS);
+    expect(jobTimeoutMs(0, l)).toBe(worstCaseCallMs(l) + EVAL_JOB_TIMEOUT_HEADROOM_MS);
   });
 });
 

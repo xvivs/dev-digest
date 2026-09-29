@@ -48,7 +48,7 @@ const DONE = detail({
   done_jobs: 12,
   cost_usd: 0.42,
   cost_source: "provider",
-  results: { passing: 2, total: 2, caught: 1, regressed: 0, flaky: 0, delta_unexpected: 0, verdict: "indicative" },
+  results: { passing: 2, total: 2, caught: 1, regressed: 0, flaky: 0, errored: 0, delta_unexpected: 0, verdict: "indicative" },
   finished_at: "2026-09-29T10:10:00.000Z",
 });
 

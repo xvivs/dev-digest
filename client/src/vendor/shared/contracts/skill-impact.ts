@@ -334,11 +334,12 @@ export type EvalArm = z.infer<typeof EvalArm>;
 
 /**
  * Suite aggregate (ADR 0017). Computed per case, then summed:
- *  - passing:  cases whose `with` arm passed in every repeat
- *  - total:    cases in the suite
+ *  - passing:  settled cases whose `with` arm passed in every repeat
+ *  - total:    settled cases (errored and pending cases excluded, see `errored`)
  *  - caught:   non-flaky cases that pass only with the skill
  *  - regressed: non-flaky cases that pass only without the skill
  *  - flaky:    cases whose repeats disagree within one arm (excluded from caught/regressed)
+ *  - errored:  cases with a failed run; never counted as failing
  *  - delta_unexpected: mean unexpected findings per case, with minus without
  */
 export const EvalSuiteResults = z.object({
@@ -347,6 +348,12 @@ export const EvalSuiteResults = z.object({
   caught: z.number().int().nonnegative(),
   regressed: z.number().int().nonnegative(),
   flaky: z.number().int().nonnegative(),
+  /**
+   * Cases where at least one run failed (timeout, provider error, cancel). They
+   * are excluded from every other figure: `passing`/`total` count settled cases
+   * only. Absent on suites closed before this field existed → 0.
+   */
+  errored: z.number().int().nonnegative().default(0),
   delta_unexpected: z.number(),
   verdict: ImpactVerdict,
 });

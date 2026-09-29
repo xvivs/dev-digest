@@ -9,12 +9,13 @@ import type {
   ChatMessage,
 } from '@devdigest/shared';
 import { withRetry, withTimeout } from '../../platform/resilience.js';
+import { LLM_CALL_TIMEOUT_MS, LLM_STRUCTURED_MAX_RETRIES } from '../../platform/llm-limits.js';
 import { toJsonSchema, parseWithRepair } from '../../platform/structured.js';
 import { estimateCost } from './pricing.js';
 import { ExternalServiceError } from '../../platform/errors.js';
 import { pickCost } from '@devdigest/reviewer-core';
 
-const DEFAULT_TIMEOUT = 60_000;
+const DEFAULT_TIMEOUT = LLM_CALL_TIMEOUT_MS;
 const DEFAULT_MAX_TOKENS = 4096;
 
 /** Anthropic has no embeddings API; embeddings come from the OpenAI Embedder. */
@@ -94,7 +95,7 @@ export class AnthropicProvider implements LLMProvider {
   async completeStructured<T>(req: StructuredRequest<T>): Promise<StructuredResult<T>> {
     const jsonSchema = toJsonSchema(req.schema, req.schemaName);
     const toolName = req.schemaName.replace(/[^a-zA-Z0-9_-]/g, '_');
-    const maxRetries = req.maxRetries ?? 2;
+    const maxRetries = req.maxRetries ?? LLM_STRUCTURED_MAX_RETRIES;
     const { system, rest } = splitSystem(req.messages);
     const messages: Anthropic.MessageParam[] = [...rest];
     let tokensIn = 0;

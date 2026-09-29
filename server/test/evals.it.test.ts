@@ -495,6 +495,7 @@ d('evals: cases, suites and the ablation runner (Testcontainers pg)', () => {
         caught: 5,
         regressed: 0,
         flaky: 0,
+        errored: 0,
         delta_unexpected: 0,
         verdict: 'helps',
       });

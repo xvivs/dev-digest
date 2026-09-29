@@ -433,7 +433,7 @@ describe('SkillStatsService (plan Phase 2)', () => {
     costUsd: 0.05,
     costSource: 'estimated',
     stale: true,
-    results: { passing: 5, total: 5, caught: 2, regressed: 0, flaky: 0, delta_unexpected: 0, verdict: 'helps' },
+    results: { passing: 5, total: 5, caught: 2, regressed: 0, flaky: 0, errored: 0, delta_unexpected: 0, verdict: 'helps' },
     error: null,
     createdAt: new Date(0),
     startedAt: new Date(0),

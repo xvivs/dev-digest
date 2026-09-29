@@ -67,7 +67,7 @@ const SUITE: EvalSuite = {
   cost_usd: 0.42,
   cost_source: "provider",
   stale: false,
-  results: { passing: 17, total: 20, caught: 3, regressed: 0, flaky: 2, delta_unexpected: 0.4, verdict: "helps" },
+  results: { passing: 17, total: 20, caught: 3, regressed: 0, flaky: 2, errored: 0, delta_unexpected: 0.4, verdict: "helps" },
   error: null,
   created_at: "2026-09-29T10:00:00.000Z",
   started_at: "2026-09-29T10:00:00.000Z",

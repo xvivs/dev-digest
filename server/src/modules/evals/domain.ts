@@ -29,6 +29,8 @@ import type {
   SkillSource,
 } from '@devdigest/shared';
 import { AppError } from '../../platform/errors.js';
+import { LLM_CALL_TIMEOUT_MS, LLM_STRUCTURED_MAX_RETRIES } from '../../platform/llm-limits.js';
+import { DEFAULT_BASE_DELAY_MS, DEFAULT_MAX_DELAY_MS, DEFAULT_RETRIES } from '../../platform/resilience.js';
 import type { EvalSuiteView } from '../_shared/eval-suite.js';
 
 export type { EvalSuiteView };
@@ -57,12 +59,46 @@ export const MAP_THRESHOLD_LINES = 400;
 export const PROMPT_OVERHEAD_TOKENS = 600;
 /** Assumed structured-output size per chunk, tokens. */
 export const EST_OUTPUT_TOKENS_PER_CHUNK = 800;
+
+/** What one adapter call can burn, wall-clock (numbers owned by `platform/`). */
+export interface LlmLimits {
+  /** Per-attempt timeout. */
+  callTimeoutMs: number;
+  /** `withRetry` retries on 429/5xx (attempts = retries + 1). */
+  transientRetries: number;
+  baseDelayMs: number;
+  maxDelayMs: number;
+  /** Structured-output reprompts (attempts = retries + 1). */
+  structuredRetries: number;
+}
+
+export const LLM_LIMITS: LlmLimits = {
+  callTimeoutMs: LLM_CALL_TIMEOUT_MS,
+  transientRetries: DEFAULT_RETRIES,
+  baseDelayMs: DEFAULT_BASE_DELAY_MS,
+  maxDelayMs: DEFAULT_MAX_DELAY_MS,
+  structuredRetries: LLM_STRUCTURED_MAX_RETRIES,
+};
+
 /**
- * Wall-clock budget per chunk: one adapter call (≤90 s) with its own retries
- * and the structured-output reprompts. The job timeout only frees the queue
- * slot and marks the `jobs` mirror; it never stops a call in flight (ADR 0018).
+ * Worst case of ONE `completeStructured` call: every structured attempt
+ * (`structuredRetries + 1`) runs the full `withRetry` ladder, each attempt
+ * hitting its timeout, plus the backoff sleeps (with up to one `baseDelayMs`
+ * of jitter each). Adapters: `adapters/llm/{openai,anthropic}.ts`.
  */
-export const EVAL_CHUNK_TIMEOUT_MS = 5 * 60_000;
+export function worstCaseCallMs(l: LlmLimits): number {
+  let backoff = 0;
+  for (let k = 0; k < l.transientRetries; k++) backoff += Math.min(l.maxDelayMs, l.baseDelayMs * 2 ** k) + l.baseDelayMs;
+  const perStructuredAttempt = (l.transientRetries + 1) * l.callTimeoutMs + backoff;
+  return (l.structuredRetries + 1) * perStructuredAttempt;
+}
+
+/**
+ * Wall-clock budget per chunk = the worst case of its one adapter call. The
+ * job timeout only frees the queue slot and marks the `jobs` mirror; it never
+ * stops a call in flight (ADR 0018).
+ */
+export const EVAL_CHUNK_TIMEOUT_MS = worstCaseCallMs(LLM_LIMITS);
 export const EVAL_JOB_TIMEOUT_HEADROOM_MS = 60_000;
 
 const SEVERITY_RANK: Record<Severity, number> = { SUGGESTION: 0, WARNING: 1, CRITICAL: 2 };
@@ -458,8 +494,9 @@ const mean = (xs: number[]) => (xs.length === 0 ? 0 : xs.reduce((a, b) => a + b,
  * Per case first, then summed (ADR 0017). `delta_unexpected` averages, over
  * cases whose jobs all finished (flaky included: the unexpected count is a
  * separate signal from pass/fail), the per-case mean unexpected findings
- * with the skill minus without. Error/pending cases count toward `total`
- * only.
+ * with the skill minus without. Error/pending cases are excluded from
+ * every figure; `errored` reports how many failed so the UI can say so.
+ * `passing / total` are over settled (non-error, non-pending) cases.
  */
 export function summarizeSuite(input: {
   mode: EvalSuiteMode;
@@ -483,12 +520,16 @@ export function summarizeSuite(input: {
   const caught = count('caught');
   const regressed = count('regressed');
   const deltaUnexpected = Math.round(mean(deltas) * 1000) / 1000;
+  // `passing / total` are over settled cases only: an errored case says nothing
+  // about the skill, so it can neither lower `passing` nor inflate `total`.
+  const settled = rows.filter((r) => r.outcome !== 'error' && r.outcome !== 'pending');
   const nonFlaky = rows.filter((r) => NON_FLAKY.has(r.outcome)).length;
   return {
     cases: rows,
     results: {
-      passing: rows.filter((r) => r.with.total > 0 && r.with.passed === r.with.total).length,
-      total: rows.length,
+      passing: settled.filter((r) => r.with.total > 0 && r.with.passed === r.with.total).length,
+      total: settled.length,
+      errored: count('error'),
       caught,
       regressed,
       flaky: count('flaky'),
@@ -647,8 +688,8 @@ export function skillsChars(skills: EvalSkillText[]): number {
   return skills.reduce((n, s) => n + s.name.length + s.body.length + 6, 0);
 }
 
-export function jobTimeoutMs(chunks: number): number {
-  return Math.max(1, chunks) * EVAL_CHUNK_TIMEOUT_MS + EVAL_JOB_TIMEOUT_HEADROOM_MS;
+export function jobTimeoutMs(chunks: number, limits: LlmLimits = LLM_LIMITS): number {
+  return Math.max(1, chunks) * worstCaseCallMs(limits) + EVAL_JOB_TIMEOUT_HEADROOM_MS;
 }
 
 // ---------------------------------------------------------------------------
