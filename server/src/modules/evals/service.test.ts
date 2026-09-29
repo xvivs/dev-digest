@@ -423,6 +423,48 @@ describe('EvalsService runner', () => {
     expect(env.store.suites.get(id)!.doneJobs).toBe(1);
   });
 
+  it('a job timeout fails the hung run and counts it once, so the suite still closes', async () => {
+    const id = await startedQuick();
+    const [hungId, ...rest] = env.enqueued.splice(0);
+    let release!: () => void;
+    env.setReview(
+      (input) =>
+        new Promise((resolve) => {
+          release = () =>
+            resolve({ findings: [], grounding: '', tokensIn: 1, tokensOut: 1, costUsd: 0, costSource: 'provider', raw: '' });
+          void input;
+        }),
+    );
+    const hung = env.service.runJob({ suiteId: id, runId: hungId! });
+    await new Promise((r) => setTimeout(r, 0)); // the run is claimed, the model call pending
+
+    await env.service.timeOutJob({ suiteId: id, runId: hungId! }, 360_000);
+    const run = env.store.runs.get(hungId!)!;
+    expect(run.status).toBe('failed');
+    expect(run.error).toMatch(/timed out after 360s/i);
+    expect(env.store.suites.get(id)!.doneJobs).toBe(1);
+
+    // A second timeout signal, and the late model answer, count nothing more.
+    await env.service.timeOutJob({ suiteId: id, runId: hungId! }, 360_000);
+    release();
+    await hung;
+    expect(env.store.suites.get(id)!.doneJobs).toBe(1);
+
+    env.setReview(async () => ({ findings: [], grounding: '', tokensIn: 1, tokensOut: 1, costUsd: 0, costSource: 'provider', raw: '' }));
+    env.enqueued.push(...rest);
+    await env.drain();
+    expect(env.store.suites.get(id)!.status).toBe('done');
+  });
+
+  it('a timeout signal for a run that already finished changes nothing', async () => {
+    const id = await startedQuick();
+    const runId = env.enqueued[0]!;
+    await env.service.runJob({ suiteId: id, runId });
+    await env.service.timeOutJob({ suiteId: id, runId }, 360_000);
+    expect(env.store.runs.get(runId)!.status).toBe('done');
+    expect(env.store.suites.get(id)!.doneJobs).toBe(1);
+  });
+
   it('a failing model call fails the run; all runs failed → the suite fails, no results', async () => {
     env.setReview(async () => {
       throw new Error('provider 500');

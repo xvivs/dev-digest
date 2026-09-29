@@ -14,3 +14,11 @@ export const ORPHAN_RUN_ERROR = 'Interrupted: the server restarted while this ru
 
 /** Error stored on runs that never started because the suite was cancelled. */
 export const CANCELLED_RUN_ERROR = 'Suite cancelled';
+
+/**
+ * Error stored on a run whose job hit the per-job timeout (ADR 0018). The
+ * model call may still finish later; its result then replaces this error.
+ */
+export function timedOutRunError(timeoutMs: number): string {
+  return `Timed out after ${Math.round(timeoutMs / 1000)}s; the model call may still finish and replace this result`;
+}

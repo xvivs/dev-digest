@@ -80,9 +80,10 @@ export function buildEvalsService(container: Container, log?: EvalLogger): Evals
     queue: {
       enqueue: async (workspaceId, payload, timeoutMs) => {
         const job = await container.evalJobs.enqueue(workspaceId, EVAL_RUN_JOB_KIND, payload, { timeoutMs });
-        // The handler never throws; a timeout still rejects `done`. Status
-        // lives in eval_runs (handler-owned), so the rejection is only noise.
-        job.done.catch(() => undefined);
+        // The handler never throws, so `done` rejects only when the per-job
+        // timeout fires. The model call keeps running (ADR 0018), but the run
+        // is failed and counted now so the suite can close without a reboot.
+        job.done.catch(() => service.timeOutJob(payload, timeoutMs));
       },
     },
     price: (model, tokensIn, tokensOut) => container.priceBook.estimate(model, tokensIn, tokensOut),

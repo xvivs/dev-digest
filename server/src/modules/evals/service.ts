@@ -55,7 +55,7 @@ import {
   type EvalSuiteView,
 } from './domain.js';
 import type { ClaimedRun, EvalJobPayload, EvalsDeps, SuiteCounter } from './ports.js';
-import { CANCELLED_RUN_ERROR, ORPHAN_RUN_ERROR } from './constants.js';
+import { CANCELLED_RUN_ERROR, ORPHAN_RUN_ERROR, timedOutRunError } from './constants.js';
 
 export interface CreateCaseInput {
   name: string;
@@ -350,6 +350,27 @@ export class EvalsService {
     } catch (err) {
       // The run stays `running`; boot recovery fails it and heals the counter.
       log?.error({ err: (err as Error).message, ...payload }, 'eval job: bookkeeping failed');
+    }
+  }
+
+  /**
+   * The job runner gave up on a job (its per-job timeout fired, ADR 0018).
+   * The model call may still be in flight and cannot be stopped, but the run
+   * must not stay `running` until the next boot: that would hold the suite
+   * open and, through the one-running-suite index, block the workspace. Fail
+   * it now and count it once; a late answer still lands via `finishRun`
+   * (failed → done) without being counted again.
+   */
+  async timeOutJob(payload: EvalJobPayload, timeoutMs: number): Promise<void> {
+    try {
+      const first = await this.deps.store.finishRun(payload.runId, {
+        status: 'failed',
+        error: timedOutRunError(timeoutMs),
+        durationMs: timeoutMs,
+      });
+      if (first) await this.countJob(payload.suiteId);
+    } catch (err) {
+      this.deps.log?.error({ err: (err as Error).message, ...payload }, 'eval job: timeout bookkeeping failed');
     }
   }
 
