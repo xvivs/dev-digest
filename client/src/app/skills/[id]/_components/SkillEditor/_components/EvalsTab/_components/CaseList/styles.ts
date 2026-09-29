@@ -24,6 +24,7 @@ export const s = {
   legacy: { color: "var(--warn)" } satisfies CSSProperties,
   result: { display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" } satisfies CSSProperties,
   arm: { fontSize: 12.5, color: "var(--text-secondary)", fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" } satisfies CSSProperties,
+  error: { flexBasis: "100%", fontSize: 12, color: "var(--warn)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } satisfies CSSProperties,
   muted: { fontSize: 12, color: "var(--text-muted)" } satisfies CSSProperties,
   actions: { display: "flex", gap: 2, flexShrink: 0, marginLeft: "auto" } satisfies CSSProperties,
 } as const;

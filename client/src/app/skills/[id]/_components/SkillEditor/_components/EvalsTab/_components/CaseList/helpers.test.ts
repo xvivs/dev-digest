@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { EvalSuiteRun } from "@devdigest/shared";
-import { caseUnexpectedDelta } from "./helpers";
+import { caseErrorMessage, caseUnexpectedDelta } from "./helpers";
 
 const run = (case_id: string, arm: EvalSuiteRun["arm"], unexpected: number | null, status: EvalSuiteRun["status"] = "done") =>
   ({ case_id, arm, unexpected, status }) as EvalSuiteRun;
@@ -14,5 +14,17 @@ describe("caseUnexpectedDelta", () => {
   it("ignores unfinished runs and is null until both arms are scored", () => {
     expect(caseUnexpectedDelta([run("c1", "with", 2), run("c1", "without", 5, "running")], "c1")).toBeNull();
     expect(caseUnexpectedDelta([], "c1")).toBeNull();
+  });
+});
+
+describe("caseErrorMessage", () => {
+  const failed = (case_id: string, error: string | null) =>
+    ({ case_id, arm: "with", status: "failed", error }) as EvalSuiteRun;
+
+  it("is the error of this case's first failed run, else null", () => {
+    const runs = [failed("c1", "Timed out"), failed("c2", "Boom"), run("c1", "without", 0)];
+    expect(caseErrorMessage(runs, "c1")).toBe("Timed out");
+    expect(caseErrorMessage(runs, "c3")).toBeNull();
+    expect(caseErrorMessage([failed("c1", null)], "c1")).toBeNull();
   });
 });

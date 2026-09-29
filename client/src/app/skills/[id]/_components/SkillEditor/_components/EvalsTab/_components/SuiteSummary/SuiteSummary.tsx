@@ -1,6 +1,7 @@
 /* SuiteSummary — the latest started suite in one block (ADR 0017): verdict,
    mode and carrier, then either live progress (with Cancel), the result line
-   "P/T passing · +caught · regressed · flaky · Δunexpected · $cost", or why
+   "P/T passing · +caught · regressed · flaky · [N errored] · Δunexpected · $cost"
+   (P/T over settled cases; errored cases are counted apart), or why
    the suite ended without results. Indicative and stale verdicts say why
    they are weak. */
 "use client";
@@ -57,6 +58,14 @@ export function SuiteSummary({
           <span>{t("skillEvals.summary.regressed", { count: results.regressed })}</span>
           <Sep />
           <span>{t("skillEvals.summary.flaky", { count: results.flaky })}</span>
+          {results.errored > 0 && (
+            <>
+              <Sep />
+              <span style={s.errored} title={t("skillEvals.summary.erroredTitle")}>
+                {t("skillEvals.summary.errored", { count: results.errored })}
+              </span>
+            </>
+          )}
           <Sep />
           <span title={t("skillEvals.summary.deltaUnexpectedTitle")}>
             {t("skillEvals.summary.deltaUnexpected", { value: formatSignedDelta(results.delta_unexpected) })}

@@ -15,6 +15,7 @@ export const s = {
   cancel: { marginLeft: "auto" } satisfies CSSProperties,
   line: { fontSize: 13.5, color: "var(--text-secondary)", display: "flex", flexWrap: "wrap", gap: 6, margin: 0 } satisfies CSSProperties,
   strong: { color: "var(--text-primary)", fontWeight: 600 } satisfies CSSProperties,
+  errored: { color: "var(--warn)", fontWeight: 600 } satisfies CSSProperties,
   sep: { color: "var(--text-muted)" } satisfies CSSProperties,
   muted: { fontSize: 13, color: "var(--text-muted)" } satisfies CSSProperties,
   progress: { display: "flex", flexDirection: "column", gap: 6 } satisfies CSSProperties,

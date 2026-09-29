@@ -93,6 +93,8 @@
       "caught": "+{count} caught",
       "regressed": "{count} regressed",
       "flaky": "{count} flaky",
+      "errored": "{count} errored",
+      "erroredTitle": "Cases where a run failed (timeout or provider error). They are not counted as failing or in the verdict.",
       "deltaUnexpected": "Δunexpected {value}",
       "deltaUnexpectedTitle": "Unexpected findings per case, with the skill minus without it",
       "mode": {
@@ -148,7 +150,7 @@
         "fail_both": "Fails with and without the skill.",
         "flaky": "Repeats disagree within one arm; excluded from caught and regressed.",
         "pending": "Not every repeat has finished.",
-        "error": "At least one job failed."
+        "error": "At least one job failed (timeout or provider error). It is not counted as failing."
       }
     },
     "deleteModal": {

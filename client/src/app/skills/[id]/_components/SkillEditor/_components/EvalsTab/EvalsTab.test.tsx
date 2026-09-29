@@ -93,7 +93,7 @@ const SUITE: EvalSuite = {
   cost_usd: 0.42,
   cost_source: "provider",
   stale: false,
-  results: { passing: 17, total: 20, caught: 3, regressed: 0, flaky: 2, delta_unexpected: 0.4, verdict: "helps" },
+  results: { passing: 17, total: 20, caught: 3, regressed: 0, flaky: 2, errored: 0, delta_unexpected: 0.4, verdict: "helps" },
   error: null,
   created_at: "2026-09-29T10:00:00.000Z",
   started_at: "2026-09-29T10:00:00.000Z",
@@ -500,5 +500,53 @@ describe("EvalsTab — header request", () => {
     });
     expect(await screen.findByRole("dialog", { name: "Run on evals" })).toBeInTheDocument();
     expect(handled).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("EvalsTab — errored cases", () => {
+  const TIMEOUT_MSG = "Timed out after 1560s; the model call may still finish and replace this result";
+  const errored = () => {
+    const suite: EvalSuite = {
+      ...SUITE,
+      mode: "quick",
+      repeats: 1,
+      results: { passing: 0, total: 0, caught: 0, regressed: 0, flaky: 0, errored: 1, delta_unexpected: 0, verdict: "indicative" },
+    };
+    world = {
+      cases: [CASE_DEFECT],
+      suites: [suite],
+      detail: {
+        ...DETAIL,
+        ...suite,
+        cases: [{ case_id: "c1", case_name: "stripe-key-leak", with: { passed: 0, total: 1 }, without: { passed: 1, total: 1 }, outcome: "error" }],
+        runs: [
+          { ...run("c1", "with", 0, false, 0), status: "failed" as const, pass: null, error: TIMEOUT_MSG },
+          run("c1", "without", 0, true, 0),
+        ],
+      },
+    };
+  };
+
+  it("header says N errored (warning) only when > 0, next to a passing count that ignores the error", async () => {
+    errored();
+    renderTab();
+    const summary = await screen.findByRole("region", { name: "Latest suite" });
+    expect(within(summary).getByText("0/0 passing")).toBeInTheDocument();
+    expect(within(summary).getByText("1 errored")).toBeInTheDocument();
+  });
+
+  it("no errored chip on a clean suite", async () => {
+    renderTab();
+    const summary = await screen.findByRole("region", { name: "Latest suite" });
+    expect(within(summary).queryByText(/errored/)).not.toBeInTheDocument();
+  });
+
+  it("the case row keeps the error badge and shows the failed run's message", async () => {
+    errored();
+    renderTab();
+    const row = (await screen.findAllByRole("listitem"))[0]!;
+    expect(await within(row).findByText("error")).toBeInTheDocument();
+    const msg = await within(row).findByText(TIMEOUT_MSG);
+    expect(msg).toHaveAttribute("title", TIMEOUT_MSG);
   });
 });

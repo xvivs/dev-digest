@@ -10,7 +10,7 @@ import { Badge, IconBtn } from "@devdigest/ui";
 import type { EvalSuiteDetail, SkillEvalCase } from "@devdigest/shared";
 import { formatSignedDelta } from "@/app/skills/helpers";
 import { OUTCOME_LOOK, UNEXPECTED_BADGE_MIN } from "./constants";
-import { caseUnexpectedDelta } from "./helpers";
+import { caseErrorMessage, caseUnexpectedDelta } from "./helpers";
 import { s } from "./styles";
 
 export function CaseList({
@@ -50,6 +50,7 @@ function CaseRow({
   const result = suite?.cases.find((r) => r.case_id === c.id) ?? null;
   const delta = suite ? caseUnexpectedDelta(suite.runs, c.id) : null;
   const exp = c.expectation;
+  const error = result?.outcome === "error" && suite ? caseErrorMessage(suite.runs, c.id) : null;
 
   return (
     <li style={s.row}>
@@ -103,6 +104,12 @@ function CaseRow({
         <IconBtn icon="Edit" label={t("skillEvals.cases.editLabel", { name: c.name })} onClick={onEdit} />
         <IconBtn icon="Trash" danger label={t("skillEvals.cases.deleteLabel", { name: c.name })} onClick={onDelete} />
       </div>
+
+      {error && (
+        <span role="note" title={error} style={s.error}>
+          {error}
+        </span>
+      )}
     </li>
   );
 }

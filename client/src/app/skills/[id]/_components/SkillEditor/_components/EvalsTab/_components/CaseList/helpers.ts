@@ -15,3 +15,9 @@ export function caseUnexpectedDelta(runs: readonly EvalSuiteRun[], caseId: strin
   const withoutArm = meanUnexpected(mine.filter((r) => r.arm === "without"));
   return withArm == null || withoutArm == null ? null : withArm - withoutArm;
 }
+
+/** Error text of the first failed run of a case (timeout, provider error, cancel), or null. */
+export function caseErrorMessage(runs: readonly EvalSuiteRun[], caseId: string): string | null {
+  const failed = runs.find((r) => r.case_id === caseId && r.status === "failed" && r.error);
+  return failed?.error ?? null;
+}
