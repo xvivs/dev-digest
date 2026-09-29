@@ -16,6 +16,7 @@ import type {
   SkillType,
 } from '@devdigest/shared';
 import { AppError, ValidationError } from '../../platform/errors.js';
+import { suiteImpactVerdict, type EvalSuiteView } from '../_shared/eval-suite.js';
 import {
   INVISIBLE_CHARS_PATTERN,
   SKILL_BODY_MAX,
@@ -41,7 +42,7 @@ export interface Skill {
   updatedAt: Date;
 }
 
-/** Latest Full-suite verdict for the skill card (ADR 0017). Phase 3 fills it. */
+/** Latest done Full-suite verdict for the skill card (ADR 0017). */
 export interface SkillLatestVerdict {
   verdict: ImpactVerdict;
   carrierName: string;
@@ -53,7 +54,7 @@ export interface SkillLatestVerdict {
 export interface SkillListItem extends Skill {
   agentCount: number;
   runs30d: number;
-  /** null = no evals. Always null until the Phase 3 eval tables exist. */
+  /** null = no done Full suite yet ("no evals" on the card). */
   latestVerdict: SkillLatestVerdict | null;
 }
 
@@ -344,8 +345,22 @@ export interface SkillStatsSummary {
   usage: { agents: (LinkedAgentUsage & { runs: number })[]; runs: number };
   cost: CostFootprint;
   byVersion: ({ version: number; runs: number } & CostFootprint)[];
-  /** Phase 3 (evals) fills this; always null until then. */
-  impact: null;
+  /** null until any eval suite exists for the skill. */
+  impact: SkillImpactSummary | null;
+}
+
+/** Stats `impact` block: the impact suite's verdict + staleness (ADR 0017). */
+export interface SkillImpactSummary {
+  verdict: ImpactVerdict;
+  stale: boolean;
+  /** Latest done Full suite, else the latest suite of any mode. */
+  suite: EvalSuiteView;
+}
+
+/** A suite that has not finished (or never will) shows `unknown`, not its partial counts. */
+export function impactFromSuite(suite: EvalSuiteView | undefined): SkillImpactSummary | null {
+  if (!suite) return null;
+  return { verdict: suiteImpactVerdict(suite), stale: suite.stale, suite };
 }
 
 interface CostAcc {
@@ -389,6 +404,7 @@ export function summarizeSkillStats(input: {
   agents: LinkedAgentUsage[];
   aggregates: SkillRunAggregate[];
   estimate: PriceEstimator;
+  impactSuite?: EvalSuiteView | undefined;
 }): SkillStatsSummary {
   const total = emptyAcc();
   const byVersion = new Map<number, CostAcc>();
@@ -413,6 +429,6 @@ export function summarizeSkillStats(input: {
     byVersion: [...byVersion.entries()]
       .sort(([a], [b]) => b - a)
       .map(([version, acc]) => ({ version, runs: acc.runs, ...footprint(acc) })),
-    impact: null,
+    impact: impactFromSuite(input.impactSuite),
   };
 }

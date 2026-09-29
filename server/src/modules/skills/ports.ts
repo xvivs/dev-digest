@@ -3,6 +3,7 @@
  * inner ring. `repository.ts` implements `SkillStore` with Drizzle; the
  * service unit test implements it in memory.
  */
+import type { EvalSuiteView } from '../_shared/eval-suite.js';
 import type {
   LinkedAgentUsage,
   NewSkill,
@@ -72,4 +73,10 @@ export interface SkillStatsReader {
    *  runs of this skill in the last `days` days, grouped by agent, skill
    *  version and model. Runs without `run_skills` rows simply do not appear. */
   runAggregates(workspaceId: string, skillId: string, days: number): Promise<SkillRunAggregate[]>;
+}
+
+/** The eval suite behind the Stats `impact` block (`container.evalsRepo`). */
+export interface SkillImpactReader {
+  /** Latest done Full suite of the skill, else its latest suite of any mode. */
+  findImpactSuite(workspaceId: string, skillId: string): Promise<EvalSuiteView | undefined>;
 }

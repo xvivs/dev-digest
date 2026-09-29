@@ -49,6 +49,9 @@ export interface EffectiveSkill {
 
 const SKILLS_NAME_UQ = 'skills_workspace_name_uq';
 
+/** SQL twin of `sha256Hex(promptHashInput(name, body))` over the current row. */
+const PROMPT_SHA256_SQL = sql`encode(sha256(convert_to(${t.skills.name} || chr(10) || ${t.skills.body}, 'UTF8')), 'hex')`;
+
 function sha256Hex(text: string): string {
   return createHash('sha256').update(text, 'utf8').digest('hex');
 }
@@ -110,13 +113,16 @@ function snapshotOf(row: SkillRow, changeNote: string | null) {
 export class SkillsRepository implements SkillStore, SkillStatsReader {
   constructor(private readonly db: Db | Tx) {}
 
-  /** ONE query, no N+1 (plan Phase 2): `agent_count` is every agent linking
+  /** ONE query, no N+1 (plan Phase 2-3): `agent_count` is every agent linking
    *  the skill, regardless of the link's own enabled state; `runs_30d` counts
    *  completed runs that injected it (a grouped `run_skills ⋈ agent_runs`
-   *  derived table, LEFT JOINed once); and
-   *  `latest_verdict` is the slot Phase 3 fills from `eval_suites` with a
-   *  LEFT JOIN LATERAL on the latest done Full suite. Until those tables
-   *  exist it is a typed NULL, so the row shape already matches.
+   *  derived table, LEFT JOINed once); and `latest_verdict` is the latest
+   *  DONE FULL eval suite per skill (a `DISTINCT ON (skill_id)` derived table
+   *  over the workspace's suites, LEFT JOINed once — the same shape as
+   *  runs_30d instead of a per-skill LATERAL, see INSIGHTS). `stale` compares
+   *  the suite's prompt_sha256 with the skill's current `sha256(name + "\n" +
+   *  body)` and the carrier's version with the one it ran on (ADR 0017); a
+   *  deleted carrier is stale and keeps the name it had.
    *  `q` is a linear `ILIKE '%q%'` scan over name/description within ONE
    *  workspace (a handful of skills), so no trigram index; add `pg_trgm` +
    *  GIN (`gin_trgm_ops`) if a workspace ever holds thousands. */
@@ -149,17 +155,46 @@ export class SkillsRepository implements SkillStore, SkillStatsReader {
       .groupBy(t.runSkills.skillId)
       .as('runs_30d');
 
+    // Latest done Full suite per skill (ADR 0017: only Full yields a verdict).
+    const latest = this.db
+      .selectDistinctOn([t.evalSuites.skillId], {
+        skillId: t.evalSuites.skillId,
+        verdict: sql<string>`${t.evalSuites.results}->>'verdict'`.as('verdict'),
+        carrierName: sql<string>`coalesce(${t.agents.name}, ${t.evalSuites.carrierAgentName})`.as('carrier_name'),
+        promptSha256: sql<string>`${t.evalSuites.promptSha256}`.as('suite_prompt_sha256'),
+        carrierMoved: sql<boolean>`(${t.agents.version} IS DISTINCT FROM ${t.evalSuites.carrierAgentVersion})`.as(
+          'carrier_moved',
+        ),
+      })
+      .from(t.evalSuites)
+      .leftJoin(t.agents, eq(t.agents.id, t.evalSuites.carrierAgentId))
+      .where(
+        and(
+          eq(t.evalSuites.workspaceId, workspaceId),
+          eq(t.evalSuites.mode, 'full'),
+          eq(t.evalSuites.status, 'done'),
+        ),
+      )
+      .orderBy(t.evalSuites.skillId, desc(t.evalSuites.finishedAt), desc(t.evalSuites.createdAt))
+      .as('latest_suite');
+
     const rows = await this.db
       .select({
         skill: t.skills,
         agentCount: count(t.agentSkills.agentId),
-        // One row per skill in `runs_30d`, so max() just lifts it past GROUP BY.
+        // One row per skill in `runs_30d` / `latest_suite`, so max() / bool_or()
+        // just lift the value past GROUP BY.
         runs30d: sql<number>`coalesce(max(${runs30d.runs}), 0)::int`,
-        latestVerdict: sql<SkillLatestVerdict | null>`NULL::jsonb`,
+        latestVerdict: sql<SkillLatestVerdict | null>`CASE WHEN max(${latest.verdict}) IS NULL THEN NULL ELSE jsonb_build_object(
+          'verdict', max(${latest.verdict}),
+          'carrierName', max(${latest.carrierName}),
+          'stale', bool_or(${latest.carrierMoved} OR ${latest.promptSha256} <> ${PROMPT_SHA256_SQL})
+        ) END`,
       })
       .from(t.skills)
       .leftJoin(t.agentSkills, eq(t.agentSkills.skillId, t.skills.id))
       .leftJoin(runs30d, eq(runs30d.skillId, t.skills.id))
+      .leftJoin(latest, eq(latest.skillId, t.skills.id))
       .where(where)
       .groupBy(t.skills.id)
       .orderBy(asc(t.skills.name));

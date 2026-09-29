@@ -13,7 +13,7 @@
  *   GET    /skills/:id/versions              → snapshots, newest first (ADR 0016)
  *   GET    /skills/:id/versions/:version     → one snapshot with body
  *   POST   /skills/:id/versions/:version/restore → guarded, append-only restore
- *   GET    /skills/:id/stats?window=7d|30d|90d  → Usage + Cost (plan Phase 2)
+ *   GET    /skills/:id/stats?window=7d|30d|90d  → Usage + Cost + Impact (plan Phases 2-3)
  */
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
@@ -32,6 +32,7 @@ import {
 } from '@devdigest/shared';
 import { getContext } from '../_shared/context.js';
 import { IdParams } from '../_shared/schemas.js';
+import { toEvalSuiteDto } from '../_shared/eval-suite.js';
 import { NotFoundError } from '../../platform/errors.js';
 import {
   containsInvisibleChars,
@@ -157,7 +158,9 @@ function toStatsDto(s: SkillStatsSummary): SkillStatsDto {
       cost_usd: v.costUsd,
       cost_source: v.costSource,
     })),
-    impact: s.impact,
+    impact: s.impact
+      ? { verdict: s.impact.verdict, stale: s.impact.stale, suite: toEvalSuiteDto(s.impact.suite) }
+      : null,
   };
 }
 

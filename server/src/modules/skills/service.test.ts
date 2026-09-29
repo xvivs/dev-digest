@@ -20,7 +20,8 @@ import {
   type SkillVersionSnapshot,
 } from './domain.js';
 import { ValidationError } from '../../platform/errors.js';
-import type { SkillStatsReader, SkillStore, SkillWritePatch } from './ports.js';
+import type { SkillImpactReader, SkillStatsReader, SkillStore, SkillWritePatch } from './ports.js';
+import type { EvalSuiteView } from '../_shared/eval-suite.js';
 
 class InMemorySkillStore implements SkillStore {
   rows: Skill[] = [];
@@ -384,6 +385,8 @@ describe('SkillStatsService (plan Phase 2)', () => {
     updatedAt: new Date(0),
   };
 
+  const noImpact: SkillImpactReader = { findImpactSuite: async () => undefined };
+
   function readerWith(calls: number[]): SkillStatsReader {
     return {
       findById: async (ws, id) => (ws === 'ws' && id === 's1' ? skill : undefined),
@@ -397,7 +400,7 @@ describe('SkillStatsService (plan Phase 2)', () => {
 
   it('maps the window to days and summarizes the reads', async () => {
     const days: number[] = [];
-    const service = new SkillStatsService(readerWith(days), () => 0.5);
+    const service = new SkillStatsService(readerWith(days), () => 0.5, noImpact);
     for (const w of ['7d', '30d', '90d'] as const) {
       const s = await service.stats('ws', 's1', w);
       expect(s).toMatchObject({ window: w, usage: { runs: 4 }, cost: { costUsd: 0.5, costSource: 'estimated' } });
@@ -407,8 +410,52 @@ describe('SkillStatsService (plan Phase 2)', () => {
 
   it('undefined for a skill outside the workspace, without reading runs', async () => {
     const days: number[] = [];
-    const service = new SkillStatsService(readerWith(days), () => 0);
+    const service = new SkillStatsService(readerWith(days), () => 0, noImpact);
     expect(await service.stats('other-ws', 's1', '30d')).toBeUndefined();
     expect(days).toEqual([]);
+  });
+  const suite = (over: Partial<EvalSuiteView> = {}): EvalSuiteView => ({
+    id: 'suite-1',
+    workspaceId: 'ws',
+    skillId: 's1',
+    skillVersion: 2,
+    promptSha256: 'p',
+    carrierAgentId: 'a1',
+    carrierAgentVersion: 1,
+    carrierName: 'alpha',
+    model: 'm',
+    mode: 'full',
+    repeats: 3,
+    status: 'done',
+    totalJobs: 30,
+    doneJobs: 30,
+    estimateUsd: 0.1,
+    costUsd: 0.05,
+    costSource: 'estimated',
+    stale: true,
+    results: { passing: 5, total: 5, caught: 2, regressed: 0, flaky: 0, delta_unexpected: 0, verdict: 'helps' },
+    error: null,
+    createdAt: new Date(0),
+    startedAt: new Date(0),
+    finishedAt: new Date(0),
+    ...over,
+  });
+
+  it('impact: the impact suite verdict and stale flag; unknown while it has not finished', async () => {
+    const withSuite = (s: EvalSuiteView): SkillImpactReader => ({
+      findImpactSuite: async (ws, id) => (ws === 'ws' && id === 's1' ? s : undefined),
+    });
+    const done = await new SkillStatsService(readerWith([]), () => 0, withSuite(suite())).stats('ws', 's1', '30d');
+    expect(done?.impact).toMatchObject({ verdict: 'helps', stale: true, suite: { id: 'suite-1' } });
+
+    const running = await new SkillStatsService(
+      readerWith([]),
+      () => 0,
+      withSuite(suite({ status: 'running', results: null })),
+    ).stats('ws', 's1', '30d');
+    expect(running?.impact?.verdict).toBe('unknown');
+
+    const none = await new SkillStatsService(readerWith([]), () => 0, noImpact).stats('ws', 's1', '30d');
+    expect(none?.impact).toBeNull();
   });
 });

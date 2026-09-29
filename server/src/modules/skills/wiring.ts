@@ -10,9 +10,12 @@ export function buildSkillsService(container: Container): SkillsService {
   return new SkillsService(container.skillsRepo);
 }
 
-/** Cost footprint priced with the live price book (static table fallback). */
+/** Cost footprint priced with the live price book (static table fallback);
+ *  the impact suite comes from the evals read model on the container. */
 export function buildSkillStatsService(container: Container): SkillStatsService {
-  return new SkillStatsService(container.skillsRepo, (model, tokensIn, tokensOut) =>
-    container.priceBook.estimate(model, tokensIn, tokensOut),
+  return new SkillStatsService(
+    container.skillsRepo,
+    (model, tokensIn, tokensOut) => container.priceBook.estimate(model, tokensIn, tokensOut),
+    { findImpactSuite: (workspaceId, skillId) => container.evalsRepo.findImpactSuite(workspaceId, skillId) },
   );
 }
