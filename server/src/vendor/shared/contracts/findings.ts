@@ -8,7 +8,7 @@ import { z } from 'zod';
  *  - shared web↔api types.
  */
 
-export const Severity = z.enum(['CRITICAL', 'WARNING', 'SUGGESTION']);
+export const Severity = z.enum(['CRITICAL', 'WARNING']);
 export type Severity = z.infer<typeof Severity>;
 
 /**

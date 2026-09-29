@@ -35,7 +35,7 @@ vi.mock("@/components/severity-icons", () => ({
     onSelect?: (s: Severity) => void;
   }) => (
     <span data-testid="severity-icons">
-      {(["CRITICAL", "WARNING", "SUGGESTION"] as const).map((sev) => {
+      {(["CRITICAL", "WARNING"] as const).map((sev) => {
         const n = counts[sev.toLowerCase() as keyof SeverityCounts];
         return n === 0 ? null : (
           <button key={sev} type="button" onClick={() => onSelect?.(sev)}>

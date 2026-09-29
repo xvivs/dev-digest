@@ -2,15 +2,14 @@ import { describe, it, expect } from "vitest";
 import { countBySeverity, presentSeverities, ZERO_COUNTS } from "./helpers";
 
 describe("countBySeverity", () => {
-  it("tallies the three known severities into their lowercase wire keys", () => {
+  it("tallies the known severities into their lowercase wire keys", () => {
     expect(
       countBySeverity([
         { severity: "CRITICAL" },
         { severity: "WARNING" },
         { severity: "WARNING" },
-        { severity: "SUGGESTION" },
       ]),
-    ).toEqual({ critical: 1, warning: 2, suggestion: 1 });
+    ).toEqual({ critical: 1, warning: 2, suggestion: 0 });
   });
 
   it("returns an all-zero tally for an empty list", () => {
@@ -43,17 +42,13 @@ describe("countBySeverity", () => {
 
 describe("presentSeverities", () => {
   it("keeps only non-zero severities, worst first", () => {
-    expect(presentSeverities({ critical: 0, warning: 3, suggestion: 1 })).toEqual([
-      "WARNING",
-      "SUGGESTION",
-    ]);
+    expect(presentSeverities({ critical: 0, warning: 3, suggestion: 0 })).toEqual(["WARNING"]);
   });
 
-  it("returns every severity in CRITICAL → WARNING → SUGGESTION order", () => {
-    expect(presentSeverities({ critical: 1, warning: 1, suggestion: 1 })).toEqual([
+  it("returns every severity in CRITICAL → WARNING order", () => {
+    expect(presentSeverities({ critical: 1, warning: 1, suggestion: 0 })).toEqual([
       "CRITICAL",
       "WARNING",
-      "SUGGESTION",
     ]);
   });
 

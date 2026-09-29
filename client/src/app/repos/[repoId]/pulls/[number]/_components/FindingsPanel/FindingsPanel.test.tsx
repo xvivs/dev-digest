@@ -40,13 +40,13 @@ function finding(
 }
 
 const CRITICAL = finding({ id: "f1", severity: "CRITICAL", title: "Hardcoded secret" });
-/** 1 CRITICAL · 2 WARNING · 1 SUGGESTION — the suggestion is the only
- *  low-confidence one, so "hide low confidence" empties exactly that bucket. */
+/** 1 CRITICAL · 3 WARNING — the last warning is the only low-confidence
+ *  one, so "hide low confidence" trims exactly that finding. */
 const FINDINGS: FindingRecord[] = [
   CRITICAL,
   finding({ id: "f2", severity: "WARNING", title: "Unhandled rejection", confidence: 0.9 }),
   finding({ id: "f3", severity: "WARNING", title: "Loose comparison", confidence: 0.88 }),
-  finding({ id: "f4", severity: "SUGGESTION", title: "Extract a helper", confidence: 0.3 }),
+  finding({ id: "f4", severity: "WARNING", title: "Extract a helper", confidence: 0.3 }),
 ];
 
 /** The wrapper persists across `rerender`, so a rerender only passes the panel. */
@@ -76,25 +76,24 @@ describe("FindingsPanel — severity counters and filter", () => {
     renderWithIntl(<FindingsPanel findings={FINDINGS} prId="pr1" />);
 
     expect(screen.getByText("1 CRITICAL")).toBeInTheDocument();
-    expect(screen.getByText("2 WARNING")).toBeInTheDocument();
-    expect(screen.getByText("1 SUGGESTION")).toBeInTheDocument();
+    expect(screen.getByText("3 WARNING")).toBeInTheDocument();
     expect(cardCount()).toBe(4);
 
     // Hiding low confidence must move the pill and the list in lockstep: the
-    // only low-confidence finding is the suggestion.
+    // only low-confidence finding is the last warning.
     fireEvent.click(screen.getByRole("switch"));
-    expect(screen.queryByText("1 SUGGESTION")).not.toBeInTheDocument();
+    expect(screen.queryByText("3 WARNING")).not.toBeInTheDocument();
     expect(screen.getByText("2 WARNING")).toBeInTheDocument();
     expect(cardCount()).toBe(3);
   });
 
-  it("picking Warning leaves exactly the two warnings; picking it again clears the filter", () => {
+  it("picking Warning leaves exactly the three warnings; picking it again clears the filter", () => {
     renderWithIntl(<FindingsPanel findings={FINDINGS} prId="pr1" />);
     const warning = screen.getByRole("button", { name: "Warning" });
 
     fireEvent.click(warning);
     expect(warning).toHaveAttribute("aria-pressed", "true");
-    expect(cardCount()).toBe(2);
+    expect(cardCount()).toBe(3);
     expect(screen.getByText("Unhandled rejection")).toBeInTheDocument();
     expect(screen.getByText("Loose comparison")).toBeInTheDocument();
     expect(screen.queryByText("Hardcoded secret")).not.toBeInTheDocument();
@@ -110,16 +109,16 @@ describe("FindingsPanel — severity counters and filter", () => {
     renderWithIntl(<FindingsPanel findings={[CRITICAL]} prId="pr1" />);
     expect(screen.getByRole("button", { name: "Critical" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "Warning" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Suggestion" })).toBeDisabled();
   });
 
   it("a filter its bucket has just been emptied under falls through to the empty state", () => {
-    renderWithIntl(<FindingsPanel findings={FINDINGS} prId="pr1" />);
+    const lowWarning = finding({ id: "f5", severity: "WARNING", title: "Nit", confidence: 0.3 });
+    renderWithIntl(<FindingsPanel findings={[CRITICAL, lowWarning]} prId="pr1" />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Suggestion" }));
+    fireEvent.click(screen.getByRole("button", { name: "Warning" }));
     expect(cardCount()).toBe(1);
 
-    // The only suggestion is low-confidence — hiding it leaves the filter
+    // The only warning is low-confidence — hiding it leaves the filter
     // pointing at an empty bucket.
     fireEvent.click(screen.getByRole("switch"));
     expect(cardCount()).toBe(0);
@@ -141,7 +140,7 @@ describe("FindingsPanel — Timeline hand-off", () => {
     expect(cardCount()).toBe(4);
 
     rerender(<FindingsPanel findings={FINDINGS} prId="pr1" targetSeverity="WARNING" targetNonce={1} />);
-    expect(cardCount()).toBe(2);
+    expect(cardCount()).toBe(3);
     expect(screen.getByRole("button", { name: "Warning" })).toHaveAttribute(
       "aria-pressed",
       "true",
@@ -151,6 +150,6 @@ describe("FindingsPanel — Timeline hand-off", () => {
     fireEvent.click(screen.getByRole("button", { name: "Warning" }));
     expect(cardCount()).toBe(4);
     rerender(<FindingsPanel findings={FINDINGS} prId="pr1" targetSeverity="WARNING" targetNonce={2} />);
-    expect(cardCount()).toBe(2);
+    expect(cardCount()).toBe(3);
   });
 });

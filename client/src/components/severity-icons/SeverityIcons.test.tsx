@@ -8,7 +8,7 @@ import { SeverityIcons } from "./SeverityIcons";
 afterEach(cleanup);
 
 function renderIcons(props: Partial<React.ComponentProps<typeof SeverityIcons>> = {}) {
-  const counts: SeverityCounts = props.counts ?? { critical: 2, warning: 3, suggestion: 1 };
+  const counts: SeverityCounts = props.counts ?? { critical: 2, warning: 3, suggestion: 0 };
   return render(
     <NextIntlClientProvider locale="en" messages={{ findings: findingsMessages }}>
       <SeverityIcons {...props} counts={counts} />
@@ -18,12 +18,11 @@ function renderIcons(props: Partial<React.ComponentProps<typeof SeverityIcons>> 
 
 describe("SeverityIcons", () => {
   it("renders only non-zero severities, worst first, each with its count", () => {
-    renderIcons({ counts: { critical: 0, warning: 3, suggestion: 1 }, onSelect: vi.fn() });
+    renderIcons({ counts: { critical: 0, warning: 3, suggestion: 0 }, onSelect: vi.fn() });
 
     const labels = screen.getAllByRole("button").map((b) => b.getAttribute("aria-label"));
-    expect(labels).toEqual(["3 Warning findings", "1 Suggestion finding"]);
+    expect(labels).toEqual(["3 Warning findings"]);
     expect(screen.getByText("3")).toBeInTheDocument();
-    expect(screen.getByText("1")).toBeInTheDocument();
   });
 
   it("renders nothing at all when every severity is zero", () => {
@@ -36,7 +35,7 @@ describe("SeverityIcons", () => {
     renderIcons({ selected: "WARNING", onSelect });
 
     const buttons = screen.getAllByRole("button");
-    expect(buttons).toHaveLength(3);
+    expect(buttons).toHaveLength(2);
     expect(buttons[0]).toHaveAttribute("aria-pressed", "false");
     expect(buttons[1]).toHaveAttribute("aria-pressed", "true");
 
@@ -50,7 +49,7 @@ describe("SeverityIcons", () => {
 
     expect(screen.queryAllByRole("button")).toHaveLength(0);
     const focusable = container.querySelectorAll('[tabindex="0"]');
-    expect(focusable).toHaveLength(3);
+    expect(focusable).toHaveLength(2);
     expect(focusable[0]).toHaveAttribute("aria-label", "2 Critical findings");
   });
 
@@ -64,14 +63,14 @@ describe("SeverityIcons", () => {
       Array.from(container.querySelectorAll("[data-severity]")).map((el) =>
         el.getAttribute("data-severity"),
       ),
-    ).toEqual(["CRITICAL", "WARNING", "SUGGESTION"]);
+    ).toEqual(["CRITICAL", "WARNING"]);
 
     rerender(
       <NextIntlClientProvider locale="en" messages={{ findings: findingsMessages }}>
-        <SeverityIcons counts={{ critical: 2, warning: 3, suggestion: 1 }} />
+        <SeverityIcons counts={{ critical: 2, warning: 3, suggestion: 0 }} />
       </NextIntlClientProvider>,
     );
-    expect(container.querySelectorAll("[data-severity]")).toHaveLength(3);
+    expect(container.querySelectorAll("[data-severity]")).toHaveLength(2);
   });
 
   it("underlines the count — the only affordance that the cell is interactive", () => {

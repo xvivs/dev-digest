@@ -22,7 +22,6 @@ export const ZERO_COUNTS: SeverityCounts = { critical: 0, warning: 0, suggestion
 export const SEV_KEY: Record<Severity, keyof SeverityCounts> = {
   CRITICAL: "critical",
   WARNING: "warning",
-  SUGGESTION: "suggestion",
 };
 
 /**

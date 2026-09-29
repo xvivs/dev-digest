@@ -29,16 +29,6 @@ function finding(o: Partial<FindingRecord>): FindingRecord {
 // Distinct file/line and confidence per finding: the panel renders three of
 // them side by side, so identical metadata would make every query ambiguous.
 const FINDINGS = [
-  finding({
-    id: "f1",
-    severity: "SUGGESTION",
-    title: "Prefer const",
-    category: "style",
-    file: "src/util/fmt.ts",
-    line_start: 7,
-    line_end: 7,
-    confidence: 0.41,
-  }),
   finding({ id: "f2", severity: "CRITICAL", title: "SQL injection", category: "security" }),
   finding({
     id: "f3",
@@ -67,7 +57,7 @@ type Props = React.ComponentProps<typeof FindingsPopover>;
 function renderPopover(props: Partial<Props> = {}) {
   return render(
     <NextIntlClientProvider locale="en" messages={{ findings: findingsMessages }}>
-      <FindingsPopover total={4} findings={FINDINGS} runLinked {...props}>
+      <FindingsPopover total={3} findings={FINDINGS} runLinked {...props}>
         <span tabIndex={0}>anchor</span>
       </FindingsPopover>
     </NextIntlClientProvider>,
@@ -76,8 +66,8 @@ function renderPopover(props: Partial<Props> = {}) {
 
 const anchor = () => screen.getByText("anchor");
 
-/** The tally the FINDINGS fixture adds up to: 1 CRITICAL, 2 WARNING, 1 SUGGESTION. */
-const COUNTS: SeverityCounts = { critical: 1, warning: 2, suggestion: 1 };
+/** The tally the FINDINGS fixture adds up to: 1 CRITICAL, 2 WARNING. */
+const COUNTS: SeverityCounts = { critical: 1, warning: 2, suggestion: 0 };
 
 /**
  * Anchor made of real `SeverityIcons`, so the `data-severity` contract between
@@ -86,7 +76,7 @@ const COUNTS: SeverityCounts = { critical: 1, warning: 2, suggestion: 1 };
 function renderWithChips(props: Partial<Props> = {}, counts: SeverityCounts = COUNTS) {
   return render(
     <NextIntlClientProvider locale="en" messages={{ findings: findingsMessages }}>
-      <FindingsPopover total={4} findings={FINDINGS} runLinked {...props}>
+      <FindingsPopover total={3} findings={FINDINGS} runLinked {...props}>
         <SeverityIcons counts={counts} />
       </FindingsPopover>
     </NextIntlClientProvider>,
@@ -171,19 +161,18 @@ describe("FindingsPopover", () => {
     // A tooltip must contain nothing focusable: it vanishes when the cursor leaves.
     expect(within(tip).queryAllByRole("button")).toHaveLength(0);
 
-    expect(within(tip).getByText("4 findings in this run")).toBeInTheDocument();
+    expect(within(tip).getByText("3 findings in this run")).toBeInTheDocument();
     expect(within(tip).getByText("src/db/query.ts:42")).toBeInTheDocument();
     // A multi-line finding renders its span, not just the first line.
     expect(within(tip).getByText("src/api/list.ts:10-18")).toBeInTheDocument();
     expect(within(tip).getByText("92% conf")).toBeInTheDocument();
     expect(within(tip).getByText("security")).toBeInTheDocument();
 
-    // CRITICAL → WARNING → SUGGESTION, capped at PREVIEW_LIMIT (3 of 4).
+    // CRITICAL → WARNING, capped at PREVIEW_LIMIT.
     expect(within(tip).getByText("SQL injection")).toBeInTheDocument();
     expect(within(tip).getByText("N+1 query")).toBeInTheDocument();
     expect(within(tip).getByText("Missing test")).toBeInTheDocument();
-    expect(within(tip).queryByText("Prefer const")).not.toBeInTheDocument();
-    expect(within(tip).getByText("+1 more")).toBeInTheDocument();
+    expect(within(tip).queryByText("+1 more")).not.toBeInTheDocument();
   });
 
   it("titles the panel for a review when it is not linked to a run", () => {
@@ -312,21 +301,20 @@ describe("FindingsPopover", () => {
     expect(within(tip).getByText("Missing test")).toBeInTheDocument();
     // The worst finding overall is CRITICAL and would otherwise sort first.
     expect(within(tip).queryByText("SQL injection")).not.toBeInTheDocument();
-    expect(within(tip).queryByText("Prefer const")).not.toBeInTheDocument();
   });
 
   it("counts '+N more' against the scoped set, not the whole tally", () => {
-    // Four SUGGESTIONs, one chip: the preview caps at three and the overflow
+    // Four WARNINGs, one chip: the preview caps at three and the overflow
     // line must say "+1", not "+N" derived from `total`.
     const many = [
-      finding({ id: "s1", severity: "SUGGESTION", title: "Sugg one" }),
-      finding({ id: "s2", severity: "SUGGESTION", title: "Sugg two" }),
-      finding({ id: "s3", severity: "SUGGESTION", title: "Sugg three" }),
-      finding({ id: "s4", severity: "SUGGESTION", title: "Sugg four" }),
+      finding({ id: "s1", severity: "WARNING", title: "Sugg one" }),
+      finding({ id: "s2", severity: "WARNING", title: "Sugg two" }),
+      finding({ id: "s3", severity: "WARNING", title: "Sugg three" }),
+      finding({ id: "s4", severity: "WARNING", title: "Sugg four" }),
       finding({ id: "c1", severity: "CRITICAL", title: "Crit one" }),
     ];
-    renderWithChips({ total: 5, findings: many }, { critical: 1, warning: 0, suggestion: 4 });
-    openFrom(chip("4 Suggestion findings"));
+    renderWithChips({ total: 5, findings: many }, { critical: 1, warning: 4, suggestion: 0 });
+    openFrom(chip("4 Warning findings"));
 
     expect(within(screen.getByRole("tooltip")).getByText("+1 more")).toBeInTheDocument();
   });
@@ -359,7 +347,7 @@ describe("FindingsPopover", () => {
     // goes back to the whole tally.
     openFrom(screen.getByLabelText("1 Critical finding").parentElement!);
     const tip = screen.getByRole("tooltip");
-    expect(within(tip).getByText("4 findings in this run")).toBeInTheDocument();
+    expect(within(tip).getByText("3 findings in this run")).toBeInTheDocument();
     expect(within(tip).getByText("N+1 query")).toBeInTheDocument();
   });
 

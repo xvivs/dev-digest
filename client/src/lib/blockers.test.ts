@@ -3,7 +3,7 @@ import type { Severity } from "@devdigest/shared";
 import { countBlockers } from "./blockers";
 
 const f = (...s: Severity[]) => s.map((severity) => ({ severity }));
-const MIXED = f("CRITICAL", "CRITICAL", "WARNING", "SUGGESTION");
+const MIXED = f("CRITICAL", "CRITICAL", "WARNING");
 
 describe("countBlockers (mirrors reviewer-core countBlockers)", () => {
   it("defaults to the critical gate", () => {
@@ -14,7 +14,7 @@ describe("countBlockers (mirrors reviewer-core countBlockers)", () => {
     ["never", 0],
     ["critical", 2],
     ["warning", 3],
-    ["any", 4],
+    ["any", 3],
   ] as const)("failOn=%s → %i", (failOn, n) => {
     expect(countBlockers(MIXED, failOn)).toBe(n);
   });

@@ -89,18 +89,17 @@ function finding(o: Partial<FindingRecord>): FindingRecord {
 }
 
 describe("sortBySeverity", () => {
-  it("orders CRITICAL → WARNING → SUGGESTION and keeps input order within a severity", () => {
+  it("orders CRITICAL → WARNING and keeps input order within a severity", () => {
     const out = sortBySeverity([
-      finding({ id: "s1", severity: "SUGGESTION" }),
       finding({ id: "w1", severity: "WARNING" }),
       finding({ id: "c1", severity: "CRITICAL" }),
       finding({ id: "w2", severity: "WARNING" }),
     ]);
-    expect(out.map((f) => f.id)).toEqual(["c1", "w1", "w2", "s1"]);
+    expect(out.map((f) => f.id)).toEqual(["c1", "w1", "w2"]);
   });
 
   it("does not mutate its input", () => {
-    const input = [finding({ id: "s1", severity: "SUGGESTION" }), finding({ id: "c1", severity: "CRITICAL" })];
+    const input = [finding({ id: "s1", severity: "WARNING" }), finding({ id: "c1", severity: "CRITICAL" })];
     sortBySeverity(input);
     expect(input.map((f) => f.id)).toEqual(["s1", "c1"]);
   });

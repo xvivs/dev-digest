@@ -14,4 +14,4 @@ export const RUNS_TAB: PrTab = "findings";
  * resolve — the whole page would 500 at request time while typecheck and
  * vitest stay green (see client/INSIGHTS.md).
  */
-export const SEVERITIES = ["CRITICAL", "WARNING", "SUGGESTION"] as const satisfies readonly Severity[];
+export const SEVERITIES = ["CRITICAL", "WARNING"] as const satisfies readonly Severity[];

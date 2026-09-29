@@ -19,7 +19,6 @@ export const SEV: Record<
 > = {
   CRITICAL: { c: "var(--crit)", bg: "var(--crit-bg)", icon: "AlertOctagon", label: "Critical" },
   WARNING: { c: "var(--warn)", bg: "var(--warn-bg)", icon: "AlertTriangle", label: "Warning" },
-  SUGGESTION: { c: "var(--sugg)", bg: "var(--sugg-bg)", icon: "Lightbulb", label: "Suggestion" },
   INFO: { c: "var(--info)", bg: "var(--info-bg)", icon: "Info", label: "Info" },
 };
 
@@ -28,7 +27,7 @@ export const SEV: Record<
  * all derive from it. `INFO` is last; a list of shared-contract severities can
  * use it as-is (the extra member simply never matches).
  */
-export const SEVERITY_ORDER: readonly Severity[] = ["CRITICAL", "WARNING", "SUGGESTION", "INFO"];
+export const SEVERITY_ORDER: readonly Severity[] = ["CRITICAL", "WARNING", "INFO"];
 
 /** Sort weight per severity, lower = worse = first. Derived from `SEVERITY_ORDER`. */
 export const SEVERITY_RANK = Object.fromEntries(SEVERITY_ORDER.map((sev, i) => [sev, i])) as Record<

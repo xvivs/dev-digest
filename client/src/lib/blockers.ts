@@ -9,7 +9,6 @@ import type { CiFailOn, Finding } from "@devdigest/shared";
 
 /** Severity rank, higher = worse (mirrors reviewer-core `SEV_RANK`). */
 const SEVERITY_RANK: Record<Finding["severity"], number> = {
-  SUGGESTION: 1,
   WARNING: 2,
   CRITICAL: 3,
 };

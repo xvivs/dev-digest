@@ -13,7 +13,6 @@ import type { Finding, Review, UnifiedDiff } from '@devdigest/shared';
 const SEVERITY_PENALTY: Record<Finding['severity'], number> = {
   CRITICAL: 35,
   WARNING: 12,
-  SUGGESTION: 3,
 };
 
 /**

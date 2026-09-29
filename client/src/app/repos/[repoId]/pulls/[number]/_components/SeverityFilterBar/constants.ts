@@ -13,5 +13,4 @@ import type { Severity, SeverityCounts } from "@devdigest/shared";
 export const SEVERITY_LEVELS = [
   { severity: "CRITICAL", key: "critical" },
   { severity: "WARNING", key: "warning" },
-  { severity: "SUGGESTION", key: "suggestion" },
 ] as const satisfies ReadonlyArray<{ severity: Severity; key: keyof SeverityCounts }>;
