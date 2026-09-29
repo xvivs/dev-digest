@@ -56,6 +56,14 @@ A Full suite is `cases × 2 arms × 3 repeats` LLM calls, each costing real mone
 - Closing a suite from anywhere except the atomic counter.
 - Job-level retries on top of adapter retries.
 
+## Amendment 2026-09-29: timeout derivation and carrier eligibility
+
+**Job timeout (refines §1).** A job's `timeoutMs` was `chunks × 5 min + headroom`, a guess. A live Quick suite timed out because one structured call can legitimately take 60 s × 4 `withRetry` attempts × 3 structured attempts, about 12 min. The budget is now derived from the adapters' real limits: `worstCaseCallMs` in `evals/domain.ts` combines `LLM_CALL_TIMEOUT_MS` and `LLM_STRUCTURED_MAX_RETRIES` (`platform/llm-limits.ts`) with the `withRetry` defaults (`platform/resilience.ts`). The adapters import the same constants, so the timeout cannot drift below the worst case. `jobTimeoutMs(chunks) = chunks × worstCaseCallMs + 60 s`. It still only frees the queue slot; it never stops a call in flight. A timed-out run is `failed`, and its case counts as `results.errored`, not as a failure (ADR 0017).
+
+**Carrier eligibility (refines §9).** A carrier is an agent that links the skill with the link enabled (`agent_skills.enabled`). The default is the eligible agent with the most completed runs with the skill, ties by name. An explicit `carrier_agent_id` that is not eligible is 422 `eval_carrier_not_linked`; none eligible and none given is 422 `eval_no_carrier`. `GET /skills/:id/eval-carriers` lists the eligible agents for the Run modal.
+
+**Globally disabled skill.** A skill with `enabled = false` may still be evaluated. The eval pins the target body explicitly into the `with` arm (`armSkills`), so the global flag does not change what runs, and evaluating a skill before switching it on is a legitimate use. The trust gate (§6) still applies in full.
+
 ## Alternatives considered
 
 | Option | For | Against |

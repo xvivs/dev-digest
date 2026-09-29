@@ -89,8 +89,8 @@ Notes:
 | Method | Path | Request | Response | Errors |
 |---|---|---|---|---|
 | GET | `/skills/:id/eval-cases` | none | `SkillEvalCase[]` | 404 |
-| POST | `/skills/:id/eval-cases` | `CreateEvalCaseBody` | 201 `SkillEvalCase` | 404 (skill or `pr_id`) · 422 · 422 `eval_case_file_not_in_pr` |
-| PUT | `/eval-cases/:id` | `UpdateEvalCaseBody` | `SkillEvalCase` | 404 · 422 · 422 `eval_case_file_not_in_pr` |
+| POST | `/skills/:id/eval-cases` | `CreateEvalCaseBody` | 201 `SkillEvalCase` | 404 (skill or `pr_id`) · 422 `validation_error` (see below) · 422 `eval_case_file_not_in_pr` |
+| PUT | `/eval-cases/:id` | `UpdateEvalCaseBody` | `SkillEvalCase` | 404 · 422 `validation_error` (see below) · 422 `eval_case_file_not_in_pr` |
 | DELETE | `/eval-cases/:id` | none | `{ ok: true }` | 404 |
 
 - `source.kind = 'paste'` stores the diff as given. `source.kind = 'pr'` builds
@@ -102,17 +102,39 @@ Notes:
   is a case-insensitive substring and never a regex.
 - A legacy row whose `expected_output` does not parse comes back with
   `expectation: null`. Suites skip such rows.
+- 422 `validation_error` beyond the route schema (name, `notes`, diff length,
+  `files` 1-50, strict keys, the defect/clean expectation rules):
+  - a pasted diff that parses to zero file changes (`details.field = "source.diff"`);
+  - a PR-built diff over `EVAL_CASE_DIFF_MAX` (200,000 chars), the same cap as a
+    pasted diff (`details: { field: "source.files", chars }`);
+  - an expectation naming a file that is not in the case diff
+    (`details: { field: "expectation", files }`). On PUT this is re-checked
+    whenever the expectation or the source changes.
 
 ### Suites
 
 | Method | Path | Request | Response | Errors |
 |---|---|---|---|---|
+| GET | `/skills/:id/eval-carriers` | none | `EvalCarrier[]`, default first | 404 |
 | GET | `/skills/:id/eval-suites` | none | `EvalSuite[]`, newest first | 404 |
-| POST | `/skills/:id/eval-suites` | `CreateEvalSuiteBody` | 201 `EvalSuite` (`status: 'estimated'`) | 404 (skill or carrier) · 409 `eval_skill_not_vetted` · 422 `eval_no_cases` · 422 `eval_price_unknown` · 422 `eval_too_many_jobs` · 422 `eval_budget_exceeded` |
+| POST | `/skills/:id/eval-suites` | `CreateEvalSuiteBody` (`carrier_agent_id` optional on the server) | 201 `EvalSuite` (`status: 'estimated'`) | 404 (skill or carrier) · 409 `eval_skill_not_vetted` · 422 `eval_no_carrier` · 422 `eval_carrier_not_linked` · 422 `eval_no_cases` · 422 `eval_price_unknown` · 422 `eval_too_many_jobs` · 422 `eval_budget_exceeded` |
 | POST | `/eval-suites/:id/start` | none (body-less) | `EvalSuite` | 404 · 409 `eval_suite_busy` · 409 `eval_suite_stale` |
 | POST | `/eval-suites/:id/cancel` | none (body-less) | `EvalSuite` | 404 |
 | GET | `/eval-suites/:id` | none | `EvalSuiteDetail` | 404 |
 
+- Carriers (2026-09-29): a carrier is an agent that links the skill with the
+  link enabled (`agent_skills.enabled`). `GET /skills/:id/eval-carriers` returns
+  `{ agent_id, agent_name, runs, is_default }[]`, most completed runs with the
+  skill first, ties by name, and exactly the first row has `is_default: true`.
+  The list is empty when no agent qualifies. The skill's own `enabled` flag is
+  not part of eligibility (ADR 0018 amendment).
+- `carrier_agent_id` is optional in the request (the wire contract requires it;
+  the server accepts a superset):
+  - Omitted: the default carrier above is used. None eligible is 422
+    `eval_no_carrier`.
+  - Given but not an eligible carrier (unlinked, or link disabled): 422
+    `eval_carrier_not_linked` with `details: { carrier_agent_id }`.
+  - Given but no such agent in the workspace: 404.
 - Create estimates the suite and runs nothing:
   - `repeats = EVAL_REPEATS[mode]`, `total_jobs = cases × 2 × repeats`.
   - More than `EVAL_MAX_JOBS_PER_SUITE` (150) jobs is 422 `eval_too_many_jobs`.
@@ -133,6 +155,14 @@ Notes:
 - Polling target: `GET /eval-suites/:id`, every 2 s while `status` is not in
   `EVAL_SUITE_TERMINAL_STATUSES`. On a terminal status the client invalidates
   `skill-stats` and `skill`.
+- `EvalSuiteResults.errored` (additive; absent on older rows, parsed as 0)
+  counts cases where any run failed (timeout, provider error, cancel). They are
+  excluded from `passing`, `total`, `caught`, `regressed`, `flaky`,
+  `delta_unexpected` and the verdict, so an error never reads as a failure.
+  `passing / total` are over settled cases (not errored, not pending).
+- The per-job timeout is derived from the adapters' worst case for one model
+  call (`worstCaseCallMs` in `evals/domain.ts`), not a fixed guess. A timed-out
+  run is stored as `failed` with the timeout message and counts as `errored`.
 - Verdict (ADR 0017): only a Full suite (3 repeats) can return
   `helps`/`neutral`/`hurts`. A Quick suite always returns `indicative`, and so
   does any suite with fewer than 5 non-flaky cases. `results` stays null until

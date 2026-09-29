@@ -58,6 +58,7 @@ Stats needs to say whether a skill helped an agent. The data we have does not sa
 - Counting a flaky case as caught or regressed.
 - Deriving a verdict from usage counts, accept rate or model self-reports.
 - Reusing a verdict after `prompt_sha256`, carrier or carrier version changes, without the stale marker.
+- Counting an errored case (any failed run) toward pass/fail, caught, regressed, Δunexpected or the verdict; errored cases are excluded and surfaced as `results.errored` (2026-09-29).
 
 ## Alternatives considered
 
