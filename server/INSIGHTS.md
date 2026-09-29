@@ -21,6 +21,10 @@ lives in the engineering-insights skill).
 
 - **Prove "no N+1" by counting queries with a second drizzle instance over the fixture's postgres-js client** — `drizzle(pg.handle.sql, { schema, logger: { logQuery: () => void queries++ } })` and a repository built on it (`test/skills-stats.it.test.ts:231`). Compare 1 skill vs 6 skills: both must log exactly 1 query. No app, no container, no postgres-js debug hook needed. _(2026-09-29)_
 
+- **Asserting "the runner used both concurrency slots" via max in-flight LLM calls flakes under full-suite load; hold the first call until a second one is in flight** — with a 15 ms fake-LLM delay, `maxInFlight` was 2 alone but 1 in a full `vitest run`, because per-job DB work (claim, finish, count) outlasted the delay. `ScriptedLLM.awaitOverlap` (`test/evals.it.test.ts:72`) makes the first call wait (≤5 s) for `inFlight >= 2`, so concurrency 2 is proved deterministically and a concurrency-1 runner fails the assertion instead of passing by luck. _(2026-09-29)_
+
+- **"One running X per workspace" is a partial unique index, caught as 23505 with `constraint_name` = the index name** — `eval_suites_one_running_per_workspace_uq ON eval_suites(workspace_id) WHERE status = 'running'` (`src/db/schema/eval.ts`) turns the guarded `UPDATE … SET status='running' WHERE status='estimated'` into a race-free start; `isUniqueViolation` checks the error and its `cause` (`src/modules/evals/repository.ts:389`) and maps it to 409 `eval_suite_busy`. No SELECT-then-UPDATE check is needed or safe. _(2026-09-29)_
+
 ## What Doesn't Work
 
 - **Running `pnpm db:migrate` against the shared `devdigest-postgres` docker container can fail with "column already exists"** — every worktree/branch on this course points at the SAME long-lived container (`docker ps` shows one `devdigest-postgres` regardless of branch), so its `__drizzle_migrations` history can be far ahead of this branch's local `src/db/migrations/*.sql` (e.g. `agent_runs.cost_usd` already existed there from another lesson's branch, but without `cost_source`). Check first with `docker exec devdigest-postgres psql -U devdigest -d devdigest -c '\d <table>'`; validate a new migration via the testcontainers-backed `*.it.test.ts` suite (fresh throwaway Postgres per run, `test/helpers/pg.ts`) instead of assuming the shared dev DB is safe to ALTER. _(2026-09-19)_
@@ -42,6 +46,8 @@ lives in the engineering-insights skill).
 - **The pgvector extension is created by the migrate script, not by a migration file** — `server/src/db/migrate.ts:23` runs `CREATE EXTENSION IF NOT EXISTS vector` before migrations; grepping only `src/db/migrations/` gives a false "extension missing". _(2026-09-28)_
 
 - **Trace `skills_used.sha256` hashes the skill BODY only, not name + body** — `resolveEffectiveSkills` sets `sha256 = sha256Hex(row.skill.body)` (`src/modules/skills/repository.ts:415`), the same value as `vetted_body_hash`. ADR 0017's `prompt_sha256 = sha256(name + "\n" + body)` is a separate field (`EffectiveSkill.promptSha256`, `run_skills.prompt_sha256`); old traces cannot yield it directly, so the backfill (`src/db/backfill-run-skills.ts`) recovers it only when the `skill_versions` body at the traced version hashes to the traced sha256, and leaves NULL otherwise. _(2026-09-29)_
+
+- **A read model two modules need goes in `modules/_shared/`, and even a type-only import between modules fails `arch:check`** — `modules-no-cross-import` (`server/.dependency-cruiser.cjs:37-46`) has no `dependencyTypesNot: ['type-only']`, and `_shared` itself cannot import a module either (the `from` regex matches `_shared` too). The eval suite view + its DTO mapper live in `src/modules/_shared/eval-suite.ts`, used by `evals/routes.ts` and the skills Stats `impact` block; the concrete data still crosses via `container.evalsRepo` (`src/platform/container.ts`). _(2026-09-29)_
 
 ## Tool & Library Notes
 
@@ -93,6 +99,9 @@ Added the `skills` module (ports/wiring, first production `db.transaction`), tra
 
 ### 2026-09-29 — server session (skill stats, Phase 2)
 Added `run_skills` (migration 0017, PK run_id+skill_id, index skill_id+run_id), written best-effort before `saveRunTrace` on all three executor paths, a resumable batched backfill (`pnpm db:backfill:run-skills`), one `skillUsageStatus`/`isEffectiveSkill` rule in `skills/domain.ts` shared by the resolver and stats, `GET /skills/:id/stats?window=` (422 outside the enum) and `runs_30d` + `latest_verdict: null` on `GET /skills` in one query. 37 files / 288 tests green. Left: Phase 3 fills `latest_verdict` and `impact`; the backfill was not run against the shared dev DB.
+
+### 2026-09-29 — server session (skill evals, Phase 3)
+Added the `evals` module: skill eval cases (paste or PR files, diff snapshotted), estimated suites with trust gate / price / job-cap / budget guards, single-use start, cancel, and the ablation runner on `container.evalJobs` (concurrency 2, retries 0, per-job timeout) with handler-owned run status, an atomic `done_jobs` close and boot recovery. Migrations 0018-0020 (column → `--custom` backfill → FK + CHECK). `GET /skills` `latest_verdict` and Stats `impact` are live. 41 files / 364 tests green. Left: nothing ran against the shared dev Postgres; the client decides how to show a server-chosen default carrier.
 
 ## Open Questions
 
