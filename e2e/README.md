@@ -58,9 +58,10 @@ model, because it stops at the eval estimate and never presses Start.
 
 > **Precondition: a freshly-seeded DB.** The seed creates **two** repos —
 > `acme/payments-api`, which every flow here targets, and `xvivs/dev-digest` —
-> and `ReposRepository.listByWorkspace` has no `ORDER BY`, so which of them `/`
-> redirects to is **not guaranteed by contract**. This is the seed's permanent
-> shape, not a regression. Every flow that depends on a specific repo therefore
+> and `/` redirects to the **oldest** repo (`RepoRepository.list` orders by
+> `created_at, id`). The seed inserts acme first, so a fresh seed lands on it;
+> any other DB may not. This is the seed's permanent shape, not a regression.
+> Every flow that depends on a specific repo therefore
 > opens with a guard step — `wait --text "acme/payments-api"` immediately after
 > `wait --url /pulls` — so that a redirect to the other repo fails the flow
 > there, loudly, instead of quietly asserting against the wrong data. Treat the

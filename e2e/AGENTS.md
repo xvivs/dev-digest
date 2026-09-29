@@ -18,10 +18,11 @@ no LLM, no API key.
 ## Gotchas
 
 - **Run `./scripts/e2e.sh`**, not `pnpm test`. The seed holds **two** repos
-  (`acme/payments-api` and `xvivs/dev-digest`) and `listByWorkspace` has no
-  `ORDER BY`, so the repo `/` redirects to is not guaranteed — hence the guard
-  step above. The hermetic runner boots an isolated, freshly-seeded stack on
-  alternate ports; your dev DB may also be *stale* (the seed only inserts the
+  (`acme/payments-api`, inserted first, and `xvivs/dev-digest`).
+  `RepoRepository.list` orders by `created_at, id`, so `/` redirects to the
+  oldest repo: acme on a fresh seed, possibly another repo on any other DB —
+  hence the guard step above. The hermetic runner boots an isolated,
+  freshly-seeded stack on alternate ports; your dev DB may also be *stale* (the seed only inserts the
   demo repo when missing, so widened fixtures never reach an old database and
   re-seeding won't fix it), which fails count assertions against healthy code.
 - **`find … click` silently no-ops below the fold** — prints `✓ Done`, exits 0,

@@ -22,6 +22,8 @@ lives in the engineering-insights skill).
 
 ## Codebase Patterns
 
+- **The Evals tab renders "New eval case" twice while the skill has no cases (header + EmptyState CTA), so `find role button --name "New eval case" --exact` is ambiguous; the header button is reached with `main h2 + div > button:first-child`** — `EvalsTab.tsx:157` and `:203` (`client/src/app/skills/[id]/_components/SkillEditor/_components/EvalsTab/`). The anchor only holds while no suite has run: `<PassingBadge>` (`EvalsTab.tsx:154`) renders between the `h2` and the actions div once `wholeResults` exists, and then `h2 + div` stops matching. Used at `e2e/specs/11-skills.flow.json:70`. _(2026-09-29)_
+
 ## Tool & Library Notes
 
 - **`agent-browser wait --text` matches CSS-transformed *rendered* text, case-sensitively.** `specs/04-pr-findings.flow.json` asserted `wait --text "Findings"` for the PR-list column header, but `client/src/app/repos/[repoId]/pulls/styles.ts:114` sets `textTransform: "uppercase"` on `headRow`, so only `FINDINGS` matches. Proven directly against agent-browser 0.27.0: `agent-browser wait --text FINDINGS` exits 0 while `wait --text Findings` times out. Correcting the case took the suite from 6/7 to 7/7 — the first time this flow has actually been executed. Write each assertion in the case the browser paints, not the case stored in `client/messages/en/*.json`. _(2026-09-20)_
@@ -40,6 +42,8 @@ lives in the engineering-insights skill).
 
 - **`wait --url` passing does not mean the target view has mounted: a `find role button click` issued right after it fails with `✗ Element not found` for a button that exists a moment later** — the App Router updates the URL before the route's client component (here the agent editor and its tab bar) renders, so `find` runs against the old tree. Put a `wait --text` for something inside the target view between the two (`e2e/specs/11-skills.flow.json:19-20`: `wait --text "Config"` before clicking the Skills tab button). Measured on agent-browser 0.27.0; the same click passed when run by hand a second later. _(2026-09-28)_
 
+- **`agent-browser scrollintoview <css>` failing with a bare `Command failed` means the selector matches nothing — usually the element was removed on purpose, not a scroll/timing bug** — CI stayed red on six commits of `feat/skill-impact` because `e766787` dropped the Diff button from the current version row (`client/src/app/skills/[id]/_components/SkillEditor/_components/VersionsTab/VersionsTab.tsx:143`) and `f18ccec`/`0181a28`/`a79b082` reworded the Restore dialog and Evals tab, while `e2e/specs/11-skills.flow.json` still targeted the old UI; only the vitest file was updated alongside. Before retrying or adding waits, `git log -- <component>` for an intentional UI change and assert the new behaviour instead (e.g. `get count … button[aria-expanded]` = 0 on the current row, `e2e/specs/11-skills.flow.json:40`). _(2026-09-29)_
+
 ## Session Notes
 
 ### 2026-09-20 — FINDINGS feature (e2e) session
@@ -56,6 +60,9 @@ Added read-only `11-skills.flow.json`. Ran all 11 flows against a hand-built iso
 
 ### 2026-09-29 — e2e session (skill impact)
 Extended `11-skills.flow.json` with Versions (diff, Restore popup, Cancel), Stats (window switch) and Evals (paste-diff case, Quick estimate, no Start). `./scripts/e2e.sh` ran 11/11 twice; the pnpm IGNORED_BUILDS preflight from 2026-09-28 did not reproduce. For iterating, a copy of `e2e.sh` that keeps the stack alive, plus a small step runner, was much faster than a full hermetic boot on every try.
+
+### 2026-09-29 — e2e session
+Fixed the red `e2e web` job on PR #4: `11-skills` asserted UI removed or reworded by `e766787`, `f18ccec`, `0181a28`, `a79b082` (Versions Diff, Restore dialog, Evals copy); replaced each dropped check with one for the new behaviour and re-added Diff coverage on the v1 row. Added `scrollintoview` before the #482 title click in 02/04/05/10 (CI fold edge) and rewrote guard labels after the server gained a deterministic repo order. Result: 11/11 twice via `./scripts/e2e.sh`; CI not yet confirmed.
 
 ## Open Questions
 
