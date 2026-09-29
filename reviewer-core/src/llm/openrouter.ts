@@ -9,6 +9,7 @@ import type {
 } from '@devdigest/shared';
 import { toJsonSchema, parseWithRepair } from './structured.js';
 import { pickCost } from './cost.js';
+import { sdkRequestOptions, throwIfAborted } from './request-options.js';
 
 /**
  * The single OpenAI-compatible structured provider, owned by the engine because
@@ -65,8 +66,10 @@ export class OpenRouterProvider implements LLMProvider {
     let tokensOut = 0;
     let costFromApi: number | null = null;
     let lastRaw = '';
+    const sdkOpts = sdkRequestOptions(req);
 
     for (let attempt = 1; attempt <= maxRetries + 1; attempt++) {
+      throwIfAborted(req.signal);
       const res = await this.client.chat.completions.create({
         model: req.model,
         messages,
@@ -82,7 +85,7 @@ export class OpenRouterProvider implements LLMProvider {
         // OpenRouter usage accounting — ask it to return the REAL generation
         // cost (USD) in `usage.cost`, instead of estimating from a price book.
         ...(this.id === 'openrouter' ? { usage: { include: true } } : {}),
-      });
+      }, sdkOpts);
 
       // OpenRouter can return HTTP 200 with no `choices` (an upstream provider
       // error / moderation / free-tier limit in the body) — surface it.
