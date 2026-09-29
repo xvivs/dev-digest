@@ -24,7 +24,7 @@ export const s = {
     color: "var(--text-muted)",
     marginBottom: 6,
   } satisfies CSSProperties,
-  table: { width: "100%", borderCollapse: "collapse", fontSize: 13 } satisfies CSSProperties,
+  table: { width: "100%", borderCollapse: "collapse", tableLayout: "fixed", fontSize: 13 } satisfies CSSProperties,
   th: {
     textAlign: "left",
     fontWeight: 600,
@@ -32,7 +32,17 @@ export const s = {
     padding: "6px 8px",
     borderBottom: "1px solid var(--border)",
   } satisfies CSSProperties,
-  td: { textAlign: "left", padding: "6px 8px", borderBottom: "1px solid var(--border)", verticalAlign: "top", wordBreak: "break-word" } satisfies CSSProperties,
+  /** Value cells (Before / After): long text wraps inside the fixed column. */
+  td: { textAlign: "left", padding: "6px 8px", borderBottom: "1px solid var(--border)", verticalAlign: "top", overflowWrap: "anywhere" } satisfies CSSProperties,
+  /** Field row header: never wraps, so a label can't collapse to one letter per line. */
+  thField: {
+    textAlign: "left",
+    padding: "6px 8px",
+    borderBottom: "1px solid var(--border)",
+    verticalAlign: "top",
+    whiteSpace: "nowrap",
+    color: "var(--text-secondary)",
+  } satisfies CSSProperties,
   tdOld: { color: "var(--crit)" } satisfies CSSProperties,
   tdNew: { color: "var(--ok)" } satisfies CSSProperties,
   bodyHead: { display: "flex", alignItems: "baseline", gap: 10 } satisfies CSSProperties,

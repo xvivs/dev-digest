@@ -9,7 +9,7 @@ import React from "react";
 import { useTranslations } from "next-intl";
 import type { Skill } from "@devdigest/shared";
 import { useSkillVersion } from "@/lib/hooks";
-import { DIFF_SIGN } from "./constants";
+import { DIFF_SIGN, FIELD_COL_WIDTH } from "./constants";
 import {
   compareAvailability,
   defaultCompareMode,
@@ -149,6 +149,11 @@ function DiffBody({ from, to }: { from: Side; to: Side }) {
         <div>
           <div style={s.sectionTitle}>{t("versions.diff.metaTitle")}</div>
           <table style={s.table}>
+            <colgroup>
+              <col style={{ width: FIELD_COL_WIDTH }} />
+              <col />
+              <col />
+            </colgroup>
             <thead>
               <tr>
                 <th scope="col" style={s.th}>
@@ -165,7 +170,7 @@ function DiffBody({ from, to }: { from: Side; to: Side }) {
             <tbody>
               {meta.map((c) => (
                 <tr key={c.field}>
-                  <th scope="row" className="mono" style={s.td}>
+                  <th scope="row" className="mono" style={s.thField}>
                     {t(`versions.diff.fields.${c.field}`)}
                   </th>
                   <td style={{ ...s.td, ...s.tdOld }}>{c.from}</td>
