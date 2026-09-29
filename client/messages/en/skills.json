@@ -60,14 +60,14 @@
     "skillFallback": "Skill",
     "disabled": "disabled",
     "runOnEvals": "Run on evals",
-    "runOnEvalsHint": "Available once the Evals tab ships.",
     "tabs": {
       "config": "Config",
       "preview": "Preview",
       "evals": "Evals",
       "stats": "Stats",
       "versions": "Versions"
-    }
+    },
+    "runOnEvalsTitle": "Estimate and start an ablation eval"
   },
   "config": {
     "title": "Configuration",
@@ -112,12 +112,6 @@
     "sourceCaption": "Source",
     "confirm": "Trust & enable",
     "cancel": "Cancel"
-  },
-  "placeholder": {
-    "evals": {
-      "title": "Evals",
-      "body": "Comes with the evals lesson."
-    }
   },
   "versions": {
     "title": "Versions",

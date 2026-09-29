@@ -17,6 +17,8 @@ import { ApiError } from "@/lib/api";
 import messages from "../../../../../../messages/en/skills.json";
 import shellMessages from "../../../../../../messages/en/shell.json";
 import common from "../../../../../../messages/en/common.json";
+import evalMessages from "../../../../../../messages/en/eval.json";
+import costMessages from "../../../../../../messages/en/cost.json";
 
 const h = vi.hoisted(() => ({
   replace: vi.fn(),
@@ -55,6 +57,15 @@ vi.mock("@/lib/hooks", async (importOriginal) => {
       isError: false,
     }),
     useRestoreSkillVersion: () => ({ mutate: vi.fn(), reset: vi.fn(), isPending: false, isError: false }),
+    // Evals tab: no cases, no suites, no agents — enough to mount it and its Run modal.
+    useSkillEvalCases: () => ({ data: [], isLoading: false, isError: false, refetch: vi.fn() }),
+    useSkillEvalSuites: () => ({ data: [], isLoading: false, isError: false, refetch: vi.fn() }),
+    useEvalSuite: () => ({ data: undefined }),
+    useCancelEvalSuite: () => ({ mutate: vi.fn(), isPending: false }),
+    useDeleteEvalCase: () => ({ mutate: vi.fn(), isPending: false }),
+    useCreateEvalSuite: () => ({ mutate: vi.fn(), reset: vi.fn(), isPending: false, data: undefined, error: null }),
+    useStartEvalSuite: () => ({ mutate: vi.fn(), reset: vi.fn(), isPending: false, error: null }),
+    useAgents: () => ({ data: [], isSuccess: true }),
     useSkillStats: (_id: string, window: string) => {
       h.statsWindow = window;
       return {
@@ -115,7 +126,7 @@ function renderView() {
     <ToastProvider>
       <SkillEditorView id="sk1" />
     </ToastProvider>,
-    { namespaces: { skills: messages, shell: shellMessages, common } },
+    { namespaces: { skills: messages, shell: shellMessages, common, eval: evalMessages, cost: costMessages } },
   );
 }
 
@@ -187,6 +198,30 @@ describe("SkillEditorView", () => {
     fireEvent.click(screen.getByText("Flags breaking route changes."));
     expect(screen.getByRole("dialog", { name: "Discard changes?" })).toBeInTheDocument();
     expect(h.push).not.toHaveBeenCalled();
+  });
+
+  describe("header Run on evals", () => {
+    it("switches to the Evals tab from another tab", () => {
+      renderView();
+      fireEvent.click(screen.getByRole("button", { name: "Run on evals" }));
+      expect(h.replace).toHaveBeenCalledWith("/skills/sk1?tab=evals");
+    });
+
+    it("on the Evals tab, opens the Run modal", () => {
+      h.search = "tab=evals";
+      renderView();
+      fireEvent.click(screen.getByRole("button", { name: "Run on evals" }));
+      expect(screen.getByRole("dialog", { name: "Run on evals" })).toBeInTheDocument();
+      expect(h.replace).not.toHaveBeenCalled();
+    });
+
+    it("asks before leaving a dirty Config", () => {
+      renderView();
+      fireEvent.change(screen.getByDisplayValue("# Rule"), { target: { value: "# Rule v2" } });
+      fireEvent.click(screen.getByRole("button", { name: "Run on evals" }));
+      expect(screen.getByRole("dialog", { name: "Discard changes?" })).toBeInTheDocument();
+      expect(h.replace).not.toHaveBeenCalled();
+    });
   });
 
   describe("restore Edit hand-off (ADR 0016)", () => {

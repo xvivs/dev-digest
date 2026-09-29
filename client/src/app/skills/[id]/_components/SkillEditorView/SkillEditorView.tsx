@@ -59,6 +59,16 @@ export function SkillEditorView({ id }: { id: string }) {
   const editFromVersion = (version: number) => navigate("config", version);
   // After the draft is saved it is the current version; drop the seed.
   const clearFromVersion = () => navigate("config");
+  // Header "Run on evals": open the Evals tab and ask it for its Run modal.
+  // A flag, not a nonce: the tab clears it once the modal is open, so a later
+  // visit to Evals does not reopen it.
+  const [runRequested, setRunRequested] = React.useState(false);
+  const clearRunRequest = React.useCallback(() => setRunRequested(false), []);
+  const runOnEvals = () =>
+    guard.confirmNavigation(() => {
+      if (tab !== "evals") navigate("evals");
+      setRunRequested(true);
+    });
 
   // A mutable ref, not state: the Config tab reports every keystroke's dirty
   // flag, and a `dirty` re-render of this whole screen per keystroke would be
@@ -148,7 +158,7 @@ export function SkillEditorView({ id }: { id: string }) {
                   </span>
                 )}
                 <div style={s.editorActions}>
-                  <Button kind="secondary" size="sm" icon="FlaskConical" disabled title={t("detail.runOnEvalsHint")}>
+                  <Button kind="secondary" size="sm" icon="FlaskConical" onClick={runOnEvals} title={t("detail.runOnEvalsTitle")}>
                     {t("detail.runOnEvals")}
                   </Button>
                 </div>
@@ -164,6 +174,8 @@ export function SkillEditorView({ id }: { id: string }) {
                   onDraftSaved={clearFromVersion}
                   statsWindow={statsWindow}
                   onStatsWindow={setStatsWindow}
+                  runRequested={runRequested}
+                  onRunRequestHandled={clearRunRequest}
                 />
               </div>
             </div>

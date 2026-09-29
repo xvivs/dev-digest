@@ -11,7 +11,7 @@ import { useNavigationGuard } from "@/app/skills/navigation-guard";
 import { SKILL_EDITOR_TABS } from "../../constants";
 import { ConfigTab } from "./_components/ConfigTab";
 import { PreviewTab } from "./_components/PreviewTab";
-import { PlaceholderTab } from "./_components/PlaceholderTab";
+import { EvalsTab } from "./_components/EvalsTab";
 import { StatsTab } from "./_components/StatsTab";
 import { VersionsTab } from "./_components/VersionsTab";
 import { s } from "./styles";
@@ -25,6 +25,8 @@ export function SkillEditor({
   onDraftSaved,
   statsWindow = "30d",
   onStatsWindow,
+  runRequested = false,
+  onRunRequestHandled,
 }: {
   skill: Skill;
   tab: string;
@@ -38,6 +40,9 @@ export function SkillEditor({
   /** Stats tab window, from `?window=` (skill-impact decision 11). */
   statsWindow?: SkillStatsWindow;
   onStatsWindow?: (w: SkillStatsWindow) => void;
+  /** Header "Run on evals" was pressed: the Evals tab opens its Run modal. */
+  runRequested?: boolean;
+  onRunRequestHandled?: () => void;
 }) {
   const t = useTranslations("skills");
   const guard = useNavigationGuard();
@@ -52,7 +57,13 @@ export function SkillEditor({
         {tab === "config" && <ConfigTab skill={skill} fromVersion={fromVersion} onDraftSaved={onDraftSaved} />}
         {tab === "preview" && <PreviewTab body={skill.body} />}
         {tab === "evals" && (
-          <PlaceholderTab titleKey="placeholder.evals.title" bodyKey="placeholder.evals.body" />
+          <EvalsTab
+            skill={skill}
+            runRequested={runRequested}
+            onRunRequestHandled={onRunRequestHandled}
+            // The Evals tab holds no draft of its own; the guard still covers a dirty Config.
+            onOpenConfig={() => guard.confirmNavigation(() => onTab("config"))}
+          />
         )}
         {tab === "stats" && (
           <StatsTab
