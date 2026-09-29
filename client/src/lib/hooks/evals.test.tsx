@@ -14,7 +14,7 @@ vi.mock("../api", () => ({
   },
 }));
 
-import { EVAL_SUITE_POLL_INTERVAL_MS, useEvalSuite, useStartEvalSuite, useCreateEvalSuite } from "./evals";
+import { EVAL_SUITE_POLL_INTERVAL_MS, useEvalSuite, useSkillEvalLatestResults, useStartEvalSuite, useCreateEvalSuite } from "./evals";
 
 const SUITE: EvalSuite = {
   id: "su1",
@@ -90,7 +90,7 @@ describe("useEvalSuite", () => {
     await waitFor(() => expect(result.current.data?.status).toBe("done"));
     const keys = invalidate.mock.calls.map(([f]) => f?.queryKey);
     expect(keys).toEqual(
-      expect.arrayContaining([["skill-stats", "sk1"], ["skill", "sk1"], ["skills"], ["skill-eval-suites", "sk1"]]),
+      expect.arrayContaining([["skill-stats", "sk1"], ["skill", "sk1"], ["skills"], ["skill-eval-suites", "sk1"], ["skill-eval-latest", "sk1"]]),
     );
 
     // Terminal: no further polls however long we wait.
@@ -113,6 +113,26 @@ describe("useEvalSuite", () => {
 
   it("does not fetch without a suite id", () => {
     renderHook(() => useEvalSuite("sk1", null), { wrapper: wrapperFor(createTestQueryClient()) });
+    expect(get).not.toHaveBeenCalled();
+  });
+});
+
+describe("useSkillEvalLatestResults", () => {
+  const ROW = {
+    case_id: "c1", suite_id: "su1", suite_partial: true, suite_created_at: "2026-09-29T10:00:00.000Z", outcome: "caught",
+    with: { passed: 1, total: 1 }, without: { passed: 0, total: 1 }, expected_count: 1, matched_median: 1, unexpected_median: 0,
+    is_clean: false, with_errored: 0, stale: false,
+  };
+
+  it("reads GET /skills/:id/eval-cases/latest-results through the contract", async () => {
+    get.mockImplementation(parsed([ROW]));
+    const { result } = renderHook(() => useSkillEvalLatestResults("sk1"), { wrapper: wrapperFor(createTestQueryClient()) });
+    await waitFor(() => expect(result.current.data).toEqual([ROW]));
+    expect(get).toHaveBeenCalledWith("/skills/sk1/eval-cases/latest-results", expect.anything());
+  });
+
+  it("does not fetch without a skill id", () => {
+    renderHook(() => useSkillEvalLatestResults(null), { wrapper: wrapperFor(createTestQueryClient()) });
     expect(get).not.toHaveBeenCalled();
   });
 });

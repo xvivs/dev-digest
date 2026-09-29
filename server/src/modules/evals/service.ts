@@ -38,6 +38,7 @@ import {
   estimateJob,
   EVAL_ARMS,
   EVAL_REPEATS,
+  caseSummary,
   EvalCancelledError,
   EvalCaseFileNotInPrError,
   EvalCarrierNotLinkedError,
@@ -87,6 +88,17 @@ export interface EvalSuiteDetail {
   suite: EvalSuiteView;
   cases: EvalSuiteCaseResult[];
   runs: EvalRunRecord[];
+}
+
+/** One card's latest result: the suite it came from plus the suite table's per-case figures. */
+export interface EvalCaseLatestEntry extends Pick<EvalSuiteCaseResult, 'with' | 'without' | 'outcome'> {
+  caseId: string;
+  suite: EvalSuiteView;
+  expected_count: number | null;
+  matched_median: number | null;
+  unexpected_median: number | null;
+  is_clean: boolean | null;
+  with_errored: number;
 }
 
 /** `GET /eval-cases/:id`: the drawer's read model (arms are already wire-shaped). */
@@ -353,6 +365,26 @@ export class EvalsService {
     // reports the live figures; the column itself is never rewritten here.
     const live = suite.status === 'done' && suite.results && runs.length > 0 ? results : suite.results;
     return { suite: { ...suite, results: live }, cases: rows, runs };
+  }
+
+  /**
+   * Each case's latest settled result (undefined: skill not in this workspace).
+   * The figures are the suite table's, derived from that suite's runs of the
+   * case; cases that never settled a run have no entry.
+   */
+  async latestCaseResults(workspaceId: string, skillId: string): Promise<EvalCaseLatestEntry[] | undefined> {
+    const { store } = this.deps;
+    if (!(await store.findSkill(workspaceId, skillId))) return undefined;
+    const cases = await store.listCases(workspaceId, skillId);
+    const order = new Map(cases.map((c, i) => [c.id, i]));
+    const entries = await store.latestCaseRuns(workspaceId, skillId);
+    return entries
+      .filter((e) => order.has(e.caseId))
+      .sort((a, b) => order.get(a.caseId)! - order.get(b.caseId)!)
+      .map((e) => {
+        const cls = classifyCase(e.runs, e.suite.repeats);
+        return { caseId: e.caseId, suite: e.suite, with: cls.with, without: cls.without, outcome: cls.outcome, ...caseSummary(e.runs) };
+      });
   }
 
   /**

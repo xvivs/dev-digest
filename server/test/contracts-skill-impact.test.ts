@@ -4,6 +4,7 @@ import {
   CreateEvalSuiteBody,
   EvalCaseDetail,
   EvalCaseDetailQuery,
+  EvalCaseLatestResult,
   EvalExpectation,
   EvalLineRange,
   RestoreSkillVersionBody,
@@ -107,6 +108,17 @@ describe('versions / stats / suites', () => {
     expect(CreateEvalSuiteBody.safeParse({ carrier_agent_id, mode: 'quick', case_ids: [id] }).success).toBe(true);
     expect(CreateEvalSuiteBody.safeParse({ carrier_agent_id, mode: 'quick', case_ids: [] }).success).toBe(false);
     expect(CreateEvalSuiteBody.safeParse({ carrier_agent_id, mode: 'quick', case_ids: ['nope'] }).success).toBe(false);
+  });
+
+  it('EvalCaseLatestResult: null medians (nothing scored) parse; a missing errored count does not', () => {
+    const row = {
+      case_id: 'c', suite_id: 's', suite_partial: true, suite_created_at: '2026-09-29T10:00:00.000Z', outcome: 'error',
+      with: { passed: 0, total: 1 }, without: { passed: 1, total: 1 },
+      expected_count: 1, matched_median: null, unexpected_median: null, is_clean: false, with_errored: 1, stale: false,
+    };
+    expect(EvalCaseLatestResult.safeParse(row).success).toBe(true);
+    const { with_errored: _omit, ...missing } = row;
+    expect(EvalCaseLatestResult.safeParse(missing).success).toBe(false);
   });
 
   it('EvalCaseDetailQuery: suite_id is an optional uuid', () => {

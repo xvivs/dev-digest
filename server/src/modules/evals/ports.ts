@@ -85,6 +85,15 @@ export interface EvalStore {
    * each with that case's runs (no model output). Workspace-scoped.
    */
   caseSuites(workspaceId: string, caseId: string, limit: number): Promise<{ suite: EvalSuiteView; runs: EvalRunRecord[] }[]>;
+  /**
+   * Per case of the skill: the terminal suite (whole or per-case) that most
+   * recently settled a run of it, with that case's runs there. Cases with no
+   * settled run are absent. One DISTINCT ON query plus one fetch (no N+1).
+   */
+  latestCaseRuns(
+    workspaceId: string,
+    skillId: string,
+  ): Promise<{ caseId: string; suite: EvalSuiteView; runs: EvalRunRecord[] }[]>;
   /** Cases of a suite (id + name), including ones whose runs were all deleted. */
   suiteCases(suiteId: string): Promise<{ id: string; name: string }[]>;
 

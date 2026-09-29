@@ -542,7 +542,13 @@ const isNum = (n: number | null | undefined): n is number => typeof n === 'numbe
  */
 export function caseSummary(
   runs: ClassifiableRun[],
-): Pick<EvalSuiteCaseResult, 'expected_count' | 'matched_median' | 'unexpected_median' | 'is_clean' | 'with_errored'> {
+): {
+  expected_count: number | null;
+  matched_median: number | null;
+  unexpected_median: number | null;
+  is_clean: boolean | null;
+  with_errored: number;
+} {
   const done = (arm: EvalArm) => runs.filter((r) => r.arm === arm && r.status === 'done');
   const withDone = done('with');
   const expected = [...withDone, ...done('without')].map((r) => r.expected).find(isNum) ?? null;

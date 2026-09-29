@@ -8,21 +8,22 @@
    opens it for that one case (`case_ids`). The running suite is polled until
    it is terminal. `?case=` / `?suite=` are owned by the route (props here), so
    the drawer is linkable and Back closes it. A per-case suite never replaces
-   the whole-skill suite: it only overrides its own card. */
+   the whole-skill suite: header and summary read the latest whole suite,
+   and each card reads its own latest result (`latest-results`). */
 "use client";
 
 import React from "react";
 import { useTranslations } from "next-intl";
 import { Badge, Button, EmptyState, ErrorState, Modal, Skeleton } from "@devdigest/ui";
 import type { EvalSuite, Skill, SkillEvalCase } from "@devdigest/shared";
-import { useCancelEvalSuite, useDeleteEvalCase, useEvalSuite, useSkillEvalCases, useSkillEvalSuites } from "@/lib/hooks";
+import { useCancelEvalSuite, useDeleteEvalCase, useEvalSuite, useSkillEvalCases, useSkillEvalLatestResults, useSkillEvalSuites } from "@/lib/hooks";
 import { CaseEditorModal } from "./_components/CaseEditorModal";
 import { CaseList } from "./_components/CaseList";
 import { EvalCaseDrawer } from "./_components/EvalCaseDrawer";
 import { RunEvalModal } from "./_components/RunEvalModal";
 import { SuiteSummary } from "./_components/SuiteSummary";
 import { DELETE_MODAL_WIDTH, PASSING_BADGE_LOOK, SKELETON_ROWS, SKELETON_ROW_HEIGHT } from "./constants";
-import { mergeCaseResults, newerPartialSuite, passingBadge, runBlockedReason, runnableCaseCount, runningSuite, wholeSkillSuite } from "./helpers";
+import { cardResults, passingBadge, runBlockedReason, runnableCaseCount, runningSuite, wholeSkillSuite } from "./helpers";
 import { s } from "./styles";
 
 /** Which case the editor is open on: a new one, an existing one, or closed. */
@@ -58,10 +59,14 @@ export function EvalsTab({
   const cases = useSkillEvalCases(skill.id);
   const suites = useSkillEvalSuites(skill.id);
   const whole = wholeSkillSuite(suites.data);
-  const partial = newerPartialSuite(suites.data);
   const running = runningSuite(suites.data);
+  const latest = useSkillEvalLatestResults(skill.id);
   const wholeDetail = useEvalSuite(skill.id, whole?.id);
-  const partialDetail = useEvalSuite(skill.id, partial?.id);
+  // A running suite (whole or per-case) is polled here; its terminal transition refreshes `latest`.
+  // (one observer per suite: when the running suite is the whole one, wholeDetail is it.)
+  const otherRunning = running && running.id !== whole?.id ? running : null;
+  const otherRunningDetail = useEvalSuite(skill.id, otherRunning?.id);
+  const runningDetail = otherRunning ? otherRunningDetail : wholeDetail;
   const cancel = useCancelEvalSuite();
   const remove = useDeleteEvalCase();
   const wrapRef = React.useRef<HTMLDivElement>(null);
@@ -109,13 +114,15 @@ export function EvalsTab({
     wrapRef.current?.querySelector<HTMLElement>(`[data-case-card="${last}"]`)?.focus();
   }, [caseId]);
 
-  // Header badge and cards read the whole-skill suite; a running suite (whole or per-case) drives the summary line.
+  // Header badge and summary line read the whole-skill suite (verdict semantics), or the
+  // running one while it runs. Each card reads its own latest result (`latest`), with the
+  // running suite's live figures on top for the cases it covers.
   const shown = running ?? whole;
-  const shownDetail = shown && shown.id === partial?.id ? partialDetail : wholeDetail;
+  const shownDetail = running ? runningDetail : wholeDetail;
   const suite = shownDetail.data ?? shown;
   const wholeResults = (wholeDetail.data ?? whole)?.results ?? null;
-  const results = mergeCaseResults(wholeDetail.data, partialDetail.data);
-  const resultsLoading = (!!whole && wholeDetail.isLoading) || (!!partial && partialDetail.isLoading);
+  const results = cardResults(latest.data, cases.data ?? [], running ? runningDetail.data : null);
+  const resultsLoading = latest.isLoading || (!!running && runningDetail.isLoading);
   const runnable = runnableCaseCount(cases.data);
   const blocked = runBlockedReason(runnable, running);
   const runBlockedTitle = running ? t("skillEvals.runBlockedRunning") : null;

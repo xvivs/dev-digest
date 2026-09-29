@@ -1,4 +1,4 @@
-import type { EvalSuite, EvalSuiteCaseResult, EvalSuiteDetail, SkillEvalCase } from "@devdigest/shared";
+import type { EvalCaseLatestResult, EvalSuite, EvalSuiteCaseResult, EvalSuiteDetail, SkillEvalCase } from "@devdigest/shared";
 import type { CaseIconState } from "./constants";
 
 /** A per-case suite (`case_ids` set): never the whole-skill result, never the verdict source. */
@@ -11,32 +11,38 @@ export function wholeSkillSuite(suites: readonly EvalSuite[] | undefined): EvalS
   return suites?.find((s) => s.status !== "estimated" && !isPartial(s)) ?? null;
 }
 
-/**
- * The newest started per-case suite that is newer than the whole-skill one (the
- * list is newest first): its case overrides the card of that case only.
- */
-export function newerPartialSuite(suites: readonly EvalSuite[] | undefined): EvalSuite | null {
-  for (const s of suites ?? []) {
-    if (s.status === "estimated") continue;
-    if (!isPartial(s)) return null;
-    return s;
-  }
-  return null;
-}
-
 /** A suite that is running right now (whole or per-case): only one may run per workspace. */
 export function runningSuite(suites: readonly EvalSuite[] | undefined): EvalSuite | null {
   return suites?.find((s) => s.status === "running") ?? null;
 }
 
-/** Per-case result for the cards: the whole-skill suite, overridden by a newer per-case suite for its case. */
-export function mergeCaseResults(
-  whole: Pick<EvalSuiteDetail, "cases"> | null | undefined,
-  partial: Pick<EvalSuiteDetail, "cases"> | null | undefined,
+/**
+ * What the cards show, per case: its own latest settled result (server:
+ * `latest-results`), overridden by the live per-case figures of a suite that
+ * is running right now, for the cases that suite covers. No row = never run.
+ */
+export function cardResults(
+  latest: readonly EvalCaseLatestResult[] | undefined,
+  cases: readonly { id: string; name: string }[],
+  live: Pick<EvalSuiteDetail, "cases"> | null | undefined,
 ): Map<string, EvalSuiteCaseResult> {
+  const names = new Map(cases.map((c) => [c.id, c.name]));
   const out = new Map<string, EvalSuiteCaseResult>();
-  for (const r of whole?.cases ?? []) out.set(r.case_id, r);
-  for (const r of partial?.cases ?? []) out.set(r.case_id, r);
+  for (const r of latest ?? []) {
+    out.set(r.case_id, {
+      case_id: r.case_id,
+      case_name: names.get(r.case_id) ?? "",
+      with: r.with,
+      without: r.without,
+      outcome: r.outcome,
+      expected_count: r.expected_count,
+      matched_median: r.matched_median,
+      unexpected_median: r.unexpected_median,
+      is_clean: r.is_clean,
+      with_errored: r.with_errored,
+    });
+  }
+  for (const r of live?.cases ?? []) out.set(r.case_id, r);
   return out;
 }
 

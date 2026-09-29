@@ -480,6 +480,55 @@ export class EvalsRepository implements EvalStore {
     }));
   }
 
+  async latestCaseRuns(
+    workspaceId: string,
+    skillId: string,
+  ): Promise<{ caseId: string; suite: EvalSuiteView; runs: EvalRunRecord[] }[]> {
+    // A settled run is one that finished on its own: done, or failed for a real
+    // reason. A run failed by cancelling its suite never executed, so it must
+    // not push an earlier real result off the card.
+    const settled = sql`(${t.evalRuns.status} = 'done' OR (${t.evalRuns.status} = 'failed' AND ${t.evalRuns.error} IS DISTINCT FROM ${CANCELLED_RUN_ERROR}))`;
+    const pairs = await this.db
+      .selectDistinctOn([t.evalRuns.caseId], { caseId: t.evalRuns.caseId, suiteId: t.evalRuns.suiteId })
+      .from(t.evalRuns)
+      .innerJoin(t.evalSuites, eq(t.evalSuites.id, t.evalRuns.suiteId))
+      .where(
+        and(
+          eq(t.evalSuites.workspaceId, workspaceId),
+          eq(t.evalSuites.skillId, skillId),
+          inArray(t.evalSuites.status, ['done', 'failed', 'cancelled']),
+          settled,
+        ),
+      )
+      .orderBy(
+        asc(t.evalRuns.caseId),
+        desc(sql`COALESCE(${t.evalSuites.finishedAt}, ${t.evalSuites.createdAt})`),
+        desc(t.evalSuites.id),
+      );
+    const latest = pairs.flatMap((p) => (p.caseId && p.suiteId ? [{ caseId: p.caseId, suiteId: p.suiteId }] : []));
+    if (latest.length === 0) return [];
+    const suiteIds = [...new Set(latest.map((l) => l.suiteId))];
+    const [suites, runs] = await Promise.all([
+      this.suiteViews().where(inArray(t.evalSuites.id, suiteIds)),
+      this.db
+        .select()
+        .from(t.evalRuns)
+        .where(and(inArray(t.evalRuns.suiteId, suiteIds), inArray(t.evalRuns.caseId, latest.map((l) => l.caseId)))),
+    ]);
+    const bySuite = new Map(suites.map((r) => [r.suite.id, this.toView(r)]));
+    return latest.flatMap((l) => {
+      const suite = bySuite.get(l.suiteId);
+      if (!suite) return [];
+      return [
+        {
+          caseId: l.caseId,
+          suite,
+          runs: runs.filter((r) => r.suiteId === l.suiteId && r.caseId === l.caseId).map(toRun),
+        },
+      ];
+    });
+  }
+
   async suiteCases(suiteId: string): Promise<{ id: string; name: string }[]> {
     const rows = await this.db
       .selectDistinct({ id: t.evalCases.id, name: t.evalCases.name, createdAt: t.evalCases.createdAt })

@@ -1,10 +1,9 @@
 import { describe, it, expect } from "vitest";
-import type { EvalSuite, EvalSuiteCaseResult, EvalSuiteDetail, SkillEvalCase } from "@devdigest/shared";
+import type { EvalCaseLatestResult, EvalSuite, EvalSuiteCaseResult, EvalSuiteDetail, SkillEvalCase } from "@devdigest/shared";
 import {
   caseIconState,
   passingBadge,
-  mergeCaseResults,
-  newerPartialSuite,
+  cardResults,
   runBlockedReason,
   runnableCaseCount,
   runningSuite,
@@ -64,24 +63,28 @@ describe("per-case suites vs the whole-skill suite", () => {
     expect(wholeSkillSuite(undefined)).toBeNull();
   });
 
-  it("newerPartialSuite is the newest started partial suite that is newer than the whole one", () => {
-    expect(newerPartialSuite(list)?.id).toBe("p2");
-    expect(newerPartialSuite([suite("w", "done"), partial("p")])).toBeNull();
-    expect(newerPartialSuite([partial("p")])?.id).toBe("p");
-  });
-
   it("runningSuite finds a running suite, partial or not", () => {
     expect(runningSuite([partial("p", "running"), suite("w", "done")])?.id).toBe("p");
     expect(runningSuite(list)).toBeNull();
   });
 
-  it("mergeCaseResults lets the newer per-case suite override that case only", () => {
-    const full = { cases: [result({ case_id: "c1", outcome: "fail_both" }), result({ case_id: "c2" })] } as EvalSuiteDetail;
-    const one = { cases: [result({ case_id: "c1", outcome: "caught" })] } as EvalSuiteDetail;
-    const merged = mergeCaseResults(full, one);
+  it("cardResults: each case takes its own latest row; a live running suite overrides only its cases", () => {
+    const row = (case_id: string, over: Partial<EvalCaseLatestResult> = {}): EvalCaseLatestResult => ({
+      case_id, suite_id: `s-${case_id}`, suite_partial: true, suite_created_at: "2026-09-29T10:00:00.000Z", outcome: "caught",
+      with: { passed: 1, total: 1 }, without: { passed: 0, total: 1 }, expected_count: 1, matched_median: 1, unexpected_median: 0,
+      is_clean: false, with_errored: 0, stale: false, ...over,
+    });
+    const cases = [{ id: "c1", name: "one" }, { id: "c2", name: "two" }, { id: "c3", name: "three" }];
+    const out = cardResults([row("c1"), row("c2", { outcome: "regressed" })], cases, undefined);
+    expect(out.get("c1")).toMatchObject({ case_id: "c1", case_name: "one", outcome: "caught", matched_median: 1 });
+    expect(out.get("c2")?.outcome).toBe("regressed");
+    expect(out.has("c3")).toBe(false);
+
+    const live = { cases: [result({ case_id: "c2", outcome: "pending", matched_median: null })] } as EvalSuiteDetail;
+    const merged = cardResults([row("c1"), row("c2")], cases, live);
+    expect(merged.get("c2")?.outcome).toBe("pending");
     expect(merged.get("c1")?.outcome).toBe("caught");
-    expect(merged.get("c2")?.outcome).toBe("caught");
-    expect(mergeCaseResults(null, null).size).toBe(0);
+    expect(cardResults(undefined, cases, undefined).size).toBe(0);
   });
 });
 

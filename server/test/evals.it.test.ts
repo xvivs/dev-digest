@@ -977,6 +977,95 @@ d('evals: cases, suites and the ablation runner (Testcontainers pg)', () => {
 
   // ---------------------------------------------------------------- boot recovery
 
+  describe('GET /skills/:id/eval-cases/latest-results (per-case latest for the cards)', () => {
+    let skill: { id: string; version: number; name: string };
+    let agent: { id: string; name: string };
+    let cases: { id: string; name: string }[];
+
+    const run = async (caseIds?: string[]) => {
+      await linkAgent(agent.id, skill.id);
+      const res = await app.inject({
+        method: 'POST',
+        url: `/skills/${skill.id}/eval-suites`,
+        payload: { mode: 'quick', carrier_agent_id: agent.id, ...(caseIds ? { case_ids: caseIds } : {}) },
+      });
+      expect(res.statusCode).toBe(201);
+      const created = res.json();
+      expect((await app.inject({ method: 'POST', url: `/eval-suites/${created.id}/start` })).statusCode).toBe(200);
+      return waitSuite(app, created.id);
+    };
+    const latest = async () => {
+      const res = await app.inject({ method: 'GET', url: `/skills/${skill.id}/eval-cases/latest-results` });
+      expect(res.statusCode).toBe(200);
+      return new Map((res.json() as { case_id: string }[]).map((r) => [r.case_id, r as Record<string, unknown>]));
+    };
+
+    beforeAll(async () => {
+      skill = await createSkill();
+      agent = await createAgent();
+      await addCases(skill.id, 3);
+      cases = (await app.inject({ method: 'GET', url: `/skills/${skill.id}/eval-cases` })).json();
+    });
+
+    it('no run yet: empty list; unknown skill 404; bad id 422', async () => {
+      expect((await latest()).size).toBe(0);
+      const missing = await app.inject({ method: 'GET', url: `/skills/${crypto.randomUUID()}/eval-cases/latest-results` });
+      expect(missing.statusCode).toBe(404);
+      const bad = await app.inject({ method: 'GET', url: '/skills/nope/eval-cases/latest-results' });
+      expect(bad.statusCode).toBe(422);
+    });
+
+    it('run A alone, then B alone: each card keeps its own latest result; C never ran', async () => {
+      const a = await run([cases[0]!.id]);
+      const b = await run([cases[1]!.id]);
+      const got = await latest();
+      expect([...got.keys()].sort()).toEqual([cases[0]!.id, cases[1]!.id].sort());
+      expect(got.get(cases[0]!.id)).toMatchObject({
+        suite_id: a.id,
+        suite_partial: true,
+        outcome: 'caught',
+        expected_count: 1,
+        matched_median: 1,
+        unexpected_median: 0,
+        is_clean: false,
+        with_errored: 0,
+        stale: false,
+      });
+      expect(got.get(cases[1]!.id)).toMatchObject({ suite_id: b.id, suite_partial: true, outcome: 'caught' });
+      expect(typeof got.get(cases[0]!.id)!.suite_created_at).toBe('string');
+    });
+
+    it('a whole suite later takes over every case; a newer partial takes over only its own', async () => {
+      const whole = await run();
+      let got = await latest();
+      for (const c of cases) expect(got.get(c.id)).toMatchObject({ suite_id: whole.id, suite_partial: false });
+      const again = await run([cases[2]!.id]);
+      got = await latest();
+      expect(got.get(cases[2]!.id)).toMatchObject({ suite_id: again.id, suite_partial: true });
+      expect(got.get(cases[0]!.id)).toMatchObject({ suite_id: whole.id, suite_partial: false });
+      expect(got.get(cases[1]!.id)).toMatchObject({ suite_id: whole.id, suite_partial: false });
+    });
+
+    it('a cancelled suite that never ran a case does not replace its earlier result', async () => {
+      const before = (await latest()).get(cases[0]!.id)!.suite_id;
+      await linkAgent(agent.id, skill.id);
+      const created = (
+        await app.inject({
+          method: 'POST',
+          url: `/skills/${skill.id}/eval-suites`,
+          payload: { mode: 'quick', carrier_agent_id: agent.id, case_ids: [cases[0]!.id] },
+        })
+      ).json();
+      expect((await app.inject({ method: 'POST', url: `/eval-suites/${created.id}/cancel` })).statusCode).toBe(200);
+      expect((await latest()).get(cases[0]!.id)!.suite_id).toBe(before);
+    });
+
+    it('the header verdict source is unchanged: only the whole suites feed latest_verdict', async () => {
+      const stats = (await app.inject({ method: 'GET', url: `/skills/${skill.id}/stats` })).json();
+      expect(stats.impact.suite.partial).toBe(false);
+    });
+  });
+
   it('boot recovery: an orphaned running run fails, queued runs re-run, the suite closes exactly once', async () => {
     const skill = await createSkill();
     const agent = await createAgent();

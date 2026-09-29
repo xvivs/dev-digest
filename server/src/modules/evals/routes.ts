@@ -12,6 +12,7 @@
  *   POST   /eval-suites/:id/start     → EvalSuite (single-use; a replay is a no-op)
  *   POST   /eval-suites/:id/cancel    → EvalSuite (terminal → no-op)
  *   GET    /eval-suites/:id           → EvalSuiteDetail (the polling target)
+ *   GET    /skills/:id/eval-cases/latest-results → EvalCaseLatestResult[] (each case's latest settled result)
  *   GET    /eval-cases/:id            → EvalCaseDetail (the eval drawer; ?suite_id= optional)
  *
  * Registration also boots the module: the job handler is registered in
@@ -28,6 +29,7 @@ import {
   UpdateEvalCaseBody,
   type EvalCarrier as EvalCarrierDto,
   type EvalCaseDetail as EvalCaseDetailDto,
+  type EvalCaseLatestResult as EvalCaseLatestResultDto,
   type EvalSuite as EvalSuiteDto,
   type EvalSuiteDetail as EvalSuiteDetailDto,
   type EvalSuiteRun as EvalSuiteRunDto,
@@ -158,6 +160,31 @@ export default async function evalsRoutes(appBase: FastifyInstance) {
     if (!cases) throw new NotFoundError('Skill not found');
     return cases.map(toCaseDto);
   });
+
+  app.get(
+    '/skills/:id/eval-cases/latest-results',
+    { schema: { params: IdParams } },
+    async (req): Promise<EvalCaseLatestResultDto[]> => {
+      const { workspaceId } = await getContext(app.container, req);
+      const rows = await service.latestCaseResults(workspaceId, req.params.id);
+      if (!rows) throw new NotFoundError('Skill not found');
+      return rows.map((r) => ({
+        case_id: r.caseId,
+        suite_id: r.suite.id,
+        suite_partial: isPartialSuite(r.suite),
+        suite_created_at: r.suite.createdAt.toISOString(),
+        outcome: r.outcome,
+        with: r.with,
+        without: r.without,
+        expected_count: r.expected_count,
+        matched_median: r.matched_median,
+        unexpected_median: r.unexpected_median,
+        is_clean: r.is_clean,
+        with_errored: r.with_errored,
+        stale: r.suite.stale,
+      }));
+    },
+  );
 
   app.post(
     '/skills/:id/eval-cases',

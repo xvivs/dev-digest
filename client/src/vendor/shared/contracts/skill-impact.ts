@@ -517,6 +517,35 @@ export const EvalSuiteDetail = EvalSuite.extend({
 });
 export type EvalSuiteDetail = z.infer<typeof EvalSuiteDetail>;
 
+// ---- Latest result per case (the cards) ----
+
+/**
+ * One row of `GET /skills/:id/eval-cases/latest-results`: a case's latest
+ * settled result, from the most recent terminal suite (whole or per-case) that
+ * ran it. The figures are `EvalSuiteCaseResult`'s for that suite. A case that
+ * never settled a run has no row ("never run"). Whole-skill verdict semantics
+ * are untouched: the header badge and summary line still read the latest whole suite.
+ */
+export const EvalCaseLatestResult = z.object({
+  case_id: z.string(),
+  suite_id: z.string(),
+  /** The suite was a per-case run (`case_ids` set). */
+  suite_partial: z.boolean(),
+  suite_created_at: z.string(),
+  outcome: EvalCaseOutcome,
+  with: EvalArmTally,
+  without: EvalArmTally,
+  expected_count: z.number().int().nonnegative().nullable(),
+  matched_median: z.number().nonnegative().nullable(),
+  unexpected_median: z.number().nonnegative().nullable(),
+  is_clean: z.boolean().nullable(),
+  /** `with`-arm repeats that failed. */
+  with_errored: z.number().int().nonnegative(),
+  /** ADR 0017: the skill or the carrier changed since that suite ran. */
+  stale: z.boolean(),
+});
+export type EvalCaseLatestResult = z.infer<typeof EvalCaseLatestResult>;
+
 // ---- Case detail (the eval drawer) ----
 
 /** Findings listed per run in the case detail; `unexpected` on the run keeps the true count. */

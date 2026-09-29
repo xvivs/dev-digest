@@ -164,6 +164,22 @@ class InMemoryEvalStore implements EvalStore {
         runs: [...this.runs.values()].filter((r) => r.suiteId === s.id && r.caseId === caseId),
       }));
   }
+  /** Newest-created terminal suite that settled a run of each case (mirrors the SQL). */
+  async latestCaseRuns(ws: string, skillId: string) {
+    const out = new Map<string, { caseId: string; suite: EvalSuiteView; runs: EvalRunRecord[] }>();
+    const suites = [...this.suites.values()]
+      .filter((s) => s.workspaceId === ws && s.skillId === skillId && ['done', 'failed', 'cancelled'].includes(s.status))
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    for (const s of suites) {
+      const runs = [...this.runs.values()].filter((r) => r.suiteId === s.id);
+      for (const caseId of new Set(runs.map((r) => r.caseId))) {
+        const mine = runs.filter((r) => r.caseId === caseId);
+        const settled = mine.some((r) => r.status === 'done' || (r.status === 'failed' && r.error !== CANCELLED_RUN_ERROR));
+        if (settled && !out.has(caseId)) out.set(caseId, { caseId, suite: this.view(s), runs: mine });
+      }
+    }
+    return [...out.values()];
+  }
   async suiteCases(suiteId: string) {
     const ids = new Set((await this.listRuns(suiteId)).map((r) => r.caseId));
     return [...ids].map((id) => ({ id, name: this.cases.get(id)?.name ?? id }));
@@ -453,6 +469,53 @@ describe('EvalsService.createSuite with case_ids (per-case run)', () => {
     expect(detail!.suite).toMatchObject({ status: 'done', caseIds: ['c1'] });
     expect(detail!.suite.results?.verdict).toBe('indicative');
     expect(detail!.cases).toHaveLength(1);
+  });
+});
+
+describe('EvalsService.latestCaseResults (per-case latest for the cards)', () => {
+  let env: ReturnType<typeof setup>;
+  beforeEach(() => {
+    env = setup();
+  });
+  const runSuite = async (caseIds?: string[]) => {
+    const suite = await env.service.createSuite(WS, 'sk', { carrierAgentId: 'ag', mode: 'quick', ...(caseIds ? { caseIds } : {}) });
+    await env.service.startSuite(WS, suite!.id);
+    await env.drain();
+    // distinct createdAt so "newest" is unambiguous in the in-memory store
+    env.store.suites.get(suite!.id)!.createdAt = new Date(Date.now() + env.store.suites.size * 1000);
+    return suite!.id;
+  };
+
+  it('undefined for a skill outside the workspace; empty before any run', async () => {
+    expect(await env.service.latestCaseResults('other-ws', 'sk')).toBeUndefined();
+    expect(await env.service.latestCaseResults(WS, 'sk')).toEqual([]);
+  });
+
+  it('each case reports the latest suite that settled it, with the suite table figures', async () => {
+    const a = await runSuite(['c1']);
+    const b = await runSuite(['c2']);
+    const rows = (await env.service.latestCaseResults(WS, 'sk'))!;
+    expect(rows.map((r) => [r.caseId, r.suite.id])).toEqual([['c1', a], ['c2', b]]);
+    expect(rows[0]).toMatchObject({ outcome: 'caught', expected_count: 1, matched_median: 1, is_clean: false, with_errored: 0 });
+    const whole = await runSuite();
+    expect((await env.service.latestCaseResults(WS, 'sk'))!.map((r) => r.suite.id)).toEqual([whole, whole]);
+  });
+
+  it('an errored case reports null medians and the errored count, never matched 0', async () => {
+    env.setReview(async () => {
+      throw new Error('provider down');
+    });
+    const id = await runSuite(['c1']);
+    const [row] = (await env.service.latestCaseResults(WS, 'sk'))!;
+    expect(row).toMatchObject({ suite: { id }, outcome: 'error', matched_median: null, unexpected_median: null, with_errored: 1 });
+  });
+
+  it('a cancelled suite that ran nothing does not replace the earlier result', async () => {
+    const first = await runSuite(['c1']);
+    const cancelled = await env.service.createSuite(WS, 'sk', { carrierAgentId: 'ag', mode: 'quick', caseIds: ['c1'] });
+    await env.service.cancelSuite(WS, cancelled!.id);
+    env.store.suites.get(cancelled!.id)!.createdAt = new Date(Date.now() + 999_000);
+    expect((await env.service.latestCaseResults(WS, 'sk'))!.map((r) => r.suite.id)).toEqual([first]);
   });
 });
 

@@ -15,6 +15,7 @@ import {
   EVAL_SUITE_TERMINAL_STATUSES,
   EvalCarrier,
   EvalCaseDetail,
+  EvalCaseLatestResult,
   EvalSuite,
   EvalSuiteDetail,
   type EvalSuiteStatus,
@@ -28,12 +29,15 @@ export const EVAL_SUITE_POLL_INTERVAL_MS = 2000;
 const EVAL_CASE_LIST = SkillEvalCase.array();
 const EVAL_SUITE_LIST = EvalSuite.array();
 const EVAL_CARRIER_LIST = EvalCarrier.array();
+const EVAL_LATEST_LIST = EvalCaseLatestResult.array();
 
 /** Query keys for the eval hooks — one place so invalidation cannot drift. */
 export const evalKeys = {
   cases: (skillId: string) => ["skill-eval-cases", skillId] as const,
   carriers: (skillId: string) => ["skill-eval-carriers", skillId] as const,
   suites: (skillId: string) => ["skill-eval-suites", skillId] as const,
+  /** Each case's latest settled result (the cards). */
+  latest: (skillId: string) => ["skill-eval-latest", skillId] as const,
   suite: (suiteId: string) => ["eval-suite", suiteId] as const,
   /** Prefix of every case-detail query (drawer); invalidate with this after a suite or a case changes. */
   caseDetailAll: ["eval-case"] as const,
@@ -59,6 +63,7 @@ function invalidateAfterSuite(qc: QueryClient, skillId: string) {
   qc.invalidateQueries({ queryKey: skillKeys.detail(skillId) });
   qc.invalidateQueries({ queryKey: skillKeys.list });
   qc.invalidateQueries({ queryKey: evalKeys.suites(skillId) });
+  qc.invalidateQueries({ queryKey: evalKeys.latest(skillId) });
   qc.invalidateQueries({ queryKey: evalKeys.caseDetailAll });
 }
 
@@ -114,7 +119,26 @@ export function useDeleteEvalCase() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ caseId }: { skillId: string; caseId: string }) => api.del<{ ok: boolean }>(`/eval-cases/${caseId}`),
-    onSuccess: (_data, { skillId }) => qc.invalidateQueries({ queryKey: evalKeys.cases(skillId) }),
+    onSuccess: (_data, { skillId }) => {
+      qc.invalidateQueries({ queryKey: evalKeys.cases(skillId) });
+      qc.invalidateQueries({ queryKey: evalKeys.latest(skillId) });
+    },
+  });
+}
+
+/**
+ * `GET /skills/:id/eval-cases/latest-results` — each case's latest settled
+ * result, from the newest terminal suite (whole or per-case) that ran it. The
+ * cards read this; the header and summary line stay on the latest whole suite.
+ * It has no polling of its own: a running suite is polled by `useEvalSuite`,
+ * whose terminal transition invalidates this key.
+ */
+export function useSkillEvalLatestResults(skillId: string | null | undefined) {
+  return useQuery({
+    queryKey: evalKeys.latest(skillId ?? ""),
+    queryFn: () =>
+      api.get<EvalCaseLatestResult[]>(`/skills/${skillId}/eval-cases/latest-results`, EVAL_LATEST_LIST),
+    enabled: !!skillId,
   });
 }
 

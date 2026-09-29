@@ -206,12 +206,39 @@ interface World {
   cases: SkillEvalCase[];
   suites: EvalSuite[];
   detail: EvalSuiteDetail | (() => EvalSuiteDetail);
+  /** `GET …/eval-cases/latest-results`; default = the whole suite's own case rows. */
+  latest?: unknown[];
 }
 let world: World;
 
 const answer = (value: unknown, schema?: Schema) => Promise.resolve(schema ? schema.parse(value) : value);
 
+/** What the server would answer for a skill whose latest suite for every case is the detail's suite. */
+function latestFromDetail() {
+  // A function detail is a poll counter (the running-suite test); it must not be spent here.
+  if (typeof world.detail === "function") return [];
+  const d = world.detail;
+  return d.cases
+    .filter((c) => d.status !== "running" && d.status !== "estimated")
+    .map((c) => ({
+      case_id: c.case_id,
+      suite_id: d.id,
+      suite_partial: d.partial === true,
+      suite_created_at: d.created_at,
+      outcome: c.outcome,
+      with: c.with,
+      without: c.without,
+      expected_count: c.expected_count ?? null,
+      matched_median: c.matched_median ?? null,
+      unexpected_median: c.unexpected_median ?? null,
+      is_clean: c.is_clean ?? null,
+      with_errored: c.with_errored ?? 0,
+      stale: d.stale,
+    }));
+}
+
 function routeGet(path: string, schema?: Schema) {
+  if (path === "/skills/sk1/eval-cases/latest-results") return answer(world.latest ?? latestFromDetail(), schema);
   if (path === "/skills/sk1/eval-cases") return answer(world.cases, schema);
   if (path === "/skills/sk1/eval-suites") return answer(world.suites, schema);
   if (path === "/eval-suites/su1") return answer(typeof world.detail === "function" ? world.detail() : world.detail, schema);
@@ -931,23 +958,64 @@ describe("EvalsTab — per-case run", () => {
     expect(screen.getByRole("button", { name: "Run all evals" })).toBeDisabled();
   });
 
-  it("a newer per-case suite overrides its own card only; header and summary stay on the whole-skill suite", async () => {
-    const partialSuite: EvalSuite = { ...SUITE, id: "su7", case_ids: ["c1"], partial: true, results: { ...SUITE.results!, passing: 0, total: 1, verdict: "indicative" } };
-    const partialDetail = {
-      ...DETAIL,
-      ...partialSuite,
-      cases: [{ case_id: "c1", case_name: "stripe-key-leak", with: { passed: 0, total: 1 }, without: { passed: 1, total: 1 }, outcome: "regressed", expected_count: 1, matched_median: 0, unexpected_median: 0, is_clean: false }],
-      runs: [],
+  const latestRow = (case_id: string, suite_id: string, over: Record<string, unknown> = {}) => ({
+    case_id,
+    suite_id,
+    suite_partial: true,
+    suite_created_at: "2026-09-29T11:00:00.000Z",
+    outcome: "caught",
+    with: { passed: 1, total: 1 },
+    without: { passed: 0, total: 1 },
+    expected_count: 1,
+    matched_median: 1,
+    unexpected_median: 0,
+    is_clean: false,
+    with_errored: 0,
+    stale: false,
+    ...over,
+  });
+
+  it("running case A alone, then B alone: each card shows its own latest; header and summary stay on the whole-skill suite", async () => {
+    const partialA: EvalSuite = { ...SUITE, id: "su7", case_ids: ["c1"], partial: true };
+    const partialB: EvalSuite = { ...SUITE, id: "su8", case_ids: ["c2"], partial: true };
+    world = {
+      ...world,
+      suites: [partialB, partialA, SUITE],
+      latest: [
+        latestRow("c1", "su7", { outcome: "regressed", with: { passed: 0, total: 1 }, matched_median: 0 }),
+        latestRow("c2", "su8", { outcome: "caught", is_clean: true, expected_count: 0, matched_median: 0, unexpected_median: 2 }),
+      ],
     };
-    world = { ...world, suites: [partialSuite, SUITE] };
-    const base = routeGet;
-    h.get.mockImplementation((path: string, schema?: Schema) => (path === "/eval-suites/su7" ? answer(partialDetail, schema) : base(path, schema)));
     renderTab();
-    const card = await screen.findByRole("button", { name: /stripe-key-leak: fails with the skill/ });
-    expect(within(card).getByText("regressed")).toBeInTheDocument();
-    expect(within(card).getByText("expected 1 finding, matched 0")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /clean-refactor: flaky/ })).toBeInTheDocument();
+    const a = await screen.findByRole("button", { name: /stripe-key-leak: fails with the skill/ });
+    expect(within(a).getByText("regressed")).toBeInTheDocument();
+    expect(within(a).getByText("expected 1 finding, matched 0")).toBeInTheDocument();
+    const b = screen.getByRole("button", { name: /clean-refactor: passes with the skill/ });
+    expect(within(b).getByText("expected 0 findings, got 2")).toBeInTheDocument();
     expect(screen.getByText("17 / 20 passing")).toBeInTheDocument();
     expect(within(screen.getByRole("region", { name: "Latest suite" })).getByText("Helps")).toBeInTheDocument();
+  });
+
+  it("a case with no latest row is 'never run'", async () => {
+    world = { ...world, latest: [latestRow("c1", "su1", { suite_partial: false })] };
+    renderTab();
+    const never = await screen.findByRole("button", { name: /^clean-refactor: / });
+    expect(within(never).getByText("never run")).toBeInTheDocument();
+  });
+
+  it("a running suite's live result overrides its cases only while it runs", async () => {
+    const running: EvalSuite = { ...SUITE, id: "su9", status: "running", results: null, case_ids: ["c1"], partial: true, mode: "quick", repeats: 1 };
+    const liveDetail = {
+      ...DETAIL, ...running,
+      cases: [{ case_id: "c1", case_name: "stripe-key-leak", with: { passed: 0, total: 1 }, without: { passed: 0, total: 1 }, outcome: "pending" as const, expected_count: null, matched_median: null, unexpected_median: null, is_clean: null }],
+      runs: [],
+    };
+    world = { ...world, suites: [running, SUITE], latest: [latestRow("c1", "su1", { suite_partial: false }), latestRow("c2", "su1", { suite_partial: false, outcome: "flaky" })] };
+    const base = routeGet;
+    h.get.mockImplementation((path: string, schema?: Schema) => (path === "/eval-suites/su9" ? answer(liveDetail, schema) : base(path, schema)));
+    renderTab();
+    const live = await screen.findByRole("button", { name: /stripe-key-leak: running/ });
+    expect(within(live).getByText("running…")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /clean-refactor: flaky/ })).toBeInTheDocument();
   });
 });

@@ -93,6 +93,7 @@ Notes:
 | POST | `/skills/:id/eval-cases` | `CreateEvalCaseBody` | 201 `SkillEvalCase` | 404 (skill or `pr_id`) · 422 `validation_error` (see below) · 422 `eval_case_file_not_in_pr` |
 | PUT | `/eval-cases/:id` | `UpdateEvalCaseBody` | `SkillEvalCase` | 404 · 422 `validation_error` (see below) · 422 `eval_case_file_not_in_pr` |
 | DELETE | `/eval-cases/:id` | none | `{ ok: true }` | 404 |
+| GET | `/skills/:id/eval-cases/latest-results` | none | `EvalCaseLatestResult[]` (the eval cards) | 404 (skill) · 422 (bad id) |
 | GET | `/eval-cases/:id` | `EvalCaseDetailQuery` (`?suite_id=` optional uuid) | `EvalCaseDetail` (the eval drawer) | 404 (case, suite, or a suite that has no run of the case) · 422 (`suite_id` not a uuid) |
 
 - `source.kind = 'paste'` stores the diff as given. `source.kind = 'pr'` builds
@@ -196,11 +197,47 @@ Notes:
   - `matched_median`: median over the `with` arm's **done** repeats of `matched`.
   - `unexpected_median`: same for `unexpected`.
   - `is_clean`: `expected_count === 0`.
+  - `with_errored` (additive): how many `with`-arm repeats failed (timeout, provider
+    error, cancel). The card reads it as "matched X · N errored" when some repeats
+    scored and some did not.
   - All four are `null` until a run of the case is done (the card shows "never
     run"). An even count of repeats gives the mean of the two middle values, so
     a median can end in `.5`. Optional in the schema only for older payloads.
+  - A `null` median means "no scored `with`-arm run", never 0. A client must not
+    show "matched 0" for it: an errored case reads "run failed", a running one
+    "running…".
 - `EvalSuite.cost_source` holds the single source of its runs. There is one
   carrier and therefore one provider, so a suite never mixes sources.
+
+### Latest result per case (the cards)
+
+`GET /skills/:id/eval-cases/latest-results` returns `EvalCaseLatestResult[]`, one
+row per case of the skill that has a settled run, in the skill's case order:
+
+```
+{ case_id, suite_id, suite_partial, suite_created_at, outcome, with, without,
+  expected_count, matched_median, unexpected_median, is_clean, with_errored, stale }
+```
+
+- The row comes from the most recent **terminal** suite (`done`, `failed` or
+  `cancelled`; whole or per-case, ordered by `finished_at`, else `created_at`)
+  that settled at least one run of the case. A **settled** run is `done`, or
+  `failed` for a real reason. A run failed only because its suite was cancelled
+  never executed, so a cancelled suite that ran nothing of the case does not
+  replace the earlier result. Running and `estimated` suites are not included;
+  the client shows a running suite's progress from `GET /skills/:id/eval-suites`.
+- The figures are the suite table's (`classifyCase` + the per-case summary over
+  that suite's runs of the case), so `outcome`, medians and `with_errored` mean
+  exactly what they do in `EvalSuiteCaseResult`. A case that never settled a run
+  has no row ("never run").
+- Cost: two queries, no N+1. `SELECT DISTINCT ON (case_id) … ORDER BY case_id,
+  COALESCE(suite.finished_at, suite.created_at) DESC` over `eval_runs` joined to the
+  skill's suites (`eval_suites_skill_created_idx`, then `eval_runs_suite_status_idx`;
+  `EXPLAIN` shows no seq scan, so no new index), then one fetch of those suites' runs.
+- Verdict semantics are unchanged: the header badge, the summary line, `latest_verdict`
+  and `impact` still read only the latest **whole** suite. Only the cards use this endpoint.
+- Client cache key: `["skill-eval-latest", skillId]`, invalidated whenever a suite
+  reaches a terminal status (with the suites list) and after a case is deleted.
 
 ### Case detail (the drawer)
 
