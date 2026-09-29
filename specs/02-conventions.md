@@ -150,7 +150,11 @@ spec.
 - **AC-10** While sampling, the server shall build a sample of at most 12 code files chosen
   by rank, at most 3 per directory group (first two path segments), round-robin, plus at
   most 4 config files and at most 4 forced files from recurring findings. Each file shall be
-  cut to 200 lines and 6 KB, and the total shall stay within 60 KB.
+  cut to 200 lines and 6 KB, and the total shall stay within 60 KB. Code files under any
+  directory whose name starts with `.` (`.claude/`, `.github/`, `.devdigest/`, `.vscode/`) or
+  is `fixtures`, `templates` or `docs` are never sampled, forced files included
+  (`SAMPLE_EXCLUDED_DIRS`): they are tool config, skill templates and test data, not project
+  code. Root config files in the list below are unaffected.
   - Config files are tried in this order and missing, unreadable or empty ones are skipped
     without failing the scan: `AGENTS.md`, `CLAUDE.md`, `CONTRIBUTING.md`, `package.json`,
     `tsconfig.json`, `eslint.config.*` / `.eslintrc*`, `.prettierrc*`, `biome.json`,
@@ -196,7 +200,11 @@ spec.
 - **AC-14** When verifying, the server shall drop a rule that contains invisible characters.
   For each quote it shall require that the path is in the sent set, relocate the quote by
   whitespace-normalised search, correct the lines, and store the real file lines (at most
-  12) as the snippet. A quote not found shall be dropped. Before matching:
+  12) as the snippet. A quote not found shall be dropped. A quote shall also be dropped when it proves
+  nothing: unless it spans 2+ non-empty lines, it needs 2+ distinct meaningful tokens
+  (identifiers of 3+ characters outside a syntax stop-list: `export`, `const`, `return`,
+  `import`, `from`, `satisfies`, `as`, `new`...). `} satisfies CSSProperties,` is dropped;
+  `export const redis = new Redis(config.redisUrl);` passes. Before matching:
   - the path is normalised (leading `./` and a trailing `:N` or `:N-M` removed); a path that
     is not an exact member of the sent set matches only if it is a **unique** suffix of one
     sent path, otherwise it is dropped (G6);
@@ -370,6 +378,8 @@ spec.
 | Resync moves HEAD during a scan | Attempt fails with `head_moved`; job retry rescans at the new SHA |
 | Model cites `./src/a.ts:12` or a path suffix | Normalised; unique suffix accepted, ambiguous suffix dropped |
 | Model quotes `}` or `import` | Dropped: under 8 non-whitespace characters |
+| Model quotes `} satisfies CSSProperties,` (8+ characters, one meaningful token) | Dropped: not a meaningful quote (AC-14) |
+| Ranked or forced path under `.claude/`, `fixtures/`, `templates/` or `docs/` | Not sampled (AC-10) |
 | Config file missing, unreadable or empty | Skipped; scan continues |
 
 ## Non-functional

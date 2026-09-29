@@ -20,6 +20,10 @@ import {
   MAX_QUOTES,
   PER_GROUP_LIMIT,
   QUOTE_MIN_NON_WS,
+  QUOTE_MIN_LINES,
+  QUOTE_MIN_MEANINGFUL_TOKENS,
+  QUOTE_STOPWORDS,
+  SAMPLE_EXCLUDED_DIRS,
   RULE_MAX,
   RULE_MIN,
   SINGLE_FILE_CONFIDENCE_CAP,
@@ -315,6 +319,12 @@ export function dirKey(path: string): string {
   return dirs.slice(0, 2).join('/') || '.';
 }
 
+/** AC-10: hidden trees, fixtures, templates and docs are not project code. */
+export function isExcludedSamplePath(path: string): boolean {
+  const dirs = path.split('/').slice(0, -1);
+  return dirs.some((seg) => seg.startsWith('.') || SAMPLE_EXCLUDED_DIRS.includes(seg.toLowerCase()));
+}
+
 /**
  * Forced files first (deduped), then ranked files round-robin across directory
  * groups (in order of each group's best rank), at most `perGroup` per group,
@@ -329,6 +339,7 @@ export function stratifySample(
   const chosen: string[] = [];
   const seen = new Set<string>();
   for (const p of forced) {
+    if (isExcludedSamplePath(p)) continue;
     if (chosen.length >= maxCode) break;
     if (seen.has(p)) continue;
     seen.add(p);
@@ -337,7 +348,7 @@ export function stratifySample(
 
   const groups = new Map<string, string[]>();
   for (const p of ranked) {
-    if (seen.has(p)) continue;
+    if (seen.has(p) || isExcludedSamplePath(p)) continue;
     seen.add(p);
     const key = dirKey(p);
     const list = groups.get(key);
@@ -506,10 +517,25 @@ export interface RelocatedQuote {
 }
 
 /**
+ * AC-14: does the quote prove anything? Multi-line (2+ non-empty lines) passes;
+ * a single line needs 2+ distinct identifiers of 3+ chars outside the syntax stop-list.
+ */
+export function isMeaningfulQuote(quote: string): boolean {
+  const nonEmpty = quote.split(/\r?\n/).filter((l) => l.trim() !== '');
+  if (nonEmpty.length >= QUOTE_MIN_LINES) return true;
+  const tokens = new Set<string>();
+  for (const m of quote.matchAll(/[\p{L}_$][\p{L}\p{N}_$]*/gu)) {
+    const t = m[0];
+    if (t.length >= 3 && !QUOTE_STOPWORDS.has(t.toLowerCase())) tokens.add(t);
+  }
+  return tokens.size >= QUOTE_MIN_MEANINGFUL_TOKENS;
+}
+
+/**
  * Find `quote` in `lines` by whitespace-normalised search (collapse runs, then
  * ignore whitespace entirely) and return the real line range. With several
  * matches the one nearest `lineHint` wins, else the first (G7). Null when the
- * quote is not in the file or has fewer than 8 non-whitespace chars (G3).
+ * quote is not in the file or has fewer than 8 non-whitespace chars (G3) or is not meaningful (AC-14).
  */
 export function relocateQuote(
   lines: readonly string[],
@@ -517,7 +543,7 @@ export function relocateQuote(
   lineHint: number | null,
 ): RelocatedQuote | null {
   const quote = stripGutter(rawQuote).trim();
-  if (nonWsLength(quote) < QUOTE_MIN_NON_WS) return null;
+  if (nonWsLength(quote) < QUOTE_MIN_NON_WS || !isMeaningfulQuote(quote)) return null;
   const quoteLines = quote.split(/\r?\n/);
 
   let ranges: { start: number; end: number }[] = [];

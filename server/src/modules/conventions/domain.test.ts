@@ -11,6 +11,8 @@ import {
   packSample,
   planConventionUpdate,
   relocateQuote,
+  isMeaningfulQuote,
+  isExcludedSamplePath,
   renderSampleFile,
   resolveAndMerge,
   slugifySkillName,
@@ -99,6 +101,46 @@ describe('relocateQuote', () => {
     expect(stripGutter('   5| if (!row) x\n   6| return y')).toBe('if (!row) x\nreturn y');
     expect(stripGutter('a | b')).toBe('a | b');
     expect(relocateQuote(FILE_A, "   5| if (!row) throw new NotFoundError('User not found');", 5)?.lineStart).toBe(5);
+  });
+});
+
+describe('isMeaningfulQuote (AC-14)', () => {
+  it('rejects syntax-only and single-token quotes', () => {
+    expect(isMeaningfulQuote('} satisfies CSSProperties,')).toBe(false);
+    expect(isMeaningfulQuote('export default')).toBe(false);
+    expect(isMeaningfulQuote('return null;')).toBe(false);
+  });
+  it('accepts a line with two meaningful tokens or a multi-line quote', () => {
+    expect(isMeaningfulQuote('export const redis = new Redis(config.redisUrl);')).toBe(true);
+    expect(isMeaningfulQuote('})\n);')).toBe(true);
+  });
+  it('relocateQuote drops a weak quote even when it exists in the file', () => {
+    const lines = ['const s = {', '  a: 1,', '} satisfies CSSProperties,'];
+    expect(relocateQuote(lines, '} satisfies CSSProperties,', 3)).toBeNull();
+  });
+});
+
+describe('isExcludedSamplePath (AC-10)', () => {
+  it('excludes dot-directories, fixtures, templates and docs at any depth', () => {
+    for (const p of [
+      '.claude/skills/onion-architecture/templates/module/domain.ts',
+      '.github/workflows/x.ts',
+      'server/.devdigest/a.ts',
+      'src/fixtures/a.ts',
+      'src/templates/a.ts',
+      'docs/a.ts',
+    ]) {
+      expect(isExcludedSamplePath(p)).toBe(true);
+    }
+  });
+  it('keeps project code and root dotfiles', () => {
+    expect(isExcludedSamplePath('server/src/modules/a.ts')).toBe(false);
+    expect(isExcludedSamplePath('.eslintrc.js')).toBe(false);
+    expect(isExcludedSamplePath('src/documents/a.ts')).toBe(false);
+  });
+  it('stratifySample skips excluded ranked and forced paths', () => {
+    const out = stratifySample(['.claude/a.ts', 'src/a.ts', 'docs/b.ts'], ['.github/f.ts', 'src/f.ts'], 12);
+    expect(out).toEqual(['src/f.ts', 'src/a.ts']);
   });
 });
 

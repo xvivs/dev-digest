@@ -23,6 +23,17 @@ export const FILE_MAX_BYTES = 6 * 1024;
 export const SAMPLE_MAX_BYTES = 60 * 1024;
 
 /**
+ * Code-sample exclusions (AC-10). A path is skipped when any directory segment
+ * starts with `.` (`.claude/`, `.github/`, `.devdigest/`, `.vscode/`) or equals
+ * one of these names. Why: those trees hold tool config, skill templates and
+ * test data, not the project's own code; a convention cited from
+ * `.claude/skills/onion-architecture/templates/module/domain.ts` describes a
+ * template, not the repo. Root config files (`.editorconfig`, `.prettierrc*`,
+ * `.eslintrc*`) are unaffected: they come from CONFIG_FILE_SLOTS, not the ranked list.
+ */
+export const SAMPLE_EXCLUDED_DIRS: readonly string[] = ['fixtures', 'templates', 'docs'];
+
+/**
  * Config files tried in this order; each inner list is one slot and the first
  * readable, non-empty alternative wins. Missing / unreadable / empty ones are
  * skipped without failing the scan (G8). They are context only (D12): VERIFY
@@ -93,6 +104,22 @@ export const CONVENTIONS_PROVIDER_ROUTING: ProviderRouting = {
 // ---- VERIFY (AC-14..16) ----------------------------------------------------
 /** A quote with fewer non-whitespace characters cannot identify a line (G3). */
 export const QUOTE_MIN_NON_WS = 8;
+/**
+ * AC-14: a single-line quote needs this many distinct meaningful tokens (an
+ * identifier of 3+ chars that is not a syntax keyword). One token is not enough:
+ * `} satisfies CSSProperties,` names a type and proves nothing about a habit.
+ */
+export const QUOTE_MIN_MEANINGFUL_TOKENS = 2;
+/** A multi-line quote with this many non-empty lines is accepted without the token check. */
+export const QUOTE_MIN_LINES = 2;
+/** Syntax words and keywords that never make a quote meaningful (AC-14). */
+export const QUOTE_STOPWORDS: ReadonlySet<string> = new Set([
+  'export', 'const', 'let', 'var', 'return', 'import', 'from', 'satisfies', 'as', 'new', 'type',
+  'interface', 'function', 'async', 'await', 'default', 'extends', 'implements', 'class', 'public',
+  'private', 'protected', 'readonly', 'static', 'void', 'null', 'undefined', 'true', 'false',
+  'this', 'if', 'else', 'for', 'while', 'switch', 'case', 'break', 'continue', 'try', 'catch',
+  'throw', 'typeof', 'instanceof', 'in', 'of', 'the', 'and', 'not',
+]);
 export const SNIPPET_MAX_LINES = 12;
 export const CONFIDENCE_WEIGHTS = {
   llm: 0.45,
