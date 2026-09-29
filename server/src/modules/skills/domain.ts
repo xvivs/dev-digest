@@ -9,7 +9,9 @@
  */
 import type { SkillSource, SkillType } from '@devdigest/shared';
 import { AppError } from '../../platform/errors.js';
-import { INVISIBLE_CHARS_PATTERN } from './constants.js';
+import { containsInvisibleChars } from '../_shared/text-hygiene.js';
+
+export { containsInvisibleChars };
 
 /** What the service reads and writes. Not a Drizzle row, not an HTTP DTO. */
 export interface Skill {
@@ -41,9 +43,13 @@ export interface NewSkill {
   type: SkillType;
   source: SkillSource;
   body: string;
-  /** Resolved by `applyImportPolicy` — never trusted from the client on import. */
+  /** Resolved by `applySourcePolicy` — never trusted from the client on import. */
   enabled: boolean;
   needsVetting: boolean;
+  /** sha256(body) for an auto-vetted (`extracted`) skill; omitted otherwise. */
+  vettedBodyHash?: string | null;
+  /** Files the rule was extracted from (`extracted` skills). */
+  evidenceFiles?: string[] | null;
 }
 
 /** Fields the API allows a PUT to change (D8: partial body). */
@@ -53,10 +59,6 @@ export interface SkillPatch {
   type?: SkillType;
   body?: string;
   enabled?: boolean;
-}
-
-export function containsInvisibleChars(body: string): boolean {
-  return INVISIBLE_CHARS_PATTERN.test(body);
 }
 
 export class SkillNameTakenError extends AppError {
@@ -85,24 +87,13 @@ export class SkillNotVettedError extends AppError {
   }
 }
 
-/**
- * ADR 0012 tiers: a manual skill is trusted on save. An imported skill always
- * starts disabled and unvetted, whatever the request asked for — the caller
- * (service) must never forward a client-supplied `enabled`/`needs_vetting` for
- * an import.
- */
-export function applyImportPolicy(source: SkillSource): { enabled: boolean; needsVetting: boolean } {
-  if (source === 'manual') return { enabled: true, needsVetting: false };
-  return { enabled: false, needsVetting: true };
-}
-
 export interface VettingTransition {
   needsVetting: boolean;
   vettedBodyHash: string | null;
 }
 
 /**
- * ADR 0012: editing the body of an IMPORTED skill resets vetting — the body a
+ * ADR 0012: editing the body of an IMPORTED or EXTRACTED skill resets vetting (ADR 0016) — the body a
  * person vetted is no longer the body that would ship. `bodyChanged` is
  * decided by the caller (it already has old + new body in hand); a manual
  * skill's `needsVetting` never flips true here (manual skills are trusted on
@@ -112,7 +103,7 @@ export function resolveVettingOnBodyEdit(
   existing: Pick<Skill, 'source' | 'needsVetting' | 'vettedBodyHash'>,
   bodyChanged: boolean,
 ): VettingTransition {
-  if (bodyChanged && existing.source === 'imported') {
+  if (bodyChanged && (existing.source === 'imported' || existing.source === 'extracted')) {
     return { needsVetting: true, vettedBodyHash: null };
   }
   return { needsVetting: existing.needsVetting, vettedBodyHash: existing.vettedBodyHash };

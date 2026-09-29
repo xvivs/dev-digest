@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import type { Db } from '../../../db/client.js';
 import * as t from '../../../db/schema.js';
 import type { Finding } from '@devdigest/shared';
@@ -140,4 +140,49 @@ export async function setFindingDismissed(
     .where(eq(t.findings.id, findingId))
     .returning();
   return row;
+}
+
+// ---- recurring findings (conventions evidence) ----------------------------
+
+export interface RecurringFinding {
+  category: string;
+  title: string;
+  prCount: number;
+  files: string[];
+}
+
+/**
+ * Findings of one repo that recur across `minPrs`+ distinct PRs, grouped by
+ * `(category, lower(trim(title)))`. Dismissed findings (`dismissed_at` set) are
+ * excluded — the reviewer rejected them. Top `limit` by PR count.
+ */
+export async function recurringFindings(
+  db: Db,
+  repoId: string,
+  minPrs: number,
+  limit: number,
+): Promise<RecurringFinding[]> {
+  const normTitle = sql<string>`lower(trim(${t.findings.title}))`;
+  const prCount = sql<number>`count(distinct ${t.pullRequests.id})`;
+  const rows = await db
+    .select({
+      category: t.findings.category,
+      title: sql<string>`min(${t.findings.title})`,
+      prCount,
+      files: sql<string[]>`array_agg(distinct ${t.findings.file})`,
+    })
+    .from(t.findings)
+    .innerJoin(t.reviews, eq(t.findings.reviewId, t.reviews.id))
+    .innerJoin(t.pullRequests, eq(t.reviews.prId, t.pullRequests.id))
+    .where(and(eq(t.pullRequests.repoId, repoId), isNull(t.findings.dismissedAt)))
+    .groupBy(t.findings.category, normTitle)
+    .having(sql`${prCount} >= ${minPrs}`)
+    .orderBy(desc(prCount), t.findings.category, normTitle)
+    .limit(limit);
+  return rows.map((r) => ({
+    category: r.category,
+    title: r.title,
+    prCount: Number(r.prCount),
+    files: r.files,
+  }));
 }

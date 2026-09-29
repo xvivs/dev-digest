@@ -7,15 +7,13 @@
  * `reviews/run-executor.ts` through `container.skillsRepo` (never by a direct
  * module import; see `modules-no-cross-import` in `.dependency-cruiser.cjs`).
  */
-import { createHash } from 'node:crypto';
 import { and, asc, count, eq, ilike, inArray, or, sql } from 'drizzle-orm';
-import type { Db } from '../../db/client.js';
+import type { Db, DbTx } from '../../db/client.js';
+import { sha256Hex } from '../_shared/hash.js';
 import * as t from '../../db/schema.js';
 import { SkillNameTakenError, SkillVetStaleError, type NewSkill, type Skill, type SkillListItem } from './domain.js';
 import type { SkillStore, SkillWritePatch } from './ports.js';
 
-/** A Drizzle transaction handle — structurally a `Db` for queries. */
-type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
 type SkillRow = typeof t.skills.$inferSelect;
 
 /** One effective skill resolved for a run (SPEC-02 D1 / AC-25/27). */
@@ -28,10 +26,6 @@ export interface EffectiveSkill {
 }
 
 const SKILLS_NAME_UQ = 'skills_workspace_name_uq';
-
-function sha256Hex(text: string): string {
-  return createHash('sha256').update(text, 'utf8').digest('hex');
-}
 
 function isUniqueViolation(err: unknown, constraint: string): boolean {
   return (
@@ -62,7 +56,7 @@ function toSkill(row: SkillRow): Skill {
 }
 
 export class SkillsRepository implements SkillStore {
-  constructor(private readonly db: Db | Tx) {}
+  constructor(private readonly db: Db | DbTx) {}
 
   /** One query (LEFT JOIN + GROUP BY), no N+1 — `agent_count` is every agent
    *  linking the skill, regardless of the link's own enabled state.
@@ -111,6 +105,8 @@ export class SkillsRepository implements SkillStore {
           body: input.body,
           enabled: input.enabled,
           needsVetting: input.needsVetting,
+          ...(input.vettedBodyHash !== undefined ? { vettedBodyHash: input.vettedBodyHash } : {}),
+          ...(input.evidenceFiles !== undefined ? { evidenceFiles: input.evidenceFiles } : {}),
         })
         .returning();
       if (!row) throw new Error('insert into skills returned no row');

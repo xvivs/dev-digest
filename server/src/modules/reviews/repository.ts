@@ -125,6 +125,11 @@ export class ReviewRepository {
     return reviewRepo.setFindingDismissed(this.db, findingId, at);
   }
 
+  /** Findings recurring across `minPrs`+ PRs of a repo (non-dismissed), top `limit`. */
+  recurringFindings(repoId: string, minPrs: number, limit: number): Promise<reviewRepo.RecurringFinding[]> {
+    return reviewRepo.recurringFindings(this.db, repoId, minPrs, limit);
+  }
+
   // ---- intent -------------------------------------------------------------
 
   upsertIntent(prId: string, intent: Intent): Promise<void> {

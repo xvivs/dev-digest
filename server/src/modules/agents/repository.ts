@@ -1,5 +1,5 @@
 import { and, asc, count, desc, eq, inArray } from 'drizzle-orm';
-import type { Db } from '../../db/client.js';
+import type { Db, DbTx } from '../../db/client.js';
 import * as t from '../../db/schema.js';
 import { DEFAULT_AGENT_DESCRIPTION, INITIAL_AGENT_VERSION } from './constants.js';
 import type { LinkableSkill, SkillLinkInput } from './domain.js';
@@ -17,9 +17,6 @@ import type { AgentRow, AgentVersionRow } from '../../db/rows.js';
 export type { AgentRow, AgentVersionRow };
 export type { InsertAgent, UpdateAgent };
 
-/** A Drizzle transaction handle — structurally a `Db` for queries. */
-type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
-
 /** A skill linked to an agent (with its order), joined from agent_skills. */
 export interface LinkedSkillRow {
   skill: typeof t.skills.$inferSelect;
@@ -28,7 +25,7 @@ export interface LinkedSkillRow {
 }
 
 export class AgentsRepository implements AgentStore {
-  constructor(private db: Db | Tx) {}
+  constructor(private db: Db | DbTx) {}
 
   /** One aggregate query (LEFT JOIN + GROUP BY) — no N+1 for `skill_count`. */
   async list(workspaceId: string): Promise<(AgentRow & { skillCount: number })[]> {

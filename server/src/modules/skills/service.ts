@@ -7,13 +7,13 @@
  */
 import type { SkillSource, SkillType } from '@devdigest/shared';
 import {
-  applyImportPolicy,
   assertEnableAllowed,
   resolveVettingOnBodyEdit,
   type Skill,
   type SkillListItem,
   type SkillPatch,
 } from './domain.js';
+import { applySourcePolicy } from '../_shared/skill-rules.js';
 import type { SkillStore } from './ports.js';
 
 export interface CreateSkillInput {
@@ -36,10 +36,11 @@ export class SkillsService {
   }
 
   /** ADR 0012: an import is always stored disabled + unvetted, whatever the
-   *  request says — `applyImportPolicy` never reads a client-supplied
+   *  request says — `applySourcePolicy` never reads a client-supplied
    *  enabled/needs_vetting because the input type has none. */
   create(workspaceId: string, input: CreateSkillInput): Promise<Skill> {
-    const { enabled, needsVetting } = applyImportPolicy(input.source);
+    // `create` only serves manual/imported (route-enforced): requestedEnabled is irrelevant there.
+    const { enabled, needsVetting } = applySourcePolicy(input.source, input.body, false);
     return this.store.insert({
       workspaceId,
       name: input.name,

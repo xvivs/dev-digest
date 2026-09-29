@@ -93,6 +93,14 @@ export class ReviewRunExecutor {
     // succeeded) so the failure trace still carries `skills_used`.
     const failAll = async (msg: string, skillsByAgent: Map<string, ResolvedSkill[]>) => {
       for (const { runId, agent } of jobs) {
+        // Trace BEFORE the terminal status: a reader that sees `failed` must
+        // find the trace (see the ordering note in runOneAgent's success path).
+        await this.repo
+          .saveRunTrace(
+            runId,
+            this.traceFromBuffer(runId, pull, agent, '0/0 passed', 0, skillsByAgent.get(agent.id)),
+          )
+          .catch(() => undefined);
         await this.repo
           .completeAgentRun(runId, {
             status: 'failed',
@@ -103,12 +111,6 @@ export class ReviewRunExecutor {
             grounding: '0/0 passed',
             error: msg,
           })
-          .catch(() => undefined);
-        await this.repo
-          .saveRunTrace(
-            runId,
-            this.traceFromBuffer(runId, pull, agent, '0/0 passed', 0, skillsByAgent.get(agent.id)),
-          )
           .catch(() => undefined);
         this.container.runBus.complete(runId);
       }
@@ -307,21 +309,7 @@ export class ReviewRunExecutor {
             }))
           : null;
 
-      // ---- Observability: agent_runs + ONE run_traces document --------------
-      await this.repo.completeAgentRun(runId, {
-        status: 'done',
-        durationMs,
-        tokensIn,
-        tokensOut,
-        findingsCount: findingRows.length,
-        grounding,
-        score: outcome.review.score,
-        blockers,
-        error: null,
-        costUsd,
-        costSource,
-      });
-
+      // ---- Observability: ONE run_traces document, THEN the agent_runs row ---
       const trace: RunTrace = {
         config: {
           agent: agent.name,
@@ -364,7 +352,25 @@ export class ReviewRunExecutor {
         log: runLog.logFor(runId),
       };
       runLog.info('Run complete; trace persisted');
+      // Ordering is load-bearing: the trace lands BEFORE the terminal status.
+      // Readers (UI trace drawer, tests polling agent_runs) treat a terminal
+      // status as "trace is readable"; the reverse order leaves a window where
+      // the run is `done` but GET /runs/:id/trace 404s. If completeAgentRun
+      // throws, the catch below upserts a failure trace and marks it failed.
       await this.repo.saveRunTrace(runId, trace);
+      await this.repo.completeAgentRun(runId, {
+        status: 'done',
+        durationMs,
+        tokensIn,
+        tokensOut,
+        findingsCount: findingRows.length,
+        grounding,
+        score: outcome.review.score,
+        blockers,
+        error: null,
+        costUsd,
+        costSource,
+      });
       this.container.runBus.complete(runId);
 
       return { review, findings: findingRows, grounding, raw: outcome.review };
@@ -375,6 +381,13 @@ export class ReviewRunExecutor {
       const status = cancelled ? 'cancelled' : 'failed';
       const msg = cancelled ? 'Cancelled by user' : (err as Error).message;
       runLog.error(cancelled ? 'Run cancelled by user' : `Run failed: ${msg}`);
+      // Trace before the terminal status — same invariant as the success path.
+      await this.repo
+        .saveRunTrace(
+          runId,
+          this.traceFromBuffer(runId, pull, agent, '0/0 passed', Date.now() - start, resolvedSkills),
+        )
+        .catch(() => undefined);
       await this.repo
         .completeAgentRun(runId, {
           status,
@@ -385,12 +398,6 @@ export class ReviewRunExecutor {
           grounding: '0/0 passed',
           error: msg,
         })
-        .catch(() => undefined);
-      await this.repo
-        .saveRunTrace(
-          runId,
-          this.traceFromBuffer(runId, pull, agent, '0/0 passed', Date.now() - start, resolvedSkills),
-        )
         .catch(() => undefined);
       this.container.runBus.complete(runId);
       throw err;

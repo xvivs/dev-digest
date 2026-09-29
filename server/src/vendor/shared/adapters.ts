@@ -64,6 +64,8 @@ export interface StructuredRequest<T> {
   maxTokens?: number;
   timeoutMs?: number;
   maxRetries?: number;
+  /** Cancels the call (and any repair attempts); rejects with an AbortError. */
+  signal?: AbortSignal;
   /**
    * OpenRouter session id — groups related generations (e.g. all map-reduce
    * chunks of one review) into a session in the OpenRouter dashboard. Sent as

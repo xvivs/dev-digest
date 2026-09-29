@@ -64,6 +64,8 @@ export interface StructuredRequest<T> {
   maxTokens?: number;
   timeoutMs?: number;
   maxRetries?: number;
+  /** Cancels the call (and any repair attempts); rejects with an AbortError. */
+  signal?: AbortSignal;
 }
 
 export interface StructuredResult<T> {

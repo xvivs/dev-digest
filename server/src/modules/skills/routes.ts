@@ -18,24 +18,9 @@ import { SkillType, type Skill as SkillDto } from '@devdigest/shared';
 import { getContext } from '../_shared/context.js';
 import { IdParams } from '../_shared/schemas.js';
 import { NotFoundError } from '../../platform/errors.js';
-import { containsInvisibleChars, type Skill } from './domain.js';
-import { SKILL_BODY_MAX, SKILL_DESCRIPTION_MAX, SKILL_NAME_PATTERN } from './constants.js';
+import type { Skill } from './domain.js';
+import { SkillBody, SkillDescription, SkillName } from '../_shared/skill-rules.js';
 import { buildSkillsService } from './wiring.js';
-
-const INVISIBLE_CHARS_MESSAGE =
-  'Body contains disallowed invisible/bidi-control characters (Unicode tags, bidi overrides, zero-width, BOM)';
-
-const SkillName = z
-  .string()
-  .regex(SKILL_NAME_PATTERN, 'Name must be a lowercase slug: ^[a-z0-9][a-z0-9-]{1,63}$');
-
-const SkillDescription = z.string().max(SKILL_DESCRIPTION_MAX);
-
-const SkillBody = z
-  .string()
-  .min(1)
-  .max(SKILL_BODY_MAX)
-  .refine((body) => !containsInvisibleChars(body), { message: INVISIBLE_CHARS_MESSAGE });
 
 /** Client can only ever create a 'manual' or 'imported' skill (ADR 0012). Not
  *  'imported_url' / 'community' — those are unused, no server-side fetch. */
