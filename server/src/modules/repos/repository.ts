@@ -1,4 +1,4 @@
-import { and, eq } from 'drizzle-orm';
+import { and, asc, eq } from 'drizzle-orm';
 import type { Db } from '../../db/client.js';
 import * as t from '../../db/schema.js';
 
@@ -29,8 +29,13 @@ export class RepoRepository {
     return row;
   }
 
+  /** Oldest first; `id` breaks ties so the order is stable (UIs redirect to the first repo). */
   async list(workspaceId: string): Promise<RepoRow[]> {
-    return this.db.select().from(t.repos).where(eq(t.repos.workspaceId, workspaceId));
+    return this.db
+      .select()
+      .from(t.repos)
+      .where(eq(t.repos.workspaceId, workspaceId))
+      .orderBy(asc(t.repos.createdAt), asc(t.repos.id));
   }
 
   async getById(workspaceId: string, id: string): Promise<RepoRow | undefined> {

@@ -49,6 +49,8 @@ lives in the engineering-insights skill).
 
 - **A read model two modules need goes in `modules/_shared/`, and even a type-only import between modules fails `arch:check`** — `modules-no-cross-import` (`server/.dependency-cruiser.cjs:37-46`) has no `dependencyTypesNot: ['type-only']`, and `_shared` itself cannot import a module either (the `from` regex matches `_shared` too). The eval suite view + its DTO mapper live in `src/modules/_shared/eval-suite.ts`, used by `evals/routes.ts` and the skills Stats `impact` block; the concrete data still crosses via `container.evalsRepo` (`src/platform/container.ts`). _(2026-09-29)_
 
+- **`RepoRepository.list` order (`created_at, id`) only makes `/` land on acme/payments-api because `seed.ts` inserts the repos outside a transaction** — `server/src/modules/repos/repository.ts:38`; acme is inserted at `server/src/db/seed.ts:367`, `xvivs/dev-digest` at `:1203`, ~80 ms apart on a fresh seed. Postgres `now()` is fixed per transaction, so wrapping the seed in `db.transaction` would give both rows the same `created_at` and hand the tie to the random `uuid` `id` — the home redirect (and every e2e repo guard) would become a coin flip again. _(2026-09-29)_
+
 ## Tool & Library Notes
 
 - **`pnpm exec <bin>` / `pnpm run <script>` can fail non-interactively with `ERR_PNPM_IGNORED_BUILDS` even when `node_modules` is already correct** — both `pnpm db:generate` and `pnpm exec drizzle-kit generate` refused to run this way, erroring "Run \"pnpm approve-builds\" to pick which dependencies should be allowed to run scripts." Workaround: invoke the wrapper under `node_modules/.bin/` directly with `sh`, e.g. `sh node_modules/.bin/drizzle-kit generate`, `sh node_modules/.bin/tsx src/db/migrate.ts`, `sh node_modules/.bin/vitest run` — bypasses pnpm's pre-flight check entirely. _(2026-09-19)_
@@ -107,6 +109,9 @@ Added the `evals` module: skill eval cases (paste or PR files, diff snapshotted)
 
 ### 2026-09-29 — server session (skill impact integration QA)
 Applied migrations 0015-0020 to the shared dev Postgres, after a pg_dump backup, and ran `db:backfill:run-skills` twice: 3 rows the first time, 0 the second. Drove Versions, Stats and Evals in a browser against the real API, including one real Quick suite on OpenRouter (about $0.0004). That run found the timeout gap that `e1c836b` fixes. Not checked live: the trust gate 409, because no imported skill exists in the dev DB (testcontainers still cover it).
+
+### 2026-09-29 — server session
+`RepoRepository.list` now orders by `created_at, id` so `GET /repos` and the home redirect are deterministic instead of heap-ordered. No caller assumed an order (`service.ts` passes the list through); `pnpm typecheck && pnpm test` green (435 tests incl. `integration.it.test.ts`).
 
 ## Open Questions
 
