@@ -37,7 +37,7 @@ const CreateAgentBody = z.object({
   model: z.string().min(1),
   system_prompt: z.string().min(1),
   output_schema: z.unknown().optional(),
-  strategy: ReviewStrategy.optional(),
+  strategy: ReviewStrategy,
   ci_fail_on: CiFailOn.optional(),
   repo_intel: z.boolean().optional(),
   enabled: z.boolean().optional(),
