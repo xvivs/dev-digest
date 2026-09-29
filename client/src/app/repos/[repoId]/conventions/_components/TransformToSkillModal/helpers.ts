@@ -48,3 +48,15 @@ export function isModalDirty(initial: ModalFields, current: ModalFields): boolea
     initial.agentIds.some((id, i) => id !== current.agentIds[i])
   );
 }
+
+/**
+ * Renames the H1 of an edited body, only when its first line is exactly
+ * `# <previousName>`; anything else in the body is left untouched.
+ */
+export function renameBodyHeading(body: string, previousName: string, nextName: string): string {
+  const heading = `# ${previousName}`;
+  const end = body.indexOf("\n");
+  const first = end === -1 ? body : body.slice(0, end);
+  if (first !== heading) return body;
+  return `# ${nextName}${end === -1 ? "" : body.slice(end)}`;
+}

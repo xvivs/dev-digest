@@ -105,6 +105,22 @@ export function defaultSkillName(repoName: string): string {
   return base ? `${base}${SKILL_NAME_SUFFIX}` : SKILL_NAME_SUFFIX.slice(1);
 }
 
+/**
+ * The first name in `<base>`, `<base>-2`, `<base>-3`… that is not in `taken`.
+ * The base is trimmed when a numeric suffix would push it past the length limit.
+ */
+export function firstFreeSkillName(repoName: string, taken: Iterable<string>): string {
+  const base = defaultSkillName(repoName);
+  const used = new Set(taken);
+  if (!used.has(base)) return base;
+  for (let n = 2; ; n++) {
+    const suffix = `-${n}`;
+    const head = base.slice(0, SKILL_NAME_MAX_LENGTH - suffix.length).replace(/-+$/, "");
+    const candidate = `${head}${suffix}`;
+    if (!used.has(candidate)) return candidate;
+  }
+}
+
 // ---- skill body (AC-43, G11) ----
 
 /** The Markdown fence for `text`: longer than the longest backtick run in it, so a snippet cannot close it early. */

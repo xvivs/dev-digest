@@ -20,11 +20,11 @@ import {
   agentBudgets,
   bodyBytes,
   buildConventionSkillBody,
-  defaultSkillName,
+  firstFreeSkillName,
   isValidSkillName,
 } from "../../helpers";
 import { DISCARD_MODAL_WIDTH, FIELD_IDS, FIXED_SKILL_TYPE, MODAL_WIDTH } from "./constants";
-import { classifyCreateError, isModalDirty, type CreateError } from "./helpers";
+import { classifyCreateError, isModalDirty, renameBodyHeading, type CreateError } from "./helpers";
 import { AgentPicker } from "./_components/AgentPicker";
 import { BodyEditor } from "./_components/BodyEditor";
 import { BudgetStatus } from "./_components/BudgetStatus";
@@ -53,21 +53,36 @@ export function TransformToSkillModal({
   const t = useTranslations("conventions");
   const tShell = useTranslations("shell");
 
-  // The starting values. Lazy state: the body is built once, so later edits are never overwritten.
-  const [initial] = React.useState(() => {
-    const name = defaultSkillName(repoName);
-    return {
-      name,
-      description: t("modal.descriptionDefault", { count: conventions.length, repo: repoName }),
-      enabled: true,
-      body: buildConventionSkillBody({ repoName, skillName: name, conventions }),
-      agentIds: [] as string[],
-    };
-  });
-  const [name, setName] = React.useState(initial.name);
-  const [description, setDescription] = React.useState(initial.description);
-  const [enabled, setEnabled] = React.useState(initial.enabled);
-  const [body, setBody] = React.useState(initial.body);
+  const { data: skills = EMPTY } = useSkills();
+  const takenNames = skills.map((sk) => sk.name);
+
+  // Name and body are derived until the person edits them: the default is the first
+  // free name in the workspace, and an untouched body follows the current name.
+  const [typedName, setTypedName] = React.useState<string | null>(null);
+  const [editedBody, setEditedBody] = React.useState<string | null>(null);
+  const defaultName = firstFreeSkillName(repoName, takenNames);
+  const name = typedName ?? defaultName;
+  const buildBody = (skillName: string) => buildConventionSkillBody({ repoName, skillName, conventions });
+  const body = editedBody ?? buildBody(name);
+  const [description, setDescription] = React.useState(() =>
+    t("modal.descriptionDefault", { count: conventions.length, repo: repoName }),
+  );
+  const [enabled, setEnabled] = React.useState(true);
+
+  const initial = {
+    name: defaultName,
+    description: t("modal.descriptionDefault", { count: conventions.length, repo: repoName }),
+    enabled: true,
+    body: buildBody(defaultName),
+    agentIds: [] as string[],
+  };
+
+  const changeName = (next: string) => {
+    // An edited body keeps its text; only an untouched `# <name>` first line follows the rename.
+    if (editedBody !== null) setEditedBody(renameBodyHeading(editedBody, name, next));
+    setTypedName(next);
+    if (error?.kind === "name") setError(null);
+  };
   const [agentIds, setAgentIds] = React.useState<string[]>(initial.agentIds);
   const [error, setError] = React.useState<CreateError | null>(null);
   const [created, setCreated] = React.useState<CreateSkillFromConventionsResponse | null>(null);
@@ -75,7 +90,6 @@ export function TransformToSkillModal({
 
   const create = useCreateSkillFromConventions(repoId, LOCAL_ERRORS);
   const { data: agents = EMPTY } = useAgents();
-  const { data: skills = EMPTY } = useSkills();
   const links = useAgentsSkillLinks(agentIds);
 
   const agentNames = new Map(agents.map((a) => [a.id, a.name]));
@@ -177,10 +191,7 @@ export function TransformToSkillModal({
               <TextInput
                 id={FIELD_IDS.name}
                 value={name}
-                onChange={(v) => {
-                  setName(v);
-                  if (error?.kind === "name") setError(null);
-                }}
+                onChange={changeName}
                 mono
                 aria-invalid={nameInvalid || error?.kind === "name"}
               />
@@ -212,7 +223,7 @@ export function TransformToSkillModal({
               </FormField>
             </div>
             <FormField label={t("modal.body")} required>
-              <BodyEditor fileName={name || initial.name} body={body} bytes={size} onChange={setBody} />
+              <BodyEditor fileName={name || initial.name} body={body} bytes={size} onChange={setEditedBody} />
             </FormField>
             <FormField label={t("modal.attach")} htmlFor={FIELD_IDS.agents} hint={t("modal.attachHint", { max: MAX_ATTACHED_AGENTS })}>
               <AgentPicker id={FIELD_IDS.agents} agents={agents} selectedIds={agentIds} onChange={setAgentIds} />

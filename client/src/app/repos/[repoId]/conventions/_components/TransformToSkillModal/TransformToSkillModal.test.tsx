@@ -144,6 +144,39 @@ describe("defaults (AC-43)", () => {
   });
 });
 
+describe("name drives the body heading and the default", () => {
+  const firstLine = () => (bodyInput() as HTMLTextAreaElement).value.split("\n")[0];
+
+  it("rewrites the whole derived body when Name changes and the body is untouched", () => {
+    renderModal();
+    fireEvent.change(nameInput(), { target: { value: "team-rules" } });
+    expect(firstLine()).toBe("# team-rules");
+    expect((bodyInput() as HTMLTextAreaElement).value).toContain("House conventions for `payments-api`.");
+  });
+
+  it("updates only the H1 of an edited body when it still matches the previous name", () => {
+    renderModal();
+    const edited = (bodyInput() as HTMLTextAreaElement).value.replace("House conventions", "My own intro");
+    fireEvent.change(bodyInput(), { target: { value: edited } });
+    fireEvent.change(nameInput(), { target: { value: "team-rules" } });
+    expect((bodyInput() as HTMLTextAreaElement).value).toBe(edited.replace("# payments-api-conventions", "# team-rules"));
+  });
+
+  it("leaves an edited body alone when its first line is no longer the old H1", () => {
+    renderModal();
+    fireEvent.change(bodyInput(), { target: { value: "# Custom title\n\ntext" } });
+    fireEvent.change(nameInput(), { target: { value: "team-rules" } });
+    expect((bodyInput() as HTMLTextAreaElement).value).toBe("# Custom title\n\ntext");
+  });
+
+  it("defaults to the first free name when the base is taken", () => {
+    h.skills = [skillWithBody("payments-api-conventions", 1), skillWithBody("payments-api-conventions-2", 1)];
+    renderModal();
+    expect(nameInput()).toHaveValue("payments-api-conventions-3");
+    expect(firstLine()).toBe("# payments-api-conventions-3");
+  });
+});
+
 describe("creating (AC-6, AC-48)", () => {
   it("sends the edited fields, the selected convention ids and the attached agents", async () => {
     renderModal();

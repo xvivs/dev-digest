@@ -9,6 +9,7 @@ import {
   clipSnippet,
   confidenceTone,
   defaultSkillName,
+  firstFreeSkillName,
   effectiveSelection,
   knownErrorCode,
   fenceFor,
@@ -266,5 +267,21 @@ describe("knownErrorCode", () => {
     expect(knownErrorCode("boom: something")).toBeNull();
     expect(knownErrorCode("")).toBeNull();
     expect(knownErrorCode(null)).toBeNull();
+  });
+});
+
+describe("firstFreeSkillName", () => {
+  it("returns the base when free and the first free suffix otherwise", () => {
+    expect(firstFreeSkillName("payments-api", [])).toBe("payments-api-conventions");
+    expect(firstFreeSkillName("payments-api", ["payments-api-conventions", "payments-api-conventions-3"])).toBe(
+      "payments-api-conventions-2",
+    );
+  });
+
+  it("keeps a suffixed name valid for a very long repo name", () => {
+    const base = defaultSkillName("x".repeat(100));
+    const name = firstFreeSkillName("x".repeat(100), [base]);
+    expect(name).toHaveLength(64);
+    expect(isValidSkillName(name)).toBe(true);
   });
 });
