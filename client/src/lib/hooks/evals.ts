@@ -14,6 +14,7 @@ import {
   type CreateEvalSuiteBody,
   EVAL_SUITE_TERMINAL_STATUSES,
   EvalCarrier,
+  EvalCaseDetail,
   EvalSuite,
   EvalSuiteDetail,
   type EvalSuiteStatus,
@@ -34,6 +35,9 @@ export const evalKeys = {
   carriers: (skillId: string) => ["skill-eval-carriers", skillId] as const,
   suites: (skillId: string) => ["skill-eval-suites", skillId] as const,
   suite: (suiteId: string) => ["eval-suite", suiteId] as const,
+  /** Prefix of every case-detail query (drawer); invalidate with this after a suite or a case changes. */
+  caseDetailAll: ["eval-case"] as const,
+  caseDetail: (caseId: string, suiteId: string | null) => ["eval-case", caseId, suiteId] as const,
 };
 
 /** A suite that will never change again. */
@@ -55,6 +59,7 @@ function invalidateAfterSuite(qc: QueryClient, skillId: string) {
   qc.invalidateQueries({ queryKey: skillKeys.detail(skillId) });
   qc.invalidateQueries({ queryKey: skillKeys.list });
   qc.invalidateQueries({ queryKey: evalKeys.suites(skillId) });
+  qc.invalidateQueries({ queryKey: evalKeys.caseDetailAll });
 }
 
 // ---- Cases ----
@@ -97,7 +102,10 @@ export function useUpdateEvalCase(options?: MutationHookOptions) {
     meta: options?.meta,
     mutationFn: ({ caseId, patch }: UpdateEvalCaseArgs) =>
       api.put<SkillEvalCase>(`/eval-cases/${caseId}`, patch, SkillEvalCase),
-    onSuccess: (_data, { skillId }) => qc.invalidateQueries({ queryKey: evalKeys.cases(skillId) }),
+    onSuccess: (_data, { skillId }) => {
+      qc.invalidateQueries({ queryKey: evalKeys.cases(skillId) });
+      qc.invalidateQueries({ queryKey: evalKeys.caseDetailAll });
+    },
   });
 }
 
@@ -205,6 +213,7 @@ export function useStartEvalSuite(options?: MutationHookOptions) {
       seedSuiteDetail(qc, suite);
       qc.invalidateQueries({ queryKey: evalKeys.suites(skillId) });
       qc.invalidateQueries({ queryKey: evalKeys.suite(suite.id) });
+      qc.invalidateQueries({ queryKey: evalKeys.caseDetailAll });
     },
   });
 }
@@ -218,6 +227,27 @@ export function useCancelEvalSuite() {
     onSuccess: (_suite, { skillId, suiteId }) => {
       qc.invalidateQueries({ queryKey: evalKeys.suites(skillId) });
       qc.invalidateQueries({ queryKey: evalKeys.suite(suiteId) });
+    },
+  });
+}
+
+/**
+ * `GET /eval-cases/:id?suite_id=` — everything the eval drawer shows. Without
+ * `suiteId` the server picks the latest started suite containing the case.
+ * Polls every 2 s while that suite is running and stops on any other status,
+ * like `useEvalSuite`. A case that never ran has `suite: null`, so it is not polled.
+ */
+export function useEvalCaseDetail(caseId: string | null | undefined, suiteId: string | null | undefined) {
+  return useQuery({
+    queryKey: evalKeys.caseDetail(caseId ?? "", suiteId ?? null),
+    queryFn: () => {
+      const qs = suiteId ? `?suite_id=${encodeURIComponent(suiteId)}` : "";
+      return api.get<EvalCaseDetail>(`/eval-cases/${caseId}${qs}`, EvalCaseDetail);
+    },
+    enabled: !!caseId,
+    refetchInterval: (query) => {
+      const status = query.state.data?.suite?.status;
+      return status && isSuiteInFlight(status) ? EVAL_SUITE_POLL_INTERVAL_MS : false;
     },
   });
 }

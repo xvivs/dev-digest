@@ -6,6 +6,7 @@
    2. Estimate → POST /skills/:id/eval-suites creates an `estimated` suite and
       shows its $ estimate and model-call count. Nothing runs yet.
    3. Start → POST /eval-suites/:id/start, then the tab polls the suite.
+   With `caseTarget` the same flow runs one case (a per-case suite).
    Changing carrier or mode drops the estimate, so Start always runs what was
    priced. Both mutations own their errors (ADR 0011): the trust gate reads
    "vet skill first" with a way to Config, the rest map to their own copy. */
@@ -24,11 +25,14 @@ import { s } from "./styles";
 
 export function RunEvalModal({
   skill,
+  caseTarget = null,
   onClose,
   onStarted,
   onOpenConfig,
 }: {
   skill: Skill;
+  /** A per-case run: only this case is estimated and started (`case_ids`). Null = every runnable case. */
+  caseTarget?: { id: string; name: string } | null;
   onClose: () => void;
   /** The suite is running. The tab already follows it: start invalidates the suite list. */
   onStarted?: (suite: EvalSuite) => void;
@@ -69,7 +73,7 @@ export function RunEvalModal({
     if (!carrierId) return;
     start.reset();
     create.mutate(
-      { skillId: skill.id, body: { carrier_agent_id: carrierId, mode } },
+      { skillId: skill.id, body: { carrier_agent_id: carrierId, mode, ...(caseTarget ? { case_ids: [caseTarget.id] } : {}) } },
       // The link was disabled since the list loaded: refresh the offered carriers.
       { onError: (err) => runErrorCode(err) === "eval_carrier_not_linked" && carriers.refetch() },
     );
@@ -98,8 +102,8 @@ export function RunEvalModal({
   return (
     <Modal
       width={RUN_MODAL_WIDTH}
-      title={t("skillEvals.runModal.title")}
-      subtitle={t("skillEvals.runModal.subtitle")}
+      title={caseTarget ? t("skillEvals.runModal.caseTitle") : t("skillEvals.runModal.title")}
+      subtitle={caseTarget ? t("skillEvals.runModal.caseSubtitle", { name: caseTarget.name }) : t("skillEvals.runModal.subtitle")}
       closeLabel={tShell("ui.close")}
       onClose={onClose}
       footer={

@@ -10,6 +10,7 @@ export const RUN_MODES: readonly EvalSuiteMode[] = ["full", "quick"];
 export const RUN_ERROR_CODES = [
   "eval_skill_not_vetted",
   "eval_no_cases",
+  "eval_case_not_found",
   "eval_price_unknown",
   "eval_too_many_jobs",
   "eval_budget_exceeded",
