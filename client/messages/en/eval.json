@@ -163,9 +163,10 @@
       "title": "Run on evals",
       "subtitle": "Each case runs with the skill and without it on one carrier agent, using that agent's model.",
       "carrier": "Carrier agent",
-      "carrierHint": "Defaults to the agent that ran this skill the most in the last 30 days.",
-      "noAgents": "No agents yet. Create an agent to carry the eval.",
-      "carrierOption": "{name} · {model}",
+      "carrierHint": "Only agents that link this skill with the link enabled. Preselected: the one with the most completed runs of it.",
+      "noCarrier": "Link this skill to an agent (enabled) to run evals",
+      "openAgents": "Open Agents",
+      "carrierOption": "{name} · {runs, plural, one {# run} other {# runs}}",
       "mode": "Mode",
       "quick": "Quick",
       "quickHint": "1 repeat per arm. Always indicative, no verdict.",
@@ -188,6 +189,7 @@
         "eval_budget_exceeded": "The estimate is over the eval budget. Use Quick, or remove some cases.",
         "eval_suite_busy": "Another suite is running in this workspace. Wait for it to finish.",
         "eval_suite_stale": "The skill or the carrier changed since the estimate. Estimate again.",
+        "eval_carrier_not_linked": "This agent no longer has an enabled link to the skill. Pick another carrier, or enable the link.",
         "generic": "Could not start the eval: {message}"
       },
       "openConfig": "Open Config"

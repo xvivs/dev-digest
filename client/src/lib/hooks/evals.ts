@@ -13,6 +13,7 @@ import {
   type CreateEvalCaseInput,
   type CreateEvalSuiteBody,
   EVAL_SUITE_TERMINAL_STATUSES,
+  EvalCarrier,
   EvalSuite,
   EvalSuiteDetail,
   type EvalSuiteStatus,
@@ -25,10 +26,12 @@ export const EVAL_SUITE_POLL_INTERVAL_MS = 2000;
 
 const EVAL_CASE_LIST = SkillEvalCase.array();
 const EVAL_SUITE_LIST = EvalSuite.array();
+const EVAL_CARRIER_LIST = EvalCarrier.array();
 
 /** Query keys for the eval hooks — one place so invalidation cannot drift. */
 export const evalKeys = {
   cases: (skillId: string) => ["skill-eval-cases", skillId] as const,
+  carriers: (skillId: string) => ["skill-eval-carriers", skillId] as const,
   suites: (skillId: string) => ["skill-eval-suites", skillId] as const,
   suite: (suiteId: string) => ["eval-suite", suiteId] as const,
 };
@@ -104,6 +107,20 @@ export function useDeleteEvalCase() {
   return useMutation({
     mutationFn: ({ caseId }: { skillId: string; caseId: string }) => api.del<{ ok: boolean }>(`/eval-cases/${caseId}`),
     onSuccess: (_data, { skillId }) => qc.invalidateQueries({ queryKey: evalKeys.cases(skillId) }),
+  });
+}
+
+// ---- Carriers ----
+
+/**
+ * `GET /skills/:id/eval-carriers` — agents linking the skill with an enabled
+ * link, default first. The Run modal lists exactly these.
+ */
+export function useSkillEvalCarriers(skillId: string | null | undefined) {
+  return useQuery({
+    queryKey: evalKeys.carriers(skillId ?? ""),
+    queryFn: () => api.get<EvalCarrier[]>(`/skills/${skillId}/eval-carriers`, EVAL_CARRIER_LIST),
+    enabled: !!skillId,
   });
 }
 

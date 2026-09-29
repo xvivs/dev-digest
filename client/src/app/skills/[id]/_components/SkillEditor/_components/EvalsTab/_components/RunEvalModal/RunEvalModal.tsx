@@ -1,6 +1,8 @@
 /* RunEvalModal — "Run on evals" (plan Phase 3, ADR 0018 two-step start).
-   1. Pick the carrier agent (default: the one that ran this skill the most)
-      and Quick or Full.
+   1. Pick the carrier agent and Quick or Full. Only agents that link the
+      skill with an enabled link are offered (GET /skills/:id/eval-carriers),
+      the server's default is preselected; with none, the modal says to link
+      the skill to an agent and Estimate stays disabled.
    2. Estimate → POST /skills/:id/eval-suites creates an `estimated` suite and
       shows its $ estimate and model-call count. Nothing runs yet.
    3. Start → POST /eval-suites/:id/start, then the tab polls the suite.
@@ -10,17 +12,15 @@
 "use client";
 
 import React from "react";
+import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { Button, Modal } from "@devdigest/ui";
 import type { EvalSuite, EvalSuiteMode, Skill } from "@devdigest/shared";
-import { useAgents, useCreateEvalSuite, useSkillStats, useStartEvalSuite } from "@/lib/hooks";
+import { useCreateEvalSuite, useSkillEvalCarriers, useStartEvalSuite } from "@/lib/hooks";
 import { RunCostValue } from "@/components/run-cost-value";
 import { RUN_MODAL_WIDTH, RUN_MODES, TRUST_GATE_CODE } from "./constants";
-import { defaultCarrierId, estimateCaseCount, runErrorCode } from "./helpers";
+import { estimateCaseCount, preselectedCarrierId, runErrorCode } from "./helpers";
 import { s } from "./styles";
-
-/** The Stats window the default carrier is taken from (the card's window, decision 11). */
-const CARRIER_STATS_WINDOW = "30d";
 
 export function RunEvalModal({
   skill,
@@ -37,16 +37,18 @@ export function RunEvalModal({
 }) {
   const t = useTranslations("eval");
   const tShell = useTranslations("shell");
-  const agents = useAgents();
-  const stats = useSkillStats(skill.id, CARRIER_STATS_WINDOW);
+  const carriers = useSkillEvalCarriers(skill.id);
   const create = useCreateEvalSuite({ meta: { errorSurface: "local" } });
   const start = useStartEvalSuite({ meta: { errorSurface: "local" } });
   const ids = { carrier: React.useId(), carrierHint: React.useId(), mode: React.useId() };
 
   const [carrierChoice, setCarrierChoice] = React.useState<string | null>(null);
   const [mode, setMode] = React.useState<EvalSuiteMode>("full");
-  const agentList = agents.data ?? [];
-  const carrierId = carrierChoice ?? defaultCarrierId(agentList, stats.data?.usage.agents);
+  const carrierList = carriers.data ?? [];
+  const noCarrier = carriers.isSuccess && carrierList.length === 0;
+  // A stale choice (carrier no longer listed) falls back to the server default.
+  const chosen = carrierList.some((c) => c.agent_id === carrierChoice) ? carrierChoice : null;
+  const carrierId = chosen ?? preselectedCarrierId(carriers.data);
   const estimate = create.data ?? null;
 
   // A new carrier or mode invalidates the quote: Start must run what was priced.
@@ -66,7 +68,11 @@ export function RunEvalModal({
   const onEstimate = () => {
     if (!carrierId) return;
     start.reset();
-    create.mutate({ skillId: skill.id, body: { carrier_agent_id: carrierId, mode } });
+    create.mutate(
+      { skillId: skill.id, body: { carrier_agent_id: carrierId, mode } },
+      // The link was disabled since the list loaded: refresh the offered carriers.
+      { onError: (err) => runErrorCode(err) === "eval_carrier_not_linked" && carriers.refetch() },
+    );
   };
   const onStart = () => {
     if (!estimate) return;
@@ -120,27 +126,32 @@ export function RunEvalModal({
           <label htmlFor={ids.carrier} style={s.label}>
             {t("skillEvals.runModal.carrier")}
           </label>
-          {agents.isSuccess && agentList.length === 0 ? (
-            <p style={s.hint}>{t("skillEvals.runModal.noAgents")}</p>
+          {noCarrier ? (
+            <div style={s.hint}>
+              <p style={s.noCarrier}>{t("skillEvals.runModal.noCarrier")}</p>
+              <Link href="/agents">{t("skillEvals.runModal.openAgents")}</Link>
+            </div>
           ) : (
             <select
               id={ids.carrier}
               aria-describedby={ids.carrierHint}
               value={carrierId ?? ""}
               onChange={(e) => pickCarrier(e.target.value)}
-              disabled={!agents.isSuccess}
+              disabled={!carriers.isSuccess}
               style={s.select}
             >
-              {agentList.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {t("skillEvals.runModal.carrierOption", { name: a.name, model: a.model })}
+              {carrierList.map((c) => (
+                <option key={c.agent_id} value={c.agent_id}>
+                  {t("skillEvals.runModal.carrierOption", { name: c.agent_name, runs: c.runs })}
                 </option>
               ))}
             </select>
           )}
-          <span id={ids.carrierHint} style={s.hint}>
-            {t("skillEvals.runModal.carrierHint")}
-          </span>
+          {!noCarrier && (
+            <span id={ids.carrierHint} style={s.hint}>
+              {t("skillEvals.runModal.carrierHint")}
+            </span>
+          )}
         </div>
 
         <fieldset style={s.fieldset}>

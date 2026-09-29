@@ -16,6 +16,7 @@ export const s = {
   } satisfies CSSProperties,
   radio: { display: "flex", alignItems: "flex-start", gap: 10, cursor: "pointer", fontSize: 13.5 } satisfies CSSProperties,
   radioTitle: { display: "block", fontWeight: 600, color: "var(--text-primary)" } satisfies CSSProperties,
+  noCarrier: { margin: "0 0 6px", fontSize: 13, color: "var(--text-secondary)" } satisfies CSSProperties,
   hint: { display: "block", fontSize: 12, color: "var(--text-muted)", lineHeight: 1.45 } satisfies CSSProperties,
   estimate: {
     display: "flex",

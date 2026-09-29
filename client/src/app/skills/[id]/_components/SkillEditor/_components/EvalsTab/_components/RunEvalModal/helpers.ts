@@ -1,19 +1,14 @@
-import type { Agent, EvalSuite, SkillAgentUsage } from "@devdigest/shared";
+import type { EvalCarrier, EvalSuite } from "@devdigest/shared";
 import { ApiError } from "@/lib/api";
 import { RUN_ERROR_CODES, type RunErrorCode } from "./constants";
 
 /**
- * Default carrier (skill-impact decision 5): the agent that ran this skill the
- * most in the Stats window. Falls back to the first agent when none has runs,
- * and to null when there are no agents at all. Only agents that still exist
- * are eligible.
+ * The carrier to preselect: the server's `is_default` (skill-impact decision 5:
+ * most completed runs among enabled-link agents). Falls back to the first
+ * carrier defensively, null when the skill has no eligible carrier.
  */
-export function defaultCarrierId(agents: readonly Agent[], usage: readonly SkillAgentUsage[] | undefined): string | null {
-  const exists = new Set(agents.map((a) => a.id));
-  const busiest = [...(usage ?? [])]
-    .filter((u) => u.runs > 0 && exists.has(u.agent_id))
-    .sort((a, b) => b.runs - a.runs || a.agent_name.localeCompare(b.agent_name))[0];
-  return busiest?.agent_id ?? agents[0]?.id ?? null;
+export function preselectedCarrierId(carriers: readonly EvalCarrier[] | undefined): string | null {
+  return carriers?.find((c) => c.is_default)?.agent_id ?? carriers?.[0]?.agent_id ?? null;
 }
 
 /** Cases behind an estimate: `total_jobs = cases × 2 arms × repeats`. */

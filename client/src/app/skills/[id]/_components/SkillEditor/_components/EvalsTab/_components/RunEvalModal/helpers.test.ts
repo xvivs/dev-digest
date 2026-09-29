@@ -1,23 +1,19 @@
 import { describe, it, expect } from "vitest";
-import type { Agent, SkillAgentUsage } from "@devdigest/shared";
+import type { EvalCarrier } from "@devdigest/shared";
 import { ApiError } from "@/lib/api";
-import { defaultCarrierId, estimateCaseCount, runErrorCode } from "./helpers";
+import { estimateCaseCount, preselectedCarrierId, runErrorCode } from "./helpers";
 
-const agent = (id: string) => ({ id, name: id }) as Agent;
-const usage = (agent_id: string, runs: number): SkillAgentUsage => ({ agent_id, agent_name: agent_id, status: "effective", runs });
+const carrier = (agent_id: string, is_default: boolean): EvalCarrier => ({ agent_id, agent_name: agent_id, runs: 1, is_default });
 
-describe("defaultCarrierId", () => {
-  it("picks the agent with the most runs of this skill", () => {
-    expect(defaultCarrierId([agent("a"), agent("b")], [usage("a", 3), usage("b", 40)])).toBe("b");
+describe("preselectedCarrierId", () => {
+  it("is the server's default carrier", () => {
+    expect(preselectedCarrierId([carrier("a", false), carrier("b", true)])).toBe("b");
   });
 
-  it("ignores deleted agents and zero-run links, falling back to the first agent", () => {
-    expect(defaultCarrierId([agent("a"), agent("b")], [usage("gone", 99), usage("b", 0)])).toBe("a");
-    expect(defaultCarrierId([agent("a")], undefined)).toBe("a");
-  });
-
-  it("is null with no agents", () => {
-    expect(defaultCarrierId([], [usage("a", 3)])).toBeNull();
+  it("falls back to the first carrier when none is flagged, and is null when the list is empty", () => {
+    expect(preselectedCarrierId([carrier("a", false), carrier("b", false)])).toBe("a");
+    expect(preselectedCarrierId([])).toBeNull();
+    expect(preselectedCarrierId(undefined)).toBeNull();
   });
 });
 
@@ -31,6 +27,7 @@ describe("estimateCaseCount", () => {
 describe("runErrorCode", () => {
   it("maps known server codes and nothing else", () => {
     expect(runErrorCode(new ApiError("x", 409, "eval_skill_not_vetted"))).toBe("eval_skill_not_vetted");
+    expect(runErrorCode(new ApiError("x", 422, "eval_carrier_not_linked"))).toBe("eval_carrier_not_linked");
     expect(runErrorCode(new ApiError("x", 500, "internal"))).toBeNull();
     expect(runErrorCode(new Error("x"))).toBeNull();
   });

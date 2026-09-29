@@ -7,6 +7,7 @@ import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
 import { screen, cleanup, fireEvent, within, waitFor, act } from "@testing-library/react";
 import type {
   Agent,
+  EvalCarrier,
   EvalSuite,
   EvalSuiteDetail,
   PrDetail,
@@ -139,7 +140,14 @@ const DETAIL: EvalSuiteDetail = {
 const AGENTS = [
   { id: "a0", name: "Quick look", model: "gpt-4o-mini" },
   { id: "a1", name: "Strict reviewer", model: "claude-sonnet" },
+  // Exists, but its link to the skill is disabled: never a carrier.
+  { id: "a2", name: "General Reviewer", model: "gpt-4o" },
 ] as Agent[];
+
+const CARRIERS: EvalCarrier[] = [
+  { agent_id: "a1", agent_name: "Strict reviewer", runs: 120, is_default: true },
+  { agent_id: "a0", agent_name: "Quick look", runs: 22, is_default: false },
+];
 
 const STATS: SkillStats = {
   skill_id: "sk1",
@@ -168,6 +176,7 @@ const PULL = {
 } as unknown as PrDetail;
 
 interface World {
+  carriers: EvalCarrier[];
   cases: SkillEvalCase[];
   suites: EvalSuite[];
   detail: EvalSuiteDetail | (() => EvalSuiteDetail);
@@ -180,6 +189,7 @@ function routeGet(path: string, schema?: Schema) {
   if (path === "/skills/sk1/eval-cases") return answer(world.cases, schema);
   if (path === "/skills/sk1/eval-suites") return answer(world.suites, schema);
   if (path === "/eval-suites/su1") return answer(typeof world.detail === "function" ? world.detail() : world.detail, schema);
+  if (path === "/skills/sk1/eval-carriers") return answer(world.carriers, schema);
   if (path === "/agents") return answer(AGENTS, schema);
   if (path === "/skills/sk1/stats?window=30d") return answer(STATS, schema);
   if (path === "/repos") return answer(REPOS, schema);
@@ -197,7 +207,7 @@ function renderTab(skill: Skill = SKILL) {
 }
 
 beforeEach(() => {
-  world = { cases: [CASE_DEFECT, CASE_CLEAN], suites: [SUITE], detail: DETAIL };
+  world = { carriers: CARRIERS, cases: [CASE_DEFECT, CASE_CLEAN], suites: [SUITE], detail: DETAIL };
   h.get.mockReset().mockImplementation(routeGet);
   h.post.mockReset();
   h.put.mockReset();
@@ -249,7 +259,7 @@ describe("EvalsTab — results", () => {
       stale: true,
       results: { ...SUITE.results!, verdict: "indicative" },
     };
-    world = { cases: [CASE_LEGACY], suites: [quick], detail: { ...DETAIL, ...quick, cases: [], runs: [] } };
+    world = { carriers: CARRIERS, cases: [CASE_LEGACY], suites: [quick], detail: { ...DETAIL, ...quick, cases: [], runs: [] } };
     renderTab();
     const summary = await screen.findByRole("region", { name: "Latest suite" });
     expect(within(summary).getByText("Indicative")).toBeInTheDocument();
@@ -264,7 +274,7 @@ describe("EvalsTab — results", () => {
   });
 
   it("ignores estimate-only suites and shows the empty state with no cases", async () => {
-    world = { cases: [], suites: [{ ...SUITE, id: "est", status: "estimated", results: null }], detail: DETAIL };
+    world = { carriers: CARRIERS, cases: [], suites: [{ ...SUITE, id: "est", status: "estimated", results: null }], detail: DETAIL };
     renderTab();
     expect(await screen.findByText(/No eval cases yet/)).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "Latest suite" })).not.toBeInTheDocument();
@@ -306,10 +316,38 @@ describe("EvalsTab — Run modal", () => {
     await screen.findByText("stripe-key-leak");
     fireEvent.click(screen.getByRole("button", { name: "Run all" }));
     const dialog = await screen.findByRole("dialog", { name: "Run on evals" });
-    // Default carrier: the agent with the most runs of this skill (decision 5).
+    // Preselected: the server's `is_default` carrier (decision 5).
     await waitFor(() => expect(within(dialog).getByLabelText("Carrier agent")).toHaveValue("a1"));
     return { ...view, dialog };
   }
+
+  it("lists only the eligible carriers (enabled link), never an agent that does not link the skill", async () => {
+    const { dialog } = await openModal();
+    const options = within(within(dialog).getByLabelText("Carrier agent")).getAllByRole("option");
+    expect(options.map((o) => o.getAttribute("value"))).toEqual(["a1", "a0"]);
+    expect(within(dialog).queryByText(/General Reviewer/)).not.toBeInTheDocument();
+    expect(h.get).not.toHaveBeenCalledWith("/agents", expect.anything());
+  });
+
+  it("with no eligible carrier: empty state pointing to Agents, and Estimate is disabled", async () => {
+    world.carriers = [];
+    const view = renderTab();
+    await screen.findByText("stripe-key-leak");
+    fireEvent.click(screen.getByRole("button", { name: "Run all" }));
+    const dialog = await screen.findByRole("dialog", { name: "Run on evals" });
+    expect(await within(dialog).findByText("Link this skill to an agent (enabled) to run evals")).toBeInTheDocument();
+    expect(within(dialog).getByRole("link", { name: "Open Agents" })).toHaveAttribute("href", "/agents");
+    expect(within(dialog).queryByLabelText("Carrier agent")).not.toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "Estimate" })).toBeDisabled();
+    view.unmount();
+  });
+
+  it("a carrier that lost its link between load and Estimate reads as 'link the skill'", async () => {
+    h.post.mockRejectedValue(new ApiError("not linked", 422, "eval_carrier_not_linked"));
+    const { dialog } = await openModal();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Estimate" }));
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent(/enabled link/);
+  });
 
   it("estimates, shows $ and call count, then starts the priced suite", async () => {
     h.post.mockImplementation((path: string, _b: unknown, schema?: Schema) => {
@@ -513,6 +551,7 @@ describe("EvalsTab — errored cases", () => {
       results: { passing: 0, total: 0, caught: 0, regressed: 0, flaky: 0, errored: 1, delta_unexpected: 0, verdict: "indicative" },
     };
     world = {
+      carriers: CARRIERS,
       cases: [CASE_DEFECT],
       suites: [suite],
       detail: {

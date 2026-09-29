@@ -15,6 +15,7 @@ export const RUN_ERROR_CODES = [
   "eval_budget_exceeded",
   "eval_suite_busy",
   "eval_suite_stale",
+  "eval_carrier_not_linked",
 ] as const;
 export type RunErrorCode = (typeof RUN_ERROR_CODES)[number];
 
