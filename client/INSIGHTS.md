@@ -42,6 +42,8 @@ lives in the engineering-insights skill).
 
 - **A dialog stack must register on open in mount order, not effect order: when an inner dialog mounts in the same commit as its outer one, the child's effect runs first** — a naive push-on-effect stack would hand keyboard (Escape, Tab trap) to the OUTER dialog. `useDialogFocus` handles this in `pushDialog` (`client/src/vendor/ui/hooks/useDialogFocus.ts`); keep that ordering when adding another modal surface (e.g. the prompt Modal inside `RunTraceDrawer`). _(2026-09-28)_
 
+- **A test that mocks `api.get` skips ADR 0007 response validation, so fixtures can drift from the contract and still pass; have the fake parse through the schema the hook hands it** — `h.get.mockImplementation((_p, schema) => Promise.resolve(schema ? schema.parse(data) : data))` (`client/src/app/skills/[id]/_components/SkillEditor/_components/StatsTab/StatsTab.test.tsx:90`). `VersionsTab.test.tsx` mocks `api.get` without this, despite its header claiming the schema is exercised. _(2026-09-29)_
+
 ## What Doesn't Work
 
 - **`IconBtn` is the wrong primitive for a row's trailing actions, and its `danger` prop has zero call sites** — `src/vendor/ui/primitives/IconBtn.tsx:36` already encodes exactly the hover colours a delete glyph wants (`danger && h ? var(--crit) : h ? var(--text-primary) : var(--text-secondary)`), which makes it look like the obvious reuse. It is not: it also forces a `size × size` box (default 30, vs ~19 for a bare 15px glyph) and its own `var(--bg-hover)` fill, both of which fight the "bare glyphs, no button chrome" rule the timeline row is built on. Meanwhile `grep -r '<IconBtn' src` shows the `danger` prop used nowhere, while four hand-rolled trash buttons sit at a static `var(--text-muted)` with no hover at all (`app/agents/_components/AgentCard/AgentCard.tsx:41`, `pulls/[number]/_components/ReviewRunAccordion/ReviewRunAccordion.tsx:117`, `vendor/ui/kit/Dropdown.tsx:35`). Read that prop as an unused sketch, not a convention — the timeline row uses a local `RunHistory/_components/RowAction/` that keeps the glyph bare and only swaps `color`. _(2026-09-20)_
@@ -166,6 +168,8 @@ lives in the engineering-insights skill).
 
 - **`screen.getByRole("status")` throws "multiple elements" in any test that wraps `<ToastProvider>`, because the toast host is itself a `role="status"` live region** (`client/src/lib/toast.tsx`). Query the text and assert the role on it instead: `expect(screen.getByText(/^Draft from v2\./)).toHaveAttribute("role", "status")` (`client/src/app/skills/[id]/_components/SkillEditor/_components/ConfigTab/ConfigTab.test.tsx`). _(2026-09-29)_
 
+- **`tsc` fails with TS2742 "The inferred type of 's' cannot be named without a reference to '.pnpm/csstype@…'" when a `styles.ts` object spreads a `const cell: CSSProperties = {…}` into its `satisfies CSSProperties` entries** — the widened annotation leaks csstype's union types into the exported `s`. Declare the shared piece `as const satisfies CSSProperties` instead (`client/src/app/skills/[id]/_components/SkillEditor/_components/StatsTab/styles.ts:3`). _(2026-09-29)_
+
 ## Session Notes
 
 - Cost Badge (L01, client half): added `RunCostValue` + `formatCost`/`exactCost`
@@ -216,6 +220,9 @@ Shipped `/skills` (list, Config/Preview, placeholder tabs, trust modal), the age
 
 ### 2026-09-29 — client session (skill Versions, Phase 1)
 Built the skill version hooks with contract response schemas and a Versions tab. It has a list with gaps for lost history, an inline jsdiff diff (lazy-loaded) and an Edit / Restore / Cancel popup. ConfigTab can open a snapshot as a draft through `?fromVersion=N` and has a "What changed" note. The server half was built in parallel by another agent. The browser pass ran against an in-memory mock API, because running migrations would have applied that agent's in-progress 0017 migration.
+
+### 2026-09-29 — client session (skill Stats, Phase 2)
+Added `useSkillStats(id, window)` (key `['skill-stats', id, window]`, `keepPreviousData`), the Stats tab (7d/30d/90d in `?window=`, Impact, Usage, Cost, By version) and the skill card's "N agents · M runs · verdict" line with a shared `VerdictBadge`. Browser-checked against a mock API on :3199, not the real server, because the other agent's 0018/0019 eval migrations were uncommitted in the tree. Sparkline and BarRow are unused: the contract has no time series, and by-version rows carry a cost that BarRow's string suffix cannot render with provenance.
 
 ## Open Questions
 
