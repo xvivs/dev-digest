@@ -44,6 +44,8 @@ lives in the engineering-insights skill).
 
 - **A test that mocks `api.get` skips ADR 0007 response validation, so fixtures can drift from the contract and still pass; have the fake parse through the schema the hook hands it** — `h.get.mockImplementation((_p, schema) => Promise.resolve(schema ? schema.parse(data) : data))` (`client/src/app/skills/[id]/_components/SkillEditor/_components/StatsTab/StatsTab.test.tsx:90`). `VersionsTab.test.tsx` mocks `api.get` without this, despite its header claiming the schema is exercised. _(2026-09-29)_
 
+- **Catch a polled query's running → terminal transition inside its `queryFn`, by comparing against `queryClient.getQueryData(key)`, not in a `useEffect` over `data.status`** — `useEvalSuite` (`client/src/lib/hooks/evals.ts:133`) invalidates stats, the skill and the list exactly once per transition, and needs no ref or effect. The catch is a suite that finishes before the first poll: nothing is cached to compare against. `useStartEvalSuite` therefore seeds the detail cache as `running` from the start response (`seedSuiteDetail`). _(2026-09-29)_
+
 ## What Doesn't Work
 
 - **`IconBtn` is the wrong primitive for a row's trailing actions, and its `danger` prop has zero call sites** — `src/vendor/ui/primitives/IconBtn.tsx:36` already encodes exactly the hover colours a delete glyph wants (`danger && h ? var(--crit) : h ? var(--text-primary) : var(--text-secondary)`), which makes it look like the obvious reuse. It is not: it also forces a `size × size` box (default 30, vs ~19 for a bare 15px glyph) and its own `var(--bg-hover)` fill, both of which fight the "bare glyphs, no button chrome" rule the timeline row is built on. Meanwhile `grep -r '<IconBtn' src` shows the `danger` prop used nowhere, while four hand-rolled trash buttons sit at a static `var(--text-muted)` with no hover at all (`app/agents/_components/AgentCard/AgentCard.tsx:41`, `pulls/[number]/_components/ReviewRunAccordion/ReviewRunAccordion.tsx:117`, `vendor/ui/kit/Dropdown.tsx:35`). Read that prop as an unused sketch, not a convention — the timeline row uses a local `RunHistory/_components/RowAction/` that keeps the glyph bare and only swaps `color`. _(2026-09-20)_
@@ -97,6 +99,8 @@ lives in the engineering-insights skill).
 - **The server's `blockers` count is not "unresolved CRITICALs": it counts findings at or above the agent's `ci_fail_on`, ignores `dismissed_at`, and is frozen at run completion** — source: `reviewer-core/src/output/to-review.ts` (`countBlockers`). The client used to recompute `severity === "CRITICAL" && !f.dismissed_at` in `ReviewRunAccordion`, so the accordion and the timeline disagreed on the same run. The accordion now takes `runBlockers` from `RunSummary.blockers` and falls back to `countBlockers` in `client/src/lib/blockers.ts` only for reviews with no run. _(2026-09-28)_
 
 - **The e2e flow matches the verdict badge by its lowercase source text, not what the user sees** — `e2e/specs/04-pr-findings.flow.json:15` waits for `"request changes"`, while `Badge` uppercases it via CSS (`client/src/vendor/ui/primitives/Badge.tsx:75`). Changing the verdict copy (e.g. to title case, or moving it to next-intl with different wording) breaks the browser suite without failing a single unit test. _(2026-09-28)_
+
+- **`Modal` (`@devdigest/ui`) gives its body no padding; each caller's body style carries `padding: 24` to line up with the 24px header and footer** — `client/src/vendor/ui/kit/Modal.tsx:81` renders `{children}` in a bare scroll container, while `VetSkillModal/styles.ts:5` sets `body: { padding: 24 }`. A body without it sits flush against the dialog border. Tests stay green; only a browser shows it (the Evals modals shipped this way until `d3f8734`). _(2026-09-29)_
 
 ## Tool & Library Notes
 
@@ -170,6 +174,8 @@ lives in the engineering-insights skill).
 
 - **`tsc` fails with TS2742 "The inferred type of 's' cannot be named without a reference to '.pnpm/csstype@…'" when a `styles.ts` object spreads a `const cell: CSSProperties = {…}` into its `satisfies CSSProperties` entries** — the widened annotation leaks csstype's union types into the exported `s`. Declare the shared piece `as const satisfies CSSProperties` instead (`client/src/app/skills/[id]/_components/SkillEditor/_components/StatsTab/styles.ts:3`). _(2026-09-29)_
 
+- **In a working tree shared with a concurrent agent, `git rm <path>` stages the deletion right away, and a later `git add <other paths> && git commit` ships it with those files, even though you never named it** — `git commit` with no pathspec commits the whole index. That is how the PlaceholderTab deletion landed in the helpers refactor `4bd3ad0`, a commit whose `SkillEditor.tsx` still imports that component. Delete with plain `rm`, stage the deletion only in the commit that removes its last import, and run `git diff --cached --stat` before every commit. _(2026-09-29)_
+
 ## Session Notes
 
 - Cost Badge (L01, client half): added `RunCostValue` + `formatCost`/`exactCost`
@@ -223,6 +229,9 @@ Built the skill version hooks with contract response schemas and a Versions tab.
 
 ### 2026-09-29 — client session (skill Stats, Phase 2)
 Added `useSkillStats(id, window)` (key `['skill-stats', id, window]`, `keepPreviousData`), the Stats tab (7d/30d/90d in `?window=`, Impact, Usage, Cost, By version) and the skill card's "N agents · M runs · verdict" line with a shared `VerdictBadge`. Browser-checked against a mock API on :3199, not the real server, because the other agent's 0018/0019 eval migrations were uncommitted in the tree. Sparkline and BarRow are unused: the contract has no time series, and by-version rows carry a cost that BarRow's string suffix cannot render with provenance.
+
+### 2026-09-29 — client session (skill Evals tab, Phase 3)
+Built the Evals tab. It shows the latest started suite's verdict and results line, or live progress with Cancel; case rows show both arms with outcome and unexpected badges. The Run modal takes carrier and mode, gives the estimate ($ and call count), then Start, and shows the trust gate as "vet skill first". The case editor accepts a pasted diff or a PR's files, plus must_find / must_not_find rows. The header "Run on evals" button now works. Checked only against a mock API in the browser, because the server eval routes were still being built. Per-case runs are not built: `CreateEvalSuiteBody` has no case subset.
 
 ## Open Questions
 
