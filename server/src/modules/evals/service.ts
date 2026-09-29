@@ -13,6 +13,7 @@
  * already sent to the provider still finishes and is billed (ADR 0018). One
  * API process per DB is assumed, as in `ReviewService.reapStaleRuns`.
  */
+import { EVAL_CASE_DIFF_MAX } from '@devdigest/shared';
 import type {
   EvalCaseInputSource,
   EvalCaseSourceMeta,
@@ -156,6 +157,13 @@ export class EvalsService {
     const noPatch = wanted.filter((p) => !byPath.get(p)?.patch);
     if (noPatch.length > 0) throw new EvalCaseFileNotInPrError(noPatch, 'no_patch');
     const inputDiff = unifiedDiffFromPatches(wanted.map((path) => ({ path, patch: byPath.get(path)!.patch! })));
+    // Same cap as a pasted diff: a case is a focused example, not a whole PR.
+    if (inputDiff.length > EVAL_CASE_DIFF_MAX) {
+      throw new ValidationError(`The selected files' diff exceeds ${EVAL_CASE_DIFF_MAX} characters`, {
+        field: 'source.files',
+        chars: inputDiff.length,
+      });
+    }
     return {
       inputDiff,
       inputFiles: wanted,

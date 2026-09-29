@@ -360,6 +360,23 @@ describe('EvalsService.createSuite', () => {
   });
 });
 
+describe('EvalsService.createCase', () => {
+  it('a PR-built diff over the paste cap is refused (422), like an oversized paste', async () => {
+    const env = setup();
+    env.deps.prs = {
+      getPull: async () => ({ id: 'pr', number: 1, headSha: 'h' }),
+      getPrFiles: async () => [{ path: 'a.ts', patch: `@@ -1 +1 @@\n+${'x'.repeat(200_001)}` }],
+    };
+    await expect(
+      env.service.createCase(WS, 'sk', {
+        name: 'big',
+        source: { kind: 'pr', pr_id: '00000000-0000-4000-8000-000000000000', files: ['a.ts'] },
+        expectation: EXPECTATION,
+      }),
+    ).rejects.toMatchObject({ code: 'validation_error', statusCode: 422 });
+  });
+});
+
 describe('EvalsService runner', () => {
   let env: ReturnType<typeof setup>;
   beforeEach(() => {
