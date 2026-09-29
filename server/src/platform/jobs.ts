@@ -27,7 +27,19 @@ export interface EnqueuedJob {
   done: Promise<void>;
 }
 
+/** Minimal structural logger (Fastify's `app.log` satisfies it). */
+export interface JobLogger {
+  warn(obj: Record<string, unknown>, msg: string): void;
+}
+
+/** Strip `user:password@` from any URL in a message so a token never reaches logs or the jobs row. */
+export function redactCredentials(message: string): string {
+  return message.replace(/(https?:\/\/)[^/\s@]+@/gi, '$1***@');
+}
+
 export class JobRunner {
+  /** Set once from app.ts (`app.log`); until then failures are still recorded in `jobs`. */
+  logger?: JobLogger;
   private queue: PQueue;
   private handlers = new Map<string, JobHandler>();
   private timeoutMs: number;
@@ -90,12 +102,25 @@ export class JobRunner {
           .set({
             status: 'failed',
             finishedAt: new Date(),
-            error: (err as Error).message,
+            error: redactCredentials((err as Error).message),
           })
           .where(eq(t.jobs.id, jobId));
         throw err;
       }
     }) as Promise<void>;
+
+    // `done` rejects when the job ultimately fails. Many callers are
+    // fire-and-forget (repos add/refresh, index follow-up, resync) and never
+    // read it; an unobserved rejection kills the process on Node >= 15. The
+    // failure is already persisted on the `jobs` row above, so observe it here
+    // and log. Callers that do read `done` still get the rejection: this
+    // attaches a second, independent handler to the same promise.
+    done.catch((err: unknown) => {
+      this.logger?.warn(
+        { jobId, kind, err: redactCredentials(err instanceof Error ? err.message : String(err)) },
+        'job failed',
+      );
+    });
 
     return { id: jobId, done };
   }

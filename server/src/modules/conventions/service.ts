@@ -137,12 +137,17 @@ export class ConventionsService {
     // would answer every later start with 409 until the boot-time reaper runs.
     try {
       const job = await this.deps.jobs.enqueue(workspaceId, { scanId: scan.id });
-      await this.store.setScanJob(scan.id, job.id);
       // AC-18: retries exhausted or a non-retryable throw → the scan is failed, never left running.
+      // Attached BEFORE any further await: if `setScanJob` throws, `done` must still be observed.
       job.done.catch((err: unknown) => {
-        this.deps.onJobError?.(scan.id, err);
+        try {
+          this.deps.onJobError?.(scan.id, err);
+        } catch {
+          // a throwing logger must not turn into an unhandled rejection
+        }
         return this.markFailed(scan.id, err).catch(() => undefined);
       });
+      await this.store.setScanJob(scan.id, job.id);
     } catch (err) {
       await this.store.failScan(scan.id, errorMessage(err));
       throw err;
