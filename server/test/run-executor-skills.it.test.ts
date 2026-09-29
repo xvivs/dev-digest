@@ -15,6 +15,10 @@ import { MockLLMProvider, MockEmbedder, MockGitClient } from '../src/adapters/mo
 import * as t from '../src/db/schema.js';
 import type { Review } from '@devdigest/shared';
 import { estimateTokens } from '@devdigest/reviewer-core';
+import { createHash } from 'node:crypto';
+import { eq, sql } from 'drizzle-orm';
+
+const sha256 = (text: string) => createHash('sha256').update(text, 'utf8').digest('hex');
 
 const hasDocker = await dockerAvailable();
 const d = hasDocker ? describe : describe.skip;
@@ -101,6 +105,21 @@ d('ReviewRunExecutor resolves effective skills (Testcontainers pg)', () => {
     return { pr: pr!, agent };
   }
 
+  /**
+   * `agent_runs` turns terminal BEFORE the trace is saved, so polling the
+   * status alone races the trace read. The trace is the executor's last
+   * write (run_skills lands just before it); wait for it.
+   */
+  async function waitForTrace(runId: string, timeoutMs = 10_000): Promise<void> {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+      const rows = await pg.handle.db.select().from(t.runTraces).where(eq(t.runTraces.runId, runId));
+      if (rows.length > 0) return;
+      await new Promise((r) => setTimeout(r, 25));
+    }
+    throw new Error(`no run_traces row for ${runId} after ${timeoutMs}ms`);
+  }
+
   async function createSkill(app: Awaited<ReturnType<typeof appWith>>, over: Record<string, unknown> = {}) {
     const res = await app.inject({
       method: 'POST',
@@ -123,6 +142,7 @@ d('ReviewRunExecutor resolves effective skills (Testcontainers pg)', () => {
     const started = await app.inject({ method: 'POST', url: `/pulls/${pr.id}/review`, payload: { agentId: agent.id } });
     const runId = started.json().runs[0].run_id;
     await waitForPrRuns(pg.handle.db, pr.id, { expected: 1 });
+    await waitForTrace(runId);
 
     const trace = (await app.inject({ method: 'GET', url: `/runs/${runId}/trace` })).json();
     expect(trace.prompt_assembly.skills_used ?? null).toBeNull();
@@ -159,6 +179,7 @@ d('ReviewRunExecutor resolves effective skills (Testcontainers pg)', () => {
     const started = await app.inject({ method: 'POST', url: `/pulls/${pr.id}/review`, payload: { agentId: agent.id } });
     const runId = started.json().runs[0].run_id;
     await waitForPrRuns(pg.handle.db, pr.id, { expected: 1 });
+    await waitForTrace(runId);
 
     const trace = (await app.inject({ method: 'GET', url: `/runs/${runId}/trace` })).json();
     const used = trace.prompt_assembly.skills_used as { id: string; name: string; version: number; sha256: string; tokens: number }[];
@@ -194,6 +215,7 @@ d('ReviewRunExecutor resolves effective skills (Testcontainers pg)', () => {
     // Before vetting: excluded.
     const before = await app.inject({ method: 'POST', url: `/pulls/${pr.id}/review`, payload: { agentId: agent.id } });
     await waitForPrRuns(pg.handle.db, pr.id, { expected: 1 });
+    await waitForTrace(before.json().runs[0].run_id);
     const beforeTrace = (
       await app.inject({ method: 'GET', url: `/runs/${before.json().runs[0].run_id}/trace` })
     ).json();
@@ -204,10 +226,80 @@ d('ReviewRunExecutor resolves effective skills (Testcontainers pg)', () => {
 
     const after = await app.inject({ method: 'POST', url: `/pulls/${pr.id}/review`, payload: { agentId: agent.id } });
     await waitForPrRuns(pg.handle.db, pr.id, { expected: 2 });
+    await waitForTrace(after.json().runs[0].run_id);
     const afterTrace = (
       await app.inject({ method: 'GET', url: `/runs/${after.json().runs[0].run_id}/trace` })
     ).json();
     expect(afterTrace.prompt_assembly.skills_used?.[0]?.id).toBe(imported.id);
+    await app.close();
+  });
+  // ---- plan Phase 2: run_skills written next to saveRunTrace -------------
+
+  async function linkedSkillRun(structured: unknown) {
+    const app = await appWith(structured);
+    const { pr, agent } = await setupPr(app);
+    const skill = await createSkill(app, { name: `stats-skill-${Date.now()}`, body: 'Check auth on every route.' });
+    await app.inject({
+      method: 'PUT',
+      url: `/agents/${agent.id}/skills`,
+      payload: { links: [{ skill_id: skill.id, enabled: true }] },
+    });
+    return { app, pr, agent, skill };
+  }
+
+  it('a completed run writes one run_skills row per effective skill, with body and prompt hashes', async () => {
+    const { app, pr, agent, skill } = await linkedSkillRun(REVIEW_FIXTURE);
+    const started = await app.inject({ method: 'POST', url: `/pulls/${pr.id}/review`, payload: { agentId: agent.id } });
+    const runId = started.json().runs[0].run_id;
+    const [run] = await waitForPrRuns(pg.handle.db, pr.id, { expected: 1 });
+    await waitForTrace(runId);
+    expect(run!.status).toBe('done');
+
+    const rows = await pg.handle.db.select().from(t.runSkills).where(eq(t.runSkills.runId, runId));
+    expect(rows).toEqual([
+      {
+        runId,
+        skillId: skill.id,
+        skillVersion: 1,
+        bodySha256: sha256('Check auth on every route.'),
+        promptSha256: sha256(`${skill.name}\nCheck auth on every route.`),
+        tokens: estimateTokens('Check auth on every route.'),
+      },
+    ]);
+    // The trace's skills_used.sha256 hashes the BODY only (checked for the
+    // backfill): the same value as run_skills.body_sha256.
+    const trace = (await app.inject({ method: 'GET', url: `/runs/${runId}/trace` })).json();
+    expect(trace.prompt_assembly.skills_used[0].sha256).toBe(rows[0]!.bodySha256);
+    await app.close();
+  });
+
+  it('a failed run still writes run_skills (the failure path records skills_used too)', async () => {
+    // Not a Review: structured parsing fails and the run is persisted as failed.
+    const { app, pr, agent, skill } = await linkedSkillRun({ nope: true });
+    const started = await app.inject({ method: 'POST', url: `/pulls/${pr.id}/review`, payload: { agentId: agent.id } });
+    const runId = started.json().runs[0].run_id;
+    const [run] = await waitForPrRuns(pg.handle.db, pr.id, { expected: 1 });
+    await waitForTrace(runId);
+    expect(run!.status).toBe('failed');
+
+    const rows = await pg.handle.db.select().from(t.runSkills).where(eq(t.runSkills.runId, runId));
+    expect(rows.map((r) => r.skillId)).toEqual([skill.id]);
+    await app.close();
+  });
+
+  it('a run_skills write failure is logged and never fails the run', async () => {
+    const { app, pr, agent } = await linkedSkillRun(REVIEW_FIXTURE);
+    await pg.handle.db.execute(sql`ALTER TABLE run_skills RENAME TO run_skills_offline`);
+    try {
+      const started = await app.inject({ method: 'POST', url: `/pulls/${pr.id}/review`, payload: { agentId: agent.id } });
+      await waitForPrRuns(pg.handle.db, pr.id, { expected: 1 });
+      await waitForTrace(started.json().runs[0].run_id);
+      const [run] = await pg.handle.db.select().from(t.agentRuns).where(eq(t.agentRuns.prId, pr.id));
+      expect(run!.status).toBe('done');
+      expect(run!.error).toBeNull();
+    } finally {
+      await pg.handle.db.execute(sql`ALTER TABLE run_skills_offline RENAME TO run_skills`);
+    }
     await app.close();
   });
 });

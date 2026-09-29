@@ -1,0 +1,1 @@
+export { VerdictBadge } from "./VerdictBadge";

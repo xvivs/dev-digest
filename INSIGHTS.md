@@ -56,6 +56,8 @@ lives in the engineering-insights skill).
 
 - **A `/pr-self-review` finding keeps reappearing after it was fixed — the per-file lens cache replays it because the fix landed in a file the lens never reads.** The cache key is (lens, file content, lens prompt), so a P7 "no test for `reviewer-core/src/review/run.ts`" finding survives a commit that only adds `reviewer-core/test/run.test.ts` (test files outside `client/` are not routed to any lens); it clears only when `run.ts` itself or `.claude/skills/pr-self-review/references/lens-prompts.md` changes. Don't hand-edit `.devdigest/self-review/cache/`; say in the report that the finding is stale and point at the commit that fixed it. _(2026-09-28)_
 
+- **Under `next dev`, a flow's `open {BASE}/` can get the root "Page not found" (server logs `✓ Compiled /_not-found` → `GET / 404`) when it lands mid route-table rebuild triggered by the previous flow's first compile** — seen as `02-repo-pulls-detail` failing `wait --url /pulls` locally while `HomeRedirect` never calls `notFound()`. `scripts/e2e.sh:161` now curls every route the flows open (incl. `/repos/<acme id>/pulls/482`) before the suite and sleeps 3s; two consecutive 11/11 runs followed but the race was not reproduced after the fix, so this is "doesn't hurt", not proven. CI runs a prod build (`.github/workflows/e2e-web.yml`) and is not affected. _(2026-09-29)_
+
 ## Session Notes
 
 ### 2026-09-19 — repo-wide session
@@ -67,6 +69,9 @@ Moved agent instructions from six `CLAUDE.md` files to `AGENTS.md` (via `git mv`
 
 ### 2026-09-28 — cross-package session (SPEC-02 Skills)
 Wrote SPEC-02 and ADR 0012, froze the contracts and the reviewer-core/client-hook interfaces myself, then ran seven workstreams in parallel worktrees and merged them in waves, fixing four integration mismatches on the way. Two harness surprises: agent worktrees were sometimes created from a stale base (`f68330e`) and had to fast-forward, and the shared dev DB belongs to another migration line, so all runtime checks ran on `devdigest_l02`. The control experiment reproduced on Test Quality and not on API Contract (`specs/02-skills-rubric.md` § Results).
+
+### 2026-09-29 — root session
+`scripts/e2e.sh` warms every route the flows open after "web up" (repo id resolved from `/repos`, not hardcoded) and its header no longer claims acme/payments-api is the only seeded repo.
 
 ## Open Questions
 

@@ -8,8 +8,9 @@
 #   E2E_PG_PORT=5440 E2E_API_PORT=3201 E2E_WEB_PORT=3200 ./scripts/e2e.sh
 #
 # Mirrors what .github/workflows/e2e-web.yml does, but with an ephemeral
-# Postgres (no persistent volume → empty every run, so the seeded demo repo
-# acme/payments-api is the ONLY repo and the home redirect lands on it).
+# Postgres (no persistent volume → empty every run, so the DB always matches
+# server/src/db/seed.ts: the demo repo acme/payments-api plus a second repo,
+# xvivs/dev-digest; flows guard on the repo name the home redirect lands on).
 #
 # Exits with the e2e run's status. On success, failure, or Ctrl-C it tears down
 # the API/web child processes AND removes the isolated Postgres container.
@@ -156,6 +157,20 @@ for _ in $(seq 1 60); do
 done
 [ "$web_up" -eq 1 ] || { echo "web never became reachable on :$WEB_PORT"; exit 1; }
 log "web up"
+
+# --- warm the routes (next dev compiles on first hit) ------------------------
+# A request that lands while `next dev` rebuilds its route table can come back
+# 404 and fail the first flow that touches the route. Compile every route the
+# flows open up front, then let the dev server settle.
+log "warming web routes"
+ACME_ID="$(curl -fsS "http://localhost:${API_PORT}/repos" \
+  | python3 -c 'import json,sys; print(next(r["id"] for r in json.load(sys.stdin) if r["full_name"]=="acme/payments-api"))')" \
+  || { echo "could not resolve the acme/payments-api repo id from the API"; exit 1; }
+for path in / /agents /skills /onboarding /settings/api-keys \
+            "/repos/${ACME_ID}/pulls" "/repos/${ACME_ID}/pulls/482"; do
+  curl -sS -o /dev/null -w "  %{http_code} ${path}\n" "http://localhost:${WEB_PORT}${path}" || true
+done
+sleep 3
 
 # --- run the flows; propagate the exit code through the trap -----------------
 log "running e2e flows against $E2E_BASE_URL"

@@ -27,7 +27,13 @@
     "agentCount": "{count, plural, one {# agent} other {# agents}}",
     "enabledToggle": "Enable {name}",
     "needsVetting": "needs vetting",
-    "vettingTitle": "Untrusted source — review and trust before enabling"
+    "vettingTitle": "Untrusted source — review and trust before enabling",
+    "runs": "{count, plural, one {# run} other {# runs}}",
+    "runsTitle": "Completed runs that used this skill in the last 30 days",
+    "noEvals": "no evals",
+    "noEvalsTitle": "No full eval has run on this skill yet",
+    "verdictTitle": "Latest full eval on {carrier}",
+    "statsLabel": "Usage and impact"
   },
   "type": {
     "rubric": "rubric",
@@ -54,14 +60,14 @@
     "skillFallback": "Skill",
     "disabled": "disabled",
     "runOnEvals": "Run on evals",
-    "runOnEvalsHint": "Available once the Evals tab ships.",
     "tabs": {
       "config": "Config",
       "preview": "Preview",
       "evals": "Evals",
       "stats": "Stats",
       "versions": "Versions"
-    }
+    },
+    "runOnEvalsTitle": "Estimate and start an ablation eval"
   },
   "config": {
     "title": "Configuration",
@@ -80,6 +86,9 @@
     "savedToast": "Skill saved (v{version})",
     "delete": "Delete skill",
     "deleteConfirm": "Delete skill \"{name}\"? This cannot be undone.",
+    "changeNote": "What changed",
+    "changeNoteHint": "Optional. Stored with the new version.",
+    "changeNotePlaceholder": "e.g. Tightened the severity threshold",
     "dirtyGuard": {
       "title": "Discard changes?",
       "body": "This skill has unsaved changes. Leave without saving?",
@@ -102,10 +111,63 @@
     "confirm": "Trust & enable",
     "cancel": "Cancel"
   },
-  "placeholder": {
-    "evals": { "title": "Evals", "body": "Comes with the evals lesson." },
-    "stats": { "title": "Stats", "body": "Comes with the stats lesson." },
-    "versions": { "title": "Versions", "body": "Comes with the versions lesson." }
+  "versions": {
+    "title": "Version history",
+    "count": "{count, plural, one {# version} other {# versions}}",
+    "caption": "Every save snapshots the body so eval runs stay reproducible against the exact text they scored.",
+    "loadError": "Could not load the version history.",
+    "listLabel": "Version history",
+    "current": "Current",
+    "label": "v{version}",
+    "noNote": "No note",
+    "unavailable": "Body unavailable",
+    "unavailableHint": "Saved before version history was recorded.",
+    "showDiff": "Diff",
+    "hideDiff": "Hide diff",
+    "diffAria": "Changes in v{version}",
+    "restore": "Restore",
+    "restoreAria": "Restore v{version}",
+    "diff": {
+      "compareLabel": "Compare v{version} with",
+      "vsPrev": "vs previous",
+      "vsCurrent": "vs current",
+      "noPrev": "v1 has no previous version.",
+      "prevUnavailable": "v{version} body unavailable.",
+      "isCurrent": "This is the current version.",
+      "nothingToCompare": "Nothing to compare yet. This is the only version.",
+      "heading": "{from} → {to}",
+      "versionLabel": "v{version}",
+      "currentLabel": "current (v{version})",
+      "metaTitle": "Metadata changes",
+      "field": "Field",
+      "before": "Before",
+      "after": "After",
+      "fields": {
+        "name": "name",
+        "description": "description",
+        "type": "type"
+      },
+      "bodyTitle": "Body",
+      "bodyUnchanged": "Body unchanged.",
+      "stats": "+{added} −{removed} lines",
+      "added": "added",
+      "removed": "removed",
+      "loading": "Loading diff…",
+      "loadError": "Could not load this version."
+    },
+    "restoreModal": {
+      "title": "Restore v{version}?",
+      "body": "Creates v{next} with the content of v{version}. History is never rewritten.",
+      "restore": "Restore as v{next}",
+      "restoring": "Restoring…",
+      "cancel": "Cancel",
+      "importedWarning": "This skill was imported. A new body resets vetting, so agents stop using it until you review and trust it again.",
+      "stale": "Skill changed since you opened it. Reload to see the latest version, then try again.",
+      "reload": "Reload",
+      "failed": "Could not restore: {message}",
+      "restoredToast": "Restored v{version} as v{next}",
+      "noopToast": "v{version} already matches the current skill, so no new version was created."
+    }
   },
   "create": {
     "title": "Create skill",
@@ -166,5 +228,88 @@
     "importing": "Importing…",
     "import": "Import skill",
     "success": "Imported \"{name}\". It stays disabled until you review and trust it."
+  },
+  "verdict": {
+    "helps": "Helps",
+    "neutral": "Neutral",
+    "hurts": "Hurts",
+    "indicative": "Indicative",
+    "unknown": "Unknown",
+    "stale": "stale",
+    "staleTitle": "The skill or its carrier agent changed since this eval ran"
+  },
+  "stats": {
+    "title": "Stats",
+    "caption": "How much this skill is used, what it costs, and whether it helps.",
+    "loadError": "Could not load stats for this skill.",
+    "window": {
+      "label": "Time window",
+      "7d": "7d",
+      "30d": "30d",
+      "90d": "90d",
+      "7dTitle": "Last 7 days",
+      "30dTitle": "Last 30 days",
+      "90dTitle": "Last 90 days"
+    },
+    "impact": {
+      "title": "Impact",
+      "unknownBody": "No evals yet. An ablation eval runs a carrier agent with and without this skill to tell whether it helps.",
+      "runEvals": "Run evals",
+      "rerunEvals": "Re-run evals",
+      "carrier": "Carrier: {name}",
+      "carrierDeleted": "Carrier agent deleted",
+      "mode": {
+        "quick": "Quick",
+        "full": "Full"
+      },
+      "running": "Eval in progress ({done}/{total} jobs).",
+      "failed": "The latest eval did not finish.",
+      "passing": "{passing}/{total} passing",
+      "passRateAria": "{percent}% of cases pass with the skill",
+      "breakdown": "+{caught} caught · {regressed} regressed · {flaky} flaky",
+      "deltaUnexpected": "Δunexpected {value}",
+      "deltaUnexpectedTitle": "Unexpected findings per case, with the skill minus without it",
+      "indicativeNote": "Indicative only: a Quick run, or fewer than 5 stable cases. Run a Full eval for a verdict.",
+      "staleNote": "The skill or the carrier agent changed since this eval ran, so the verdict may no longer hold."
+    },
+    "usage": {
+      "title": "Usage",
+      "runs": "Runs",
+      "effectiveAgents": "Agents using it",
+      "effectiveOf": "{effective}/{total}",
+      "agentsLabel": "Agents linking this skill",
+      "agent": "Agent",
+      "status": "Status",
+      "agentRuns": "Runs",
+      "noAgents": "No agent links this skill yet.",
+      "statuses": {
+        "effective": "Effective",
+        "link_disabled": "Link disabled",
+        "skill_disabled": "Skill disabled",
+        "blocked_by_vetting": "Blocked by vetting"
+      },
+      "statusTitles": {
+        "effective": "The skill goes into this agent's prompt.",
+        "link_disabled": "This agent's link to the skill is switched off.",
+        "skill_disabled": "The skill itself is disabled.",
+        "blocked_by_vetting": "The skill needs review and trust before agents use it."
+      }
+    },
+    "cost": {
+      "title": "Cost",
+      "caption": "Skill tokens × completed runs, priced at each run's model.",
+      "tokens": "Skill tokens",
+      "cost": "Cost"
+    },
+    "byVersion": {
+      "title": "By version",
+      "label": "Runs by skill version",
+      "version": "Version",
+      "runs": "Runs",
+      "tokens": "Tokens",
+      "cost": "Cost",
+      "current": "current",
+      "empty": "No completed runs used this skill in this window."
+    }
   }
 }

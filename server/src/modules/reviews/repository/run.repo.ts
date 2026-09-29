@@ -201,6 +201,27 @@ export async function saveRunTrace(db: Db, runId: string, trace: RunTrace): Prom
     .onConflictDoUpdate({ target: t.runTraces.runId, set: { trace } });
 }
 
+/** One `run_skills` row to persist for a run (plan Phase 2). */
+export interface RunSkillRow {
+  skillId: string;
+  skillVersion: number;
+  bodySha256: string;
+  promptSha256: string | null;
+  tokens: number;
+}
+
+/**
+ * Relational copy of the run's `skills_used` (plan Phase 2). Idempotent: a
+ * second write for the same (run, skill) keeps the first row.
+ */
+export async function saveRunSkills(db: Db, runId: string, rows: RunSkillRow[]): Promise<void> {
+  if (rows.length === 0) return;
+  await db
+    .insert(t.runSkills)
+    .values(rows.map((r) => ({ runId, ...r })))
+    .onConflictDoNothing({ target: [t.runSkills.runId, t.runSkills.skillId] });
+}
+
 export async function getRunTrace(db: Db, runId: string): Promise<RunTrace | undefined> {
   const [row] = await db.select().from(t.runTraces).where(eq(t.runTraces.runId, runId));
   return row ? (row.trace as RunTrace) : undefined;

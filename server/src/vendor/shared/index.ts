@@ -9,6 +9,7 @@
  *  - contracts/trace      RunTrace, RunEvent, RunLogLine (single-document trace)
  *  - contracts/platform   Settings, ConnTestResult, Repo, PrMeta/PrDetail, SpecFile, …
  *  - contracts/cost       CostSource, CostMissingReason (cost provenance tagging)
+ *  - contracts/skill-impact  SkillVersion, SkillStats, EvalExpectation, EvalSuite (skill impact)
  *  - adapters             adapter interfaces + ModelInfo
  *
  * Feature agents (A1–A6) and F2 import everything from here. The barrel is
@@ -26,4 +27,5 @@ export * from './contracts/eval-ci.js';
 export * from './contracts/observability.js';
 export * from './contracts/productionize.js';
 export * from './contracts/cost.js';
+export * from './contracts/skill-impact.js';
 export * from './adapters.js';

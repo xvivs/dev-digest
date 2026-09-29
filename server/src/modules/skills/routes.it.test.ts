@@ -184,7 +184,7 @@ d('skills routes (Testcontainers pg)', () => {
       .select()
       .from(t.skillVersions)
       .where(eq(t.skillVersions.skillId, created.id));
-    expect(versions).toHaveLength(1);
+    expect(versions.map((v) => v.version).sort()).toEqual([1, 2]); // v1 on insert + the edit
     await app.close();
   });
 

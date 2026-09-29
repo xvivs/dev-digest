@@ -4,7 +4,7 @@
   "steps": [
     { "cmd": ["open", "{BASE}/"], "label": "load the app root" },
     { "cmd": ["wait", "--url", "/pulls"], "label": "land on the PR list" },
-    { "cmd": ["wait", "--text", "acme/payments-api"], "label": "guard: the home redirect landed on the demo repo — the seed holds TWO repos (acme/payments-api and xvivs/dev-digest) and ReposRepository.listByWorkspace has no ORDER BY, so which one `/` redirects to is not guaranteed by contract" },
+    { "cmd": ["wait", "--text", "acme/payments-api"], "label": "guard: the home redirect landed on the demo repo — the seed holds TWO repos and `/` redirects to the oldest (RepoRepository.list orders by created_at, id; the seed inserts acme/payments-api first), so landing elsewhere means the DB is not a fresh seed" },
     { "cmd": ["wait", "--load", "networkidle"], "label": "PR list data settles" },
     { "cmd": ["find", "text", "Migrate sessions table to UUID primary key", "click"], "label": "open PR #479 by title, not by row position" },
     { "cmd": ["wait", "--url", "/pulls/479"], "label": "navigate to the PR detail route" },

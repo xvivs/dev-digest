@@ -1,6 +1,6 @@
 {
   "name": "Open a PR from the list and load its review detail",
-  "description": "From the seeded repo's PR list, click into PR #482 and confirm the detail route loads with the PR title and review surface. Exercises nested routing (/repos/<id>/pulls/<number>) and the per-PR detail fetch. The seed holds two repos and listByWorkspace has no ORDER BY, so the flow guards that the home redirect landed on acme/payments-api before asserting anything about it, and opens the PR by title rather than by row position (#482 has a NULL updated_at and sorts behind #479). See e2e/README.md.",
+  "description": "From the seeded repo's PR list, click into PR #482 and confirm the detail route loads with the PR title and review surface. Exercises nested routing (/repos/<id>/pulls/<number>) and the per-PR detail fetch. The seed holds two repos and `/` redirects to the oldest (acme/payments-api on a fresh seed), so the flow guards that the home redirect landed on acme/payments-api before asserting anything about it, and opens the PR by title rather than by row position (#482 has a NULL updated_at and sorts behind #479). See e2e/README.md.",
   "steps": [
     {
       "cmd": [
@@ -23,7 +23,7 @@
         "--text",
         "acme/payments-api"
       ],
-      "label": "guard: the home redirect landed on the demo repo — the seed holds TWO repos (acme/payments-api and xvivs/dev-digest) and ReposRepository.listByWorkspace has no ORDER BY, so which one `/` redirects to is not guaranteed by contract"
+      "label": "guard: the home redirect landed on the demo repo — the seed holds TWO repos and `/` redirects to the oldest (RepoRepository.list orders by created_at, id; the seed inserts acme/payments-api first), so landing elsewhere means the DB is not a fresh seed"
     },
     {
       "cmd": [
@@ -32,6 +32,20 @@
         "Add rate limiting to public API endpoints"
       ],
       "label": "seeded PR title row is visible"
+    },
+    {
+      "cmd": [
+        "scrollintoview",
+        "a[href$='/pulls/482']"
+      ],
+      "label": "bring the #482 row into view: below the fold the title click silently no-ops"
+    },
+    {
+      "cmd": [
+        "wait",
+        "500"
+      ],
+      "label": "let the scroll settle; a click fired mid-scroll is lost"
     },
     {
       "cmd": [

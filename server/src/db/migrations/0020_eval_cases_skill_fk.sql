@@ -1,0 +1,4 @@
+ALTER TABLE "eval_cases" ADD CONSTRAINT "eval_cases_skill_id_skills_id_fk" FOREIGN KEY ("skill_id") REFERENCES "public"."skills"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+CREATE INDEX "eval_cases_skill_id_idx" ON "eval_cases" USING btree ("skill_id");--> statement-breakpoint
+ALTER TABLE "eval_cases" ADD CONSTRAINT "eval_cases_skill_owner_check" CHECK (CASE WHEN "eval_cases"."owner_kind" = 'skill' THEN "eval_cases"."skill_id" IS NOT NULL AND "eval_cases"."skill_id" = "eval_cases"."owner_id" ELSE "eval_cases"."skill_id" IS NULL END);--> statement-breakpoint
+ALTER TABLE "eval_runs" ADD CONSTRAINT "eval_runs_cost_pair_check" CHECK (("eval_runs"."cost_usd" IS NULL) = ("eval_runs"."cost_source" IS NULL));

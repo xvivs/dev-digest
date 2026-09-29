@@ -1,0 +1,1 @@
+export { ImpactCard } from "./ImpactCard";

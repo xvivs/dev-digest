@@ -6,15 +6,46 @@
 
 import { useTranslations } from "next-intl";
 import { Tabs } from "@devdigest/ui";
-import type { Skill } from "@devdigest/shared";
+import type { Skill, SkillStatsWindow } from "@devdigest/shared";
 import { useNavigationGuard } from "@/app/skills/navigation-guard";
 import { SKILL_EDITOR_TABS } from "../../constants";
 import { ConfigTab } from "./_components/ConfigTab";
 import { PreviewTab } from "./_components/PreviewTab";
-import { PlaceholderTab } from "./_components/PlaceholderTab";
+import { EvalsTab } from "./_components/EvalsTab";
+import { StatsTab } from "./_components/StatsTab";
+import { VersionsTab } from "./_components/VersionsTab";
 import { s } from "./styles";
 
-export function SkillEditor({ skill, tab, onTab }: { skill: Skill; tab: string; onTab: (t: string) => void }) {
+export function SkillEditor({
+  skill,
+  tab,
+  onTab,
+  statsWindow = "30d",
+  onStatsWindow,
+  runRequested = false,
+  onRunRequestHandled,
+  evalCaseId = null,
+  evalSuiteId = null,
+  onOpenEvalCase,
+  onCloseEvalCase,
+  onSelectEvalSuite,
+}: {
+  skill: Skill;
+  tab: string;
+  onTab: (t: string) => void;
+  /** Stats tab window, from `?window=` (skill-impact decision 11). */
+  statsWindow?: SkillStatsWindow;
+  onStatsWindow?: (w: SkillStatsWindow) => void;
+  /** Header "Run on evals" was pressed: the Evals tab opens its Run modal. */
+  runRequested?: boolean;
+  onRunRequestHandled?: () => void;
+  /** Evals tab case drawer, from `?case=` / `?suite=`. */
+  evalCaseId?: string | null;
+  evalSuiteId?: string | null;
+  onOpenEvalCase?: (caseId: string) => void;
+  onCloseEvalCase?: () => void;
+  onSelectEvalSuite?: (suiteId: string) => void;
+}) {
   const t = useTranslations("skills");
   const guard = useNavigationGuard();
   const tabs = SKILL_EDITOR_TABS.map((tb) => ({ key: tb.key, label: t(tb.labelKey), icon: tb.icon }));
@@ -28,14 +59,28 @@ export function SkillEditor({ skill, tab, onTab }: { skill: Skill; tab: string; 
         {tab === "config" && <ConfigTab skill={skill} />}
         {tab === "preview" && <PreviewTab body={skill.body} />}
         {tab === "evals" && (
-          <PlaceholderTab titleKey="placeholder.evals.title" bodyKey="placeholder.evals.body" />
+          <EvalsTab
+            skill={skill}
+            runRequested={runRequested}
+            onRunRequestHandled={onRunRequestHandled}
+            caseId={evalCaseId}
+            caseSuiteId={evalSuiteId}
+            onOpenCase={onOpenEvalCase}
+            onCloseCase={onCloseEvalCase}
+            onSelectCaseSuite={onSelectEvalSuite}
+            // The Evals tab holds no draft of its own; the guard still covers a dirty Config.
+            onOpenConfig={() => guard.confirmNavigation(() => onTab("config"))}
+          />
         )}
         {tab === "stats" && (
-          <PlaceholderTab titleKey="placeholder.stats.title" bodyKey="placeholder.stats.body" />
+          <StatsTab
+            skill={skill}
+            window={statsWindow}
+            onWindowChange={(w) => onStatsWindow?.(w)}
+            onRunEvals={() => guard.confirmNavigation(() => onTab("evals"))}
+          />
         )}
-        {tab === "versions" && (
-          <PlaceholderTab titleKey="placeholder.versions.title" bodyKey="placeholder.versions.body" />
-        )}
+        {tab === "versions" && <VersionsTab skill={skill} />}
       </div>
     </div>
   );

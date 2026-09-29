@@ -16,13 +16,14 @@ import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { Button, Badge, FormField, Modal, SelectInput, TextInput, Textarea, Toggle } from "@devdigest/ui";
 import type { Skill, SkillType } from "@devdigest/shared";
+import { SKILL_CHANGE_NOTE_MAX } from "@devdigest/shared/contracts/skill-impact";
 import { SKILLS_HREF, SKILL_TYPE_OPTIONS } from "@/app/skills/constants";
 import { useDeleteSkill, useUpdateSkill } from "@/lib/hooks";
 import { useToast } from "@/lib/toast";
 import { useNavigationGuard } from "@/app/skills/navigation-guard";
 import { VetSkillModal } from "@/app/skills/_components/VetSkillModal";
 import { DELETE_MODAL_WIDTH } from "./constants";
-import { estimateTokens, isSkillDirty } from "./helpers";
+import { buildSavePatch, estimateTokens, isSkillDirty } from "./helpers";
 import { s } from "./styles";
 
 export function ConfigTab({ skill }: { skill: Skill }) {
@@ -39,6 +40,7 @@ export function ConfigTab({ skill }: { skill: Skill }) {
   const [type, setType] = React.useState<SkillType>(skill.type);
   const [body, setBody] = React.useState(skill.body);
   const [enabled, setEnabled] = React.useState(skill.enabled);
+  const [changeNote, setChangeNote] = React.useState("");
   const [vetting, setVetting] = React.useState(false);
   const [confirmingDelete, setConfirmingDelete] = React.useState(false);
 
@@ -83,9 +85,12 @@ export function ConfigTab({ skill }: { skill: Skill }) {
 
   const save = () =>
     update.mutate(
-      { id: skill.id, patch: { name, description, type, body, enabled } },
+      { id: skill.id, patch: buildSavePatch(skill, draft, changeNote) },
       {
-        onSuccess: (data) => toast.success(t("config.savedToast", { version: data.version })),
+        onSuccess: (data) => {
+          toast.success(t("config.savedToast", { version: data.version }));
+          setChangeNote("");
+        },
       },
     );
 
@@ -132,6 +137,15 @@ export function ConfigTab({ skill }: { skill: Skill }) {
           </div>
           <Textarea value={body} onChange={setBody} rows={16} mono />
         </div>
+      </FormField>
+      <FormField label={t("config.changeNote")} hint={t("config.changeNoteHint")}>
+        <TextInput
+          value={changeNote}
+          onChange={setChangeNote}
+          placeholder={t("config.changeNotePlaceholder")}
+          maxLength={SKILL_CHANGE_NOTE_MAX}
+          aria-label={t("config.changeNote")}
+        />
       </FormField>
       <div style={s.actions}>
         <Button kind="primary" icon="Check" onClick={save} disabled={update.isPending || !dirty}>

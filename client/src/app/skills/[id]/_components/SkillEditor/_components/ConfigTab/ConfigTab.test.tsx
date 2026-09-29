@@ -135,4 +135,15 @@ describe("ConfigTab", () => {
     fireEvent.click(screen.getAllByRole("button", { name: "Delete skill" })[1]!);
     expect(h.deleteMutate).toHaveBeenCalledWith("sk1", expect.anything());
   });
+
+  it("sends the What changed note with the save", () => {
+    renderTab();
+    fireEvent.change(screen.getByDisplayValue("# Rule"), { target: { value: "# Rule v2" } });
+    fireEvent.change(screen.getByLabelText("What changed"), { target: { value: "stricter" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(h.updateMutate).toHaveBeenCalledWith(
+      { id: "sk1", patch: expect.objectContaining({ body: "# Rule v2", change_note: "stricter" }) },
+      expect.anything(),
+    );
+  });
 });
