@@ -229,3 +229,25 @@ export function formatBytes(bytes: number): string {
   if (Math.abs(bytes) < 1024) return `${bytes} B`;
   return `${(bytes / 1024).toFixed(1)} KB`;
 }
+
+/** Error codes a failed scan or a blocked extract carries; each has copy in `errors.<code>`. */
+export const KNOWN_ERROR_CODES = [
+  "scan_deadline_exceeded",
+  "empty_sample",
+  "head_moved",
+  "repo_not_indexed",
+  "repo_not_cloned",
+  "repo_not_found",
+  "interrupted",
+] as const;
+export type KnownErrorCode = (typeof KNOWN_ERROR_CODES)[number];
+
+/**
+ * The known code at the start of a raw scan error (`code: detail`, or the bare
+ * code), else null. Anything unrecognised gets the generic message.
+ */
+export function knownErrorCode(raw: string | null | undefined): KnownErrorCode | null {
+  if (!raw) return null;
+  const head = raw.split(":", 1)[0]?.trim() ?? "";
+  return KNOWN_ERROR_CODES.find((c) => c === head) ?? null;
+}

@@ -21,7 +21,10 @@
     "candidateCount": "{count, plural, one {# candidate} other {# candidates}} · grounded against sampled files"
   },
   "header": {
-    "detected": "Detected from {count, plural, one {# sample file} other {# sample files}} · last scan {when}"
+    "detected": "Detected from {count, plural, one {# sample file} other {# sample files}} · last scan {when}",
+    "scanning": "Scanning… started {when}",
+    "failed": "Last scan failed {when}",
+    "showingFrom": "Showing results from scan of {date}"
   },
   "stats": {
     "label": "Scan statistics",
@@ -49,11 +52,14 @@
       "indexing": "Indexing…",
       "errorTitle": "Could not start indexing.",
       "errorFallback": "Try again in a moment.",
-      "notCloned": "Repository is not cloned yet — re-import it from Pull Requests"
+      "notCloned": "This repository is not cloned yet. Clone it, then it is indexed and can be scanned.",
+      "cloneCta": "Clone repository",
+      "cloning": "Cloning…",
+      "cloneErrorTitle": "Could not start cloning."
     },
     "scanning": {
       "title": "Scanning the repo…",
-      "body": "This takes up to a minute. The page updates when the scan finishes."
+      "body": "Usually under a minute, up to ~2 minutes. The page updates when the scan finishes."
     },
     "failed": {
       "title": "The last scan failed",
@@ -193,5 +199,16 @@
       "openAgent": "Open {name} Skills tab",
       "done": "Done"
     }
+  },
+  "errors": {
+    "details": "Details",
+    "unknown": "Something went wrong while scanning.",
+    "scan_deadline_exceeded": "The scan took too long and was stopped. Try again.",
+    "empty_sample": "No readable code files were found to sample. Check that the repo has source files and is indexed.",
+    "head_moved": "The repository changed while the scan was running. Run it again.",
+    "repo_not_indexed": "The repository is not indexed yet. Index it, then scan.",
+    "repo_not_cloned": "The repository is not cloned yet. Clone it, then scan.",
+    "repo_not_found": "The repository was removed.",
+    "interrupted": "The scan was interrupted because the server restarted. Run it again."
   }
 }

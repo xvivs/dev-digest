@@ -15,7 +15,9 @@ import { RepoNotFound } from "@/components/repo-not-found";
 import {
   useConventions,
   useExtractConventions,
+  useRefreshRepo,
   useRepoIntelStatus,
+  useRepos,
   useResyncRepoIntel,
   useUpdateConvention,
 } from "@/lib/hooks";
@@ -26,6 +28,7 @@ import {
   acceptedIds,
   effectiveSelection,
   filterByTab,
+  knownErrorCode,
   tabCounts,
 } from "../../helpers";
 import { ConventionCard } from "../ConventionCard";
@@ -40,10 +43,22 @@ export function ConventionsView({ repoId }: { repoId: string }) {
   const { activeRepo } = useActiveRepo();
   const repoNotFound = useRepoNotFound(repoId);
   const conventions = useConventions(repoId);
+  // Same cache as the shell's repo list: refetches while the clone is missing, so a clone
+  // finished elsewhere (Refresh on the PR list) reaches this page and the sidebar (B2).
+  useRepos({ pollUntilCloned: repoId });
   const resync = useResyncRepoIntel(repoId, LOCAL_ERRORS);
-  // After a resync is accepted, poll the index state until it is usable (AC-32).
+  const clone = useRefreshRepo(LOCAL_ERRORS);
+  const clonePath = activeRepo?.clone_path;
+  // Poll the index state after a resync/clone is accepted and while no clone exists,
+  // until the index is usable (AC-32).
   const [indexPolling, setIndexPolling] = React.useState(false);
-  const indexState = useRepoIntelStatus(repoId, indexPolling);
+  const indexState = useRepoIntelStatus(repoId, indexPolling || clonePath === null);
+  // A clone that just landed starts indexing in the background: keep watching the index.
+  const prevClonePath = React.useRef(clonePath);
+  React.useEffect(() => {
+    if (prevClonePath.current === null && clonePath) setIndexPolling(true);
+    prevClonePath.current = clonePath;
+  }, [clonePath]);
   const extract = useExtractConventions(repoId, LOCAL_ERRORS);
   const update = useUpdateConvention(repoId);
 
@@ -82,12 +97,20 @@ export function ConventionsView({ repoId }: { repoId: string }) {
 
   const runAnalysis = () => extract.mutate();
   const indexRepo = () => resync.mutate(undefined, { onSuccess: () => setIndexPolling(true) });
+  const cloneRepo = () => clone.mutate(repoId, { onSuccess: () => setIndexPolling(true) });
   const notCloned = isNotCloned({
     clonePath: activeRepo?.clone_path,
     extractError: extract.error,
     indexReason: indexState.data?.reason,
   });
   const indexing = resync.isPending || indexPolling;
+  // Accepted but the clone has not shown up yet: keep the button busy while it is polled for.
+  const cloning = clone.isPending || (clone.isSuccess && clonePath === null);
+  const cloneError = clone.error
+    ? clone.error instanceof ApiError
+      ? clone.error.message
+      : t("states.notIndexed.errorFallback")
+    : null;
   const indexError = resync.error
     ? resync.error instanceof ApiError
       ? resync.error.message
@@ -142,6 +165,7 @@ export function ConventionsView({ repoId }: { repoId: string }) {
   const showList = screen === "list" || screen === "allRejected" || (screen === "failed" && candidates.length > 0);
   const extractError =
     extract.error && !repoBlocked ? (extract.error instanceof ApiError ? extract.error.message : t("extract.errorTitle")) : null;
+  const extractCode = extract.error instanceof ApiError ? knownErrorCode(extract.error.code) ?? knownErrorCode(extractError) : null;
 
   return (
     <AppShell crumb={crumb}>
@@ -149,6 +173,8 @@ export function ConventionsView({ repoId }: { repoId: string }) {
         <ScanHeader
           repoName={repoName}
           scan={page?.latest_done_scan ?? null}
+          runningScan={page?.running_scan ?? null}
+          failedScan={failedScan ?? null}
           onRescan={runAnalysis}
           scanning={scanning}
           rescanDisabled={screen === "loading" || screen === "loadError" || screen === "notIndexed"}
@@ -157,7 +183,7 @@ export function ConventionsView({ repoId }: { repoId: string }) {
         {extractError && (
           <div role="alert" style={s.errorBox}>
             <div style={s.errorTitle}>{t("extract.errorTitle")}</div>
-            {extractError}
+            <ErrorText raw={extractError} code={extractCode} />
           </div>
         )}
 
@@ -183,7 +209,14 @@ export function ConventionsView({ repoId }: { repoId: string }) {
             title={t("states.notIndexed.title")}
             body={
               notCloned ? (
-                t("states.notIndexed.notCloned")
+                <>
+                  {t("states.notIndexed.notCloned")}
+                  {cloneError && (
+                    <div role="alert" style={s.inlineError}>
+                      <strong>{t("states.notIndexed.cloneErrorTitle")}</strong> {cloneError}
+                    </div>
+                  )}
+                </>
               ) : (
                 <>
                   {t("states.notIndexed.body")}
@@ -195,9 +228,17 @@ export function ConventionsView({ repoId }: { repoId: string }) {
                 </>
               )
             }
-            cta={notCloned ? undefined : indexing ? t("states.notIndexed.indexing") : t("states.notIndexed.cta")}
-            onCta={indexRepo}
-            ctaLoading={indexing}
+            cta={
+              notCloned
+                ? cloning
+                  ? t("states.notIndexed.cloning")
+                  : t("states.notIndexed.cloneCta")
+                : indexing
+                  ? t("states.notIndexed.indexing")
+                  : t("states.notIndexed.cta")
+            }
+            onCta={notCloned ? cloneRepo : indexRepo}
+            ctaLoading={notCloned ? cloning : indexing}
           />
         )}
         {screen === "never" && (
@@ -225,7 +266,11 @@ export function ConventionsView({ repoId }: { repoId: string }) {
             <div style={s.failedText}>
               <div style={s.failedTitle}>{t("states.failed.title")}</div>
               <div style={s.failedBody}>
-                {failedScan.error ?? t("states.failed.fallback")}
+                <ErrorText
+                  raw={failedScan.error}
+                  code={knownErrorCode(failedScan.error)}
+                  fallback={t("states.failed.fallback")}
+                />
                 {candidates.length > 0 && ` ${t("states.failed.olderNote")}`}
               </div>
             </div>
@@ -304,6 +349,37 @@ export function ConventionsView({ repoId }: { repoId: string }) {
         />
       )}
     </AppShell>
+  );
+}
+
+/** A human message for a known error code, with the raw server text folded under "Details". */
+function ErrorText({
+  raw,
+  code,
+  fallback,
+}: {
+  raw: string | null;
+  code: ReturnType<typeof knownErrorCode>;
+  fallback?: string;
+}) {
+  const t = useTranslations("conventions");
+  if (!raw) return <>{fallback ?? t("errors.unknown")}</>;
+  if (!code && !fallback) return <>{raw}</>;
+  return (
+    <>
+      {code ? t(`errors.${code}`) : t("errors.unknown")}
+      <RawDetails raw={raw} />
+    </>
+  );
+}
+
+function RawDetails({ raw }: { raw: string }) {
+  const t = useTranslations("conventions");
+  return (
+    <details style={s.details}>
+      <summary>{t("errors.details")}</summary>
+      <code style={s.detailsRaw}>{raw}</code>
+    </details>
   );
 }
 

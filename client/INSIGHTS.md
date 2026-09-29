@@ -166,6 +166,8 @@ lives in the engineering-insights skill).
 
 - **Skill/finding markdown shows `#` headings and `-` bullets as plain same-size paragraphs with no markers — Tailwind 4 preflight, not react-markdown.** `@import "tailwindcss"` in `client/src/vendor/ui/styles.css` resets `h1–h6` font size/weight and `list-style`, so react-markdown's default elements lose all block styling; every block element needs an explicit renderer (`client/src/vendor/ui/primitives/Markdown.tsx:40-45`). A CSS rule cannot restyle inline-styled `code` inside `pre` (inline style wins), so the `pre` renderer emits the raw text itself. _(2026-09-28)_
 
+- **`useRefreshRepo` resolves before the clone finishes, so a one-shot invalidation of `["repos"]` refetches `clone_path: null` and nothing refreshes it again** — the global `QueryClient` has `staleTime` 30 s and no focus refetch, so pages showed "not cloned / not synced" until a hard reload. Poll at the observer instead: `useRepos({ pollUntilCloned })` refetches every 3 s while the clone is pending (`client/src/lib/hooks/core.ts:78`). _(2026-09-30)_
+
 ## Session Notes
 
 - Cost Badge (L01, client half): added `RunCostValue` + `formatCost`/`exactCost`

@@ -27,6 +27,8 @@ export const s = {
   failedText: { flex: 1, minWidth: 0 } satisfies CSSProperties,
   failedTitle: { fontSize: 15, fontWeight: 700, color: "var(--crit)" } satisfies CSSProperties,
   failedBody: { fontSize: 13.5, color: "var(--text-secondary)", marginTop: 4, overflowWrap: "anywhere" } satisfies CSSProperties,
+  details: { marginTop: 6, fontSize: 12, color: "var(--text-muted)" } satisfies CSSProperties,
+  detailsRaw: { display: "block", marginTop: 4, whiteSpace: "pre-wrap", overflowWrap: "anywhere" } satisfies CSSProperties,
   toolbar: { display: "flex", alignItems: "center", gap: 12, margin: "16px 0" } satisfies CSSProperties,
   selectedCount: { fontSize: 13, color: "var(--text-muted)" } satisfies CSSProperties,
   spacer: { flex: 1 } satisfies CSSProperties,

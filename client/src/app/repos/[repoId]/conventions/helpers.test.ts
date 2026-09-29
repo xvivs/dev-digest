@@ -10,6 +10,7 @@ import {
   confidenceTone,
   defaultSkillName,
   effectiveSelection,
+  knownErrorCode,
   fenceFor,
   filterByTab,
   formatBytes,
@@ -248,5 +249,22 @@ describe("budget", () => {
     expect(formatBytes(812)).toBe("812 B");
     expect(formatBytes(3482)).toBe("3.4 KB");
     expect(formatBytes(-2048)).toBe("-2.0 KB");
+  });
+});
+
+describe("knownErrorCode", () => {
+  it("reads the code before the colon", () => {
+    expect(knownErrorCode("scan_deadline_exceeded: scan ran past 120s")).toBe("scan_deadline_exceeded");
+    expect(knownErrorCode("empty_sample: no readable code files in the sample")).toBe("empty_sample");
+  });
+
+  it("accepts a bare code", () => {
+    expect(knownErrorCode("head_moved")).toBe("head_moved");
+  });
+
+  it("returns null for unknown, empty and missing errors", () => {
+    expect(knownErrorCode("boom: something")).toBeNull();
+    expect(knownErrorCode("")).toBeNull();
+    expect(knownErrorCode(null)).toBeNull();
   });
 });

@@ -83,4 +83,39 @@ describe("ScanHeader", () => {
     renderHeader({ rescanDisabled: true });
     expect(screen.getByRole("button", { name: "Re-scan" })).toBeDisabled();
   });
+
+  it("hides Re-scan before the first scan (B6)", () => {
+    renderHeader({ scan: null });
+    expect(screen.queryByRole("button", { name: /Re-scan|Scanning/ })).not.toBeInTheDocument();
+  });
+
+  it("while a scan runs: 'Scanning… started X ago', no stats, disabled button (B5)", () => {
+    renderHeader({ runningScan: scan({ id: "s2", status: "running", finished_at: null }), scanning: true });
+    expect(screen.getByText(/^Scanning… started .+ ago$/)).toBeInTheDocument();
+    expect(screen.queryByText(/^Detected from/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "Scan statistics" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Scanning…" })).toBeDisabled();
+  });
+
+  it("disables Re-scan for a running scan even when `scanning` is not set", () => {
+    renderHeader({ runningScan: scan({ status: "running", finished_at: null }) });
+    expect(screen.getByRole("button", { name: "Scanning…" })).toBeDisabled();
+  });
+
+  it("after a failure: 'Last scan failed X ago' plus a muted note dating the older results (B5)", () => {
+    renderHeader({
+      failedScan: scan({ id: "f", status: "failed" }),
+      scan: scan({ finished_at: "2026-09-20T09:00:42.000Z" }),
+    });
+    expect(screen.getByText(/^Last scan failed .+ ago$/)).toBeInTheDocument();
+    expect(screen.getByText("Showing results from scan of Sep 20, 2026")).toBeInTheDocument();
+    expect(screen.queryByText(/^Detected from/)).not.toBeInTheDocument();
+  });
+
+  it("after a failure with no earlier results: no 'Showing results' note", () => {
+    renderHeader({ failedScan: scan({ status: "failed" }), scan: null });
+    expect(screen.getByText(/^Last scan failed/)).toBeInTheDocument();
+    expect(screen.queryByText(/Showing results/)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Re-scan" })).toBeEnabled();
+  });
 });

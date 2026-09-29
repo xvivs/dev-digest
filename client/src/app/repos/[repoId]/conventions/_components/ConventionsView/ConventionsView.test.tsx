@@ -30,6 +30,11 @@ const h = vi.hoisted(() => ({
   clonePath: "/clones/x" as string | null,
   indexReason: undefined as string | undefined,
   resyncMutate: vi.fn(),
+  cloneMutate: vi.fn(),
+  clonePending: false,
+  cloneSuccess: false,
+  cloneError: null as Error | null,
+  reposArgs: [] as unknown[],
   resyncPending: false,
   resyncError: null as Error | null,
   pollArgs: [] as boolean[],
@@ -60,6 +65,16 @@ vi.mock("@/lib/hooks", () => ({
       isPending: false,
     };
   },
+  useRepos: (opts: unknown) => {
+    h.reposArgs.push(opts);
+    return {};
+  },
+  useRefreshRepo: () => ({
+    mutate: h.cloneMutate,
+    isPending: h.clonePending,
+    isSuccess: h.cloneSuccess,
+    error: h.cloneError,
+  }),
   useResyncRepoIntel: () => ({ mutate: h.resyncMutate, isPending: h.resyncPending, error: h.resyncError }),
   useExtractConventions: () => ({
     mutate: h.extractMutate,
@@ -97,6 +112,11 @@ beforeEach(() => {
   h.clonePath = "/clones/x";
   h.indexReason = undefined;
   h.resyncMutate.mockReset();
+  h.cloneMutate.mockReset();
+  h.clonePending = false;
+  h.cloneSuccess = false;
+  h.cloneError = null;
+  h.reposArgs = [];
   h.resyncPending = false;
   h.resyncError = null;
   h.pollArgs = [];
@@ -121,14 +141,21 @@ describe("state 1: never scanned", () => {
 });
 
 describe("state 2: repo not indexed", () => {
-  it("offers Index repository and holds Re-scan when the index is not usable", () => {
+  it("offers Index repository and shows no Re-scan when the index is not usable", () => {
     h.indexStatus = "failed";
     setPage(page({ last_scan: null, latest_done_scan: null }));
     renderView();
     expect(screen.getByText("This repo is not indexed yet")).toBeInTheDocument();
     expect(screen.queryByRole("link")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Index repository" })).toBeEnabled();
-    expect(screen.getByRole("button", { name: "Re-scan" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Re-scan" })).not.toBeInTheDocument();
+  });
+
+  it("hides Re-scan when there has been no scan yet, and keeps only Run analysis (B6)", () => {
+    setPage(page({ last_scan: null, latest_done_scan: null }));
+    renderView();
+    expect(screen.queryByRole("button", { name: "Re-scan" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Run analysis" })).toBeInTheDocument();
   });
 
   it("resyncs on click, then polls the index state and moves to never-scanned once indexed", () => {
@@ -167,20 +194,73 @@ describe("state 2: repo not indexed", () => {
     expect(screen.getByRole("button", { name: "Index repository" })).toBeEnabled();
   });
 
-  it("says to re-import, with no button, when the repo has no clone", () => {
+  it("offers Clone repository, not a re-import hint, when the repo has no clone", () => {
     h.clonePath = null;
     h.indexStatus = "failed";
     setPage(page({ last_scan: null, latest_done_scan: null }));
     renderView();
-    expect(screen.getByText("Repository is not cloned yet — re-import it from Pull Requests")).toBeInTheDocument();
+    expect(screen.getByText(/This repository is not cloned yet/)).toBeInTheDocument();
+    expect(screen.queryByText(/re-import/)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Index repository" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Clone repository" }));
+    expect(h.cloneMutate).toHaveBeenCalledWith("repo-1", expect.any(Object));
+  });
+
+  it("polls the repo list and the index state while the clone is missing (B2)", () => {
+    h.clonePath = null;
+    h.indexStatus = "failed";
+    setPage(page({ last_scan: null, latest_done_scan: null }));
+    renderView();
+    expect(h.reposArgs.at(-1)).toEqual({ pollUntilCloned: "repo-1" });
+    expect(h.pollArgs.at(-1)).toBe(true);
+  });
+
+  it("disables Clone repository and says Cloning… while the request is in flight", () => {
+    h.clonePath = null;
+    h.clonePending = true;
+    h.indexStatus = "failed";
+    setPage(page({ last_scan: null, latest_done_scan: null }));
+    renderView();
+    expect(screen.getByRole("button", { name: "Cloning…" })).toBeDisabled();
+  });
+
+  it("keeps the button busy after the clone is accepted until the clone appears", () => {
+    h.clonePath = null;
+    h.cloneSuccess = true;
+    h.indexStatus = "failed";
+    setPage(page({ last_scan: null, latest_done_scan: null }));
+    renderView();
+    expect(screen.getByRole("button", { name: "Cloning…" })).toBeDisabled();
+  });
+
+  it("shows the clone error inline and leaves the button usable", () => {
+    h.clonePath = null;
+    h.cloneError = new ApiError("Clone is locked", 409, "clone_locked");
+    h.indexStatus = "failed";
+    setPage(page({ last_scan: null, latest_done_scan: null }));
+    renderView();
+    expect(screen.getByRole("alert")).toHaveTextContent("Could not start cloning. Clone is locked");
+    expect(screen.getByRole("button", { name: "Clone repository" })).toBeEnabled();
+  });
+
+  it("moves on to never-scanned once the clone and the index have arrived (B2)", () => {
+    h.clonePath = null;
+    h.indexStatus = "failed";
+    setPage(page({ last_scan: null, latest_done_scan: null }));
+    const { rerender } = renderView();
+    expect(screen.getByRole("button", { name: "Clone repository" })).toBeInTheDocument();
+    h.clonePath = "/clones/x";
+    h.indexStatus = "full";
+    rerender(<ConventionsView repoId="repo-1" />);
+    expect(screen.getByText("No analysis yet")).toBeInTheDocument();
   });
 
   it("treats a 409 repo_not_cloned from the extract as not cloned", () => {
     h.extractError = new ApiError("not cloned", 409, "repo_not_cloned");
     setPage(page({ last_scan: null, latest_done_scan: null }));
     renderView();
-    expect(screen.getByText(/re-import it from Pull Requests/)).toBeInTheDocument();
+    expect(screen.getByText(/This repository is not cloned yet/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Clone repository" })).toBeEnabled();
     expect(screen.queryByRole("button", { name: "Index repository" })).not.toBeInTheDocument();
   });
 
@@ -207,8 +287,17 @@ describe("state 3: scanning", () => {
     setPage(page({ running_scan: scan({ id: "s2", status: "running", finished_at: null }) }));
     renderView();
     expect(screen.getByText("Scanning the repo…")).toBeInTheDocument();
+    expect(screen.getByText(/usually under a minute, up to ~2 minutes/i)).toBeInTheDocument();
     expect(document.querySelectorAll(".skeleton").length).toBeGreaterThan(0);
     expect(screen.getByRole("button", { name: "Scanning…" })).toBeDisabled();
+  });
+
+  it("header says Scanning… started X ago and hides the previous scan's stats (B5)", () => {
+    setPage(page({ running_scan: scan({ id: "s2", status: "running", finished_at: null }) }));
+    renderView();
+    expect(screen.getByText(/^Scanning… started .+ ago$/)).toBeInTheDocument();
+    expect(screen.queryByText(/^Detected from/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "Scan statistics" })).not.toBeInTheDocument();
   });
 
   it("disables Re-scan while the extract request itself is in flight", () => {
@@ -223,9 +312,41 @@ describe("state 4: failed", () => {
     setPage(page({ last_scan: scan({ status: "failed", error: "empty_sample" }), latest_done_scan: null }));
     renderView();
     expect(screen.getByText("The last scan failed")).toBeInTheDocument();
-    expect(screen.getByText("empty_sample")).toBeInTheDocument();
+    expect(screen.getByText(/No readable code files were found/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     expect(h.extractMutate).toHaveBeenCalledTimes(1);
+  });
+
+  it("maps a known error code to a human message and folds the raw text under Details (UX-1)", () => {
+    const raw = "scan_deadline_exceeded: scan ran past 120000ms";
+    setPage(page({ last_scan: scan({ status: "failed", error: raw }), latest_done_scan: null }));
+    renderView();
+    expect(screen.getByText(/The scan took too long and was stopped/)).toBeInTheDocument();
+    const details = screen.getByText("Details").closest("details");
+    expect(details).not.toHaveAttribute("open");
+    expect(within(details as HTMLElement).getByText(raw)).toBeInTheDocument();
+  });
+
+  it("uses a generic message for an unknown code, keeping the raw text under Details", () => {
+    setPage(page({ last_scan: scan({ status: "failed", error: "weird_thing: x" }), latest_done_scan: null }));
+    renderView();
+    expect(screen.getByText(/Something went wrong while scanning/)).toBeInTheDocument();
+    expect(screen.getByText("weird_thing: x")).toBeInTheDocument();
+  });
+
+  it("header says the last scan failed and dates the older results it still shows (B5)", () => {
+    const older = scan({ id: "old", finished_at: "2026-09-20T09:00:42.000Z" });
+    setPage(
+      page({
+        last_scan: scan({ id: "s3", status: "failed", error: "boom" }),
+        latest_done_scan: older,
+        candidates: [candidate("a", { status: "accepted" })],
+      }),
+    );
+    renderView();
+    expect(screen.getByText(/^Last scan failed .+ ago$/)).toBeInTheDocument();
+    expect(screen.getByText(/^Showing results from scan of Sep 20, 2026$/)).toBeInTheDocument();
+    expect(screen.queryByText(/^Detected from/)).not.toBeInTheDocument();
   });
 
   it("keeps candidates from an earlier scan readable under the banner", () => {
