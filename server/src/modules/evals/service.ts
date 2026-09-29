@@ -1,0 +1,443 @@
+/**
+ * APPLICATION — use cases of the `evals` module (plan Phase 3, ADR 0017/0018).
+ * Depends on `domain.ts` and `ports.ts` only: no Drizzle, no Fastify, no
+ * concrete repository, no container.
+ *
+ *  - cases: CRUD for a skill; the diff is snapshotted (paste or PR files)
+ *  - suites: estimate (create) → guarded start → jobs → atomic close
+ *  - runJob: the `container.evalJobs` handler body; it owns the run status
+ *  - recoverOnBoot: fail orphaned runs, heal counters, re-enqueue queued runs
+ *
+ * Cancellation is cooperative: `cancelSuite` records the id in memory and the
+ * running job's `checkCancelled` throws at the next chunk boundary. A call
+ * already sent to the provider still finishes and is billed (ADR 0018). One
+ * API process per DB is assumed, as in `ReviewService.reapStaleRuns`.
+ */
+import type {
+  EvalCaseInputSource,
+  EvalCaseSourceMeta,
+  EvalExpectation,
+  EvalSuiteCaseResult,
+  EvalSuiteMode,
+} from '@devdigest/shared';
+import { NotFoundError, ValidationError } from '../../platform/errors.js';
+import {
+  armSkills,
+  assertEvalTrusted,
+  assertJobLimit,
+  assertWithinBudget,
+  citationAccuracyOf,
+  closingStatus,
+  estimateJob,
+  EVAL_ARMS,
+  EVAL_REPEATS,
+  EvalCancelledError,
+  EvalCaseFileNotInPrError,
+  EvalNoCarrierError,
+  EvalNoCasesError,
+  EvalPriceUnknownError,
+  EvalSuiteStaleError,
+  expectationFilesOutsideDiff,
+  jobTimeoutMs,
+  pickDefaultCarrier,
+  scoreRun,
+  skillsChars,
+  suiteCost,
+  summarizeSuite,
+  totalJobsFor,
+  unifiedDiffFromPatches,
+  type EvalCase,
+  type EvalCasePatch,
+  type EvalRunRecord,
+  type EvalRunResult,
+  type EvalSuiteRecord,
+  type EvalSuiteView,
+} from './domain.js';
+import type { ClaimedRun, EvalJobPayload, EvalsDeps, SuiteCounter } from './ports.js';
+import { CANCELLED_RUN_ERROR, ORPHAN_RUN_ERROR } from './constants.js';
+
+export interface CreateCaseInput {
+  name: string;
+  source: EvalCaseInputSource;
+  expectation: EvalExpectation;
+  notes?: string | null;
+}
+
+export type UpdateCaseInput = Partial<CreateCaseInput>;
+
+export interface CreateSuiteInput {
+  /** Omitted → the linked agent with the most runs with the skill. */
+  carrierAgentId?: string;
+  mode: EvalSuiteMode;
+}
+
+export interface EvalSuiteDetail {
+  suite: EvalSuiteView;
+  cases: EvalSuiteCaseResult[];
+  runs: EvalRunRecord[];
+}
+
+interface DiffSnapshot {
+  inputDiff: string;
+  inputFiles: string[];
+  inputSource: EvalCaseSourceMeta;
+}
+
+export class EvalsService {
+  /** Suites cancelled in this process; read synchronously by `checkCancelled`. */
+  private readonly cancelled = new Set<string>();
+
+  constructor(private readonly deps: EvalsDeps) {}
+
+  // =========================================================================
+  // Cases
+  // =========================================================================
+
+  /** undefined when the skill is not in this workspace. */
+  async listCases(workspaceId: string, skillId: string): Promise<EvalCase[] | undefined> {
+    const skill = await this.deps.store.findSkill(workspaceId, skillId);
+    if (!skill) return undefined;
+    return this.deps.store.listCases(workspaceId, skillId);
+  }
+
+  async createCase(workspaceId: string, skillId: string, input: CreateCaseInput): Promise<EvalCase | undefined> {
+    const skill = await this.deps.store.findSkill(workspaceId, skillId);
+    if (!skill) return undefined;
+    const snapshot = await this.snapshotSource(workspaceId, input.source);
+    this.assertExpectationFits(input.expectation, snapshot.inputFiles);
+    return this.deps.store.insertCase({
+      workspaceId,
+      skillId,
+      name: input.name,
+      ...snapshot,
+      expectation: input.expectation,
+      notes: input.notes ?? null,
+    });
+  }
+
+  /** A new `source` re-snapshots the diff; the expectation is re-checked against the diff it will run on. */
+  async updateCase(workspaceId: string, id: string, input: UpdateCaseInput): Promise<EvalCase | undefined> {
+    const existing = await this.deps.store.findCase(workspaceId, id);
+    if (!existing || existing.ownerKind !== 'skill') return undefined;
+    const snapshot = input.source ? await this.snapshotSource(workspaceId, input.source) : undefined;
+    const files = snapshot?.inputFiles ?? this.deps.diffs.files(existing.inputDiff).map((f) => f.path);
+    const expectation = input.expectation ?? existing.expectation;
+    if (expectation && (input.expectation || snapshot)) this.assertExpectationFits(expectation, files);
+    const patch: EvalCasePatch = {
+      ...(input.name !== undefined ? { name: input.name } : {}),
+      ...(snapshot ?? {}),
+      ...(input.expectation !== undefined ? { expectation: input.expectation } : {}),
+      ...(input.notes !== undefined ? { notes: input.notes } : {}),
+    };
+    return this.deps.store.updateCase(workspaceId, id, patch);
+  }
+
+  async deleteCase(workspaceId: string, id: string): Promise<boolean> {
+    const existing = await this.deps.store.findCase(workspaceId, id);
+    if (!existing || existing.ownerKind !== 'skill') return false;
+    return this.deps.store.deleteCase(workspaceId, id);
+  }
+
+  private async snapshotSource(workspaceId: string, source: EvalCaseInputSource): Promise<DiffSnapshot> {
+    if (source.kind === 'paste') {
+      const files = this.deps.diffs.files(source.diff);
+      if (files.length === 0) {
+        throw new ValidationError('The pasted diff contains no file changes', { field: 'source.diff' });
+      }
+      return { inputDiff: source.diff, inputFiles: files.map((f) => f.path), inputSource: { kind: 'paste' } };
+    }
+    const pull = await this.deps.prs.getPull(workspaceId, source.pr_id);
+    if (!pull) throw new NotFoundError('Pull request not found', { pr_id: source.pr_id });
+    const prFiles = await this.deps.prs.getPrFiles(pull.id);
+    const byPath = new Map(prFiles.map((f) => [f.path, f]));
+    const wanted = [...new Set(source.files)];
+    const missing = wanted.filter((p) => !byPath.has(p));
+    if (missing.length > 0) throw new EvalCaseFileNotInPrError(missing, 'not_in_pr');
+    const noPatch = wanted.filter((p) => !byPath.get(p)?.patch);
+    if (noPatch.length > 0) throw new EvalCaseFileNotInPrError(noPatch, 'no_patch');
+    const inputDiff = unifiedDiffFromPatches(wanted.map((path) => ({ path, patch: byPath.get(path)!.patch! })));
+    return {
+      inputDiff,
+      inputFiles: wanted,
+      inputSource: { kind: 'pr', pr_id: pull.id, pr_number: pull.number, head_sha: pull.headSha, files: wanted },
+    };
+  }
+
+  /** An expectation naming a file outside the diff could never match: refuse it. */
+  private assertExpectationFits(expectation: EvalExpectation, diffFiles: string[]): void {
+    const outside = expectationFilesOutsideDiff(expectation, diffFiles);
+    if (outside.length > 0) {
+      throw new ValidationError(`Expectation names files that are not in the case diff: ${outside.join(', ')}`, {
+        field: 'expectation',
+        files: outside,
+      });
+    }
+  }
+
+  // =========================================================================
+  // Suites
+  // =========================================================================
+
+  async listSuites(workspaceId: string, skillId: string): Promise<EvalSuiteView[] | undefined> {
+    const skill = await this.deps.store.findSkill(workspaceId, skillId);
+    if (!skill) return undefined;
+    return this.deps.store.listSuites(workspaceId, skillId);
+  }
+
+  /**
+   * Estimate only (ADR 0018 §4): freezes the prompt of both arms, prices
+   * every job, applies the trust gate and the budget, and stores the suite in
+   * `estimated` with one `queued` run per (case, arm, repeat). Nothing runs.
+   */
+  async createSuite(workspaceId: string, skillId: string, input: CreateSuiteInput): Promise<EvalSuiteView | undefined> {
+    const { store } = this.deps;
+    const skill = await store.findSkill(workspaceId, skillId);
+    if (!skill) return undefined;
+    // The target version IS the current version, so its body is the current body.
+    assertEvalTrusted(skill, skill.bodySha256);
+
+    const carrierId =
+      input.carrierAgentId ?? pickDefaultCarrier(await store.carrierCandidates(workspaceId, skillId));
+    if (!carrierId) throw new EvalNoCarrierError();
+    const carrier = await store.findCarrier(workspaceId, carrierId);
+    if (!carrier) throw new NotFoundError('Carrier agent not found', { carrier_agent_id: carrierId });
+
+    const cases = (await store.listCases(workspaceId, skillId)).filter((c) => c.expectation !== null);
+    if (cases.length === 0) throw new EvalNoCasesError();
+    const repeats = EVAL_REPEATS[input.mode];
+    assertJobLimit(cases.length, repeats);
+
+    const target = { id: skill.id, name: skill.name, body: skill.body };
+    const carrierSkills = await this.deps.skills.effectiveSkills(carrier.id);
+    const withSkills = armSkills(carrierSkills, target, 'with');
+
+    let estimateUsd = 0;
+    for (const c of cases) {
+      const files = this.deps.diffs.files(c.inputDiff);
+      for (const arm of EVAL_ARMS) {
+        const job = estimateJob({
+          systemPrompt: carrier.systemPrompt,
+          skillsChars: skillsChars(armSkills(carrierSkills, target, arm)),
+          diffChars: c.inputDiff.length,
+          files,
+          strategy: carrier.strategy,
+        });
+        const cost = this.deps.price(carrier.model, job.tokensIn, job.tokensOut);
+        if (cost === null) throw new EvalPriceUnknownError(carrier.model);
+        estimateUsd += cost * repeats;
+      }
+    }
+    assertWithinBudget(estimateUsd, this.deps.maxBudgetUsd);
+
+    return store.insertSuite(
+      {
+        workspaceId,
+        skillId,
+        skillVersion: skill.version,
+        promptSha256: skill.promptSha256,
+        carrierAgentId: carrier.id,
+        carrierAgentVersion: carrier.version,
+        carrierAgentName: carrier.name,
+        model: carrier.model,
+        runConfig: {
+          provider: carrier.provider,
+          systemPrompt: carrier.systemPrompt,
+          strategy: carrier.strategy,
+          withSkills,
+        },
+        mode: input.mode,
+        repeats,
+        totalJobs: totalJobsFor(cases.length, repeats),
+        estimateUsd,
+      },
+      cases.map((c) => c.id),
+    );
+  }
+
+  /**
+   * ADR 0018 two-step start. Past `estimated` → 200 with the current state,
+   * nothing started (replay no-op). Stale (prompt or carrier moved) → 409.
+   * Another running suite in the workspace → 409 (DB partial unique index).
+   */
+  async startSuite(workspaceId: string, id: string): Promise<EvalSuiteView | undefined> {
+    const { store } = this.deps;
+    const view = await store.findSuite(workspaceId, id);
+    if (!view) return undefined;
+    if (view.status !== 'estimated') return view;
+    if (view.stale) throw new EvalSuiteStaleError();
+
+    const started = await store.startSuite(workspaceId, id);
+    if (!started) return store.findSuite(workspaceId, id); // lost a race: someone else moved it
+
+    if (started.totalJobs === 0) {
+      await store.closeSuite(id, { ...closingStatus([]), results: null, costUsd: null, costSource: null });
+    } else {
+      await this.enqueueRuns(
+        workspaceId,
+        started,
+        (await store.listRuns(id)).filter((r) => r.status === 'queued').map((r) => ({ runId: r.id, caseId: r.caseId })),
+      );
+    }
+    return store.findSuite(workspaceId, id);
+  }
+
+  /** Estimated/running → cancelled. On a terminal suite a 200 no-op. */
+  async cancelSuite(workspaceId: string, id: string): Promise<EvalSuiteView | undefined> {
+    const view = await this.deps.store.findSuite(workspaceId, id);
+    if (!view) return undefined;
+    const cancelled = await this.deps.store.cancelSuite(workspaceId, id);
+    if (cancelled) this.cancelled.add(id);
+    return this.deps.store.findSuite(workspaceId, id);
+  }
+
+  /** The polling target: suite + per-case table (computed live) + every run. */
+  async getSuiteDetail(workspaceId: string, id: string): Promise<EvalSuiteDetail | undefined> {
+    const suite = await this.deps.store.findSuite(workspaceId, id);
+    if (!suite) return undefined;
+    const [runs, cases] = await Promise.all([this.deps.store.listRuns(id), this.deps.store.suiteCases(id)]);
+    const { cases: rows } = summarizeSuite({ mode: suite.mode, repeats: suite.repeats, cases, runs });
+    return { suite, cases: rows, runs };
+  }
+
+  private async enqueueRuns(
+    workspaceId: string,
+    suite: Pick<EvalSuiteRecord, 'id' | 'skillId' | 'runConfig'>,
+    runs: { runId: string; caseId: string }[],
+  ): Promise<void> {
+    const cases = new Map((await this.deps.store.listCases(workspaceId, suite.skillId)).map((c) => [c.id, c]));
+    for (const r of runs) {
+      const diff = cases.get(r.caseId)?.inputDiff ?? '';
+      const { chunks } = estimateJob({
+        systemPrompt: '',
+        skillsChars: 0,
+        diffChars: 0,
+        files: this.deps.diffs.files(diff),
+        strategy: suite.runConfig.strategy,
+      });
+      await this.deps.queue.enqueue(workspaceId, { suiteId: suite.id, runId: r.runId }, jobTimeoutMs(chunks));
+    }
+  }
+
+  // =========================================================================
+  // Job handler (driven by container.evalJobs; never throws)
+  // =========================================================================
+
+  /**
+   * One (case, arm, repeat). Claim (queued → running) makes a duplicate job a
+   * no-op; the first terminal transition is the one that counts toward
+   * `done_jobs`; the handler that brings `done_jobs` to `total_jobs` closes
+   * the suite. A run deleted with its case still counts, so the suite closes.
+   */
+  async runJob(payload: EvalJobPayload): Promise<void> {
+    const { store, log } = this.deps;
+    try {
+      const claim = await store.claimRun(payload.runId);
+      if (!claim) {
+        if (!(await store.runExists(payload.runId))) await this.countJob(payload.suiteId);
+        return;
+      }
+      const result = await this.execute(claim);
+      const first = await store.finishRun(payload.runId, result);
+      if (first) await this.countJob(payload.suiteId);
+    } catch (err) {
+      // The run stays `running`; boot recovery fails it and heals the counter.
+      log?.error({ err: (err as Error).message, ...payload }, 'eval job: bookkeeping failed');
+    }
+  }
+
+  private async execute({ run, suite, evalCase }: ClaimedRun): Promise<EvalRunResult> {
+    const start = Date.now();
+    const failed = (error: string): EvalRunResult => ({ status: 'failed', error, durationMs: Date.now() - start });
+    if (suite.status !== 'running' || this.cancelled.has(suite.id)) {
+      return failed(suite.status === 'cancelled' || this.cancelled.has(suite.id) ? CANCELLED_RUN_ERROR : `Suite is ${suite.status}`);
+    }
+    if (!evalCase?.expectation) return failed('The case has no valid expectation any more');
+
+    const cfg = suite.runConfig;
+    const skills = run.arm === 'with' ? cfg.withSkills : cfg.withSkills.filter((s) => s.id !== suite.skillId);
+    try {
+      const out = await this.deps.reviewer.review({
+        provider: cfg.provider,
+        model: suite.model,
+        systemPrompt: cfg.systemPrompt,
+        strategy: cfg.strategy,
+        diffRaw: evalCase.inputDiff,
+        skills,
+        task: `Review the change in eval case "${evalCase.name}".`,
+        sessionId: `eval:${suite.id}:${evalCase.id}:${run.arm}:${run.repeatIdx}`,
+        checkCancelled: () => {
+          if (this.cancelled.has(suite.id)) throw new EvalCancelledError();
+        },
+      });
+      const score = scoreRun(out.findings, evalCase.expectation);
+      const priced = out.costUsd !== null && out.costSource !== null;
+      return {
+        status: 'done',
+        ...score,
+        citationAccuracy: citationAccuracyOf(out.grounding),
+        tokensIn: out.tokensIn,
+        tokensOut: out.tokensOut,
+        costUsd: priced ? out.costUsd : null,
+        costSource: priced ? out.costSource : null,
+        durationMs: Date.now() - start,
+        actualOutput: { findings: out.findings, grounding: out.grounding },
+      };
+    } catch (err) {
+      return failed(err instanceof EvalCancelledError ? CANCELLED_RUN_ERROR : (err as Error).message);
+    }
+  }
+
+  /** Atomic counter; exactly one caller sees `done_jobs` reach `total_jobs`. */
+  private async countJob(suiteId: string): Promise<void> {
+    const counter = await this.deps.store.countJob(suiteId);
+    if (counter) await this.closeIfComplete(suiteId, counter);
+  }
+
+  private async closeIfComplete(suiteId: string, c: SuiteCounter): Promise<void> {
+    if (c.status !== 'running' || c.doneJobs < c.totalJobs) return;
+    const [runs, cases] = await Promise.all([this.deps.store.listRuns(suiteId), this.deps.store.suiteCases(suiteId)]);
+    const closing = closingStatus(runs);
+    const { results } = summarizeSuite({ mode: c.mode, repeats: c.repeats, cases, runs });
+    await this.deps.store.closeSuite(suiteId, {
+      ...closing,
+      results: closing.status === 'done' ? results : null,
+      ...suiteCost(runs),
+    });
+    this.deps.log?.info({ suiteId, status: closing.status, verdict: results.verdict }, 'eval suite closed');
+  }
+
+  // =========================================================================
+  // Boot recovery (ADR 0018 §8)
+  // =========================================================================
+
+  /**
+   * A fresh process has no jobs in flight, so every `running` run is an
+   * orphan: it becomes failed. Counters of running suites are then healed
+   * from the runs themselves (covers a crash between writing a result and
+   * counting it), complete suites close, and queued runs are re-enqueued.
+   */
+  async recoverOnBoot(): Promise<{ orphaned: number; requeued: number; closed: number }> {
+    const { store } = this.deps;
+    const orphans = await store.failOrphanRuns(ORPHAN_RUN_ERROR);
+    const counters = await store.reconcileRunningSuites();
+    let closed = 0;
+    for (const c of counters) {
+      if (c.doneJobs >= c.totalJobs) {
+        await this.closeIfComplete(c.suiteId, c);
+        closed++;
+      }
+    }
+    const queued = await store.queuedRunsOfRunningSuites();
+    const bySuite = new Map<string, typeof queued>();
+    for (const q of queued) bySuite.set(q.suiteId, [...(bySuite.get(q.suiteId) ?? []), q]);
+    for (const [suiteId, runs] of bySuite) {
+      const first = runs[0]!;
+      await this.enqueueRuns(
+        first.workspaceId,
+        { id: suiteId, skillId: first.skillId, runConfig: first.runConfig },
+        runs,
+      );
+    }
+    return { orphaned: orphans.length, requeued: queued.length, closed };
+  }
+}
