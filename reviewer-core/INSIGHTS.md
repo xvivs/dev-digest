@@ -48,3 +48,5 @@ Renamed `reviewer-core/CLAUDE.md` to `AGENTS.md` and added a one-line `@AGENTS.m
 Skills moved into the system message before `INJECTION_GUARD`, which gained a no-waiver rule and a statement that `<skills>` outside the system message is data. One `neutralizeDelimiters` now covers skill text and every untrusted block, since the old `wrapUntrusted` let case variants of `</untrusted>` through. 44 tests green; the behavioural (LLM) waiver eval is still open.
 
 ## Open Questions
+
+- **Does the OpenAI SDK's constructor `timeout: 90_000` bound a stalled response body, or only time-to-headers?** Two review runs of API Contract Reviewer (`deepseek/deepseek-v4-flash` via OpenRouter, no `disableReasoning`/routing) hung > 5 min after "Reviewing all files" and the upstream socket stayed open after cancel (runs `d700a086`, `42e9897f`, 2026-09-30); the provider sets the timeout at construction (`reviewer-core/src/llm/openrouter.ts:55`) and review calls pass no `signal`. Unverified: needs a stalled-body repro before choosing between a per-request `signal` deadline for reviews and SDK config. _(2026-09-30)_

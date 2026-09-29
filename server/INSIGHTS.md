@@ -65,6 +65,8 @@ lives in the engineering-insights skill).
 
 - **`TypeError: Cannot read properties of undefined (reading 'skills_used')` in review IT tests, only under parallel file load: the run was `done` before its trace existed** — `run-executor.ts` called `completeAgentRun` before `saveRunTrace`, so `GET /runs/:id/trace` returned 404 for a few ms after the status turned terminal (the UI trace drawer hit the same window). Invariant now: trace first, terminal status second, in the success path, the catch and `failAll` (`server/src/modules/reviews/run-executor.ts:99`). Manual cancel (`run.repo.ts:111`) still sets `cancelled` before any trace. _(2026-09-29)_
 
+- **API process exits with `GitError: ... Repository not found` from `simple-git` after a repo refresh: `EnqueuedJob.done` rejected with no handler** — `JobRunner.enqueue` (`server/src/platform/jobs.ts:59`) returns a `done` promise that rejects when the job fails; fire-and-forget callers (`repos/service.ts` add/refresh, repo-intel resync) never read it, so on Node 22 a failed clone (e.g. the seeded `acme/payments-api`, absent on GitHub) was an unhandled rejection that killed the server. JobRunner now observes `done` itself and logs with credentials redacted; `done` still rejects for callers that await it. _(2026-09-30)_
+
 ## Session Notes
 
 ### 2026-09-19 — Cost Badge (server) session
