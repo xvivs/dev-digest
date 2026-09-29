@@ -10,7 +10,7 @@ import { Badge, Button, Card, CircularScore, SectionLabel } from "@devdigest/ui"
 import type { SkillImpact } from "@devdigest/shared";
 import { EVAL_SUITE_TERMINAL_STATUSES } from "@devdigest/shared/contracts/skill-impact";
 import { VerdictBadge } from "@/app/skills/_components/VerdictBadge";
-import { formatSignedDelta, passRatePercent } from "../../helpers";
+import { formatSignedDelta, passRatePercent } from "@/app/skills/helpers";
 import { s } from "./styles";
 
 export function ImpactCard({ impact, onRunEvals }: { impact: SkillImpact | null; onRunEvals: () => void }) {

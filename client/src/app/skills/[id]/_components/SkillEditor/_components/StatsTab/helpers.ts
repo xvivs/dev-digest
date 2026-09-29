@@ -25,17 +25,3 @@ export function costMissingReason(cost_usd: number | null, tokens: number): Cost
   if (cost_usd != null) return null;
   return tokens > 0 ? "no_price" : null;
 }
-
-/** `passing / total` as a whole percent for CircularScore; 0 when there are no cases. */
-export function passRatePercent(passing: number, total: number): number {
-  return total > 0 ? Math.round((passing / total) * 100) : 0;
-}
-
-/** Signed one-decimal delta: "+0.4", "−1.2" (U+2212), "0.0". */
-export function formatSignedDelta(value: number): string {
-  const rounded = Math.round(value * 10) / 10;
-  const abs = Math.abs(rounded).toFixed(1);
-  if (rounded > 0) return `+${abs}`;
-  if (rounded < 0) return `−${abs}`;
-  return abs;
-}
