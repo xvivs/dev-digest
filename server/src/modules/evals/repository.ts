@@ -176,6 +176,7 @@ export class EvalsRepository implements EvalStore {
     };
   }
 
+  /** Agents linking the skill with the link enabled (`agent_skills.enabled`); a disabled link is not a carrier. */
   async carrierCandidates(workspaceId: string, skillId: string): Promise<CarrierCandidate[]> {
     const runs = this.db
       .select({ agentId: t.agentRuns.agentId, runs: sql<number>`count(*)::int`.as('runs') })
@@ -195,7 +196,13 @@ export class EvalsRepository implements EvalStore {
       .from(t.agentSkills)
       .innerJoin(t.agents, eq(t.agents.id, t.agentSkills.agentId))
       .leftJoin(runs, eq(runs.agentId, t.agents.id))
-      .where(and(eq(t.agentSkills.skillId, skillId), eq(t.agents.workspaceId, workspaceId)));
+      .where(
+        and(
+          eq(t.agentSkills.skillId, skillId),
+          eq(t.agentSkills.enabled, true),
+          eq(t.agents.workspaceId, workspaceId),
+        ),
+      );
     return rows.map((r) => ({ ...r, runs: Number(r.runs) }));
   }
 

@@ -390,9 +390,25 @@ export const EvalSuite = z.object({
 });
 export type EvalSuite = z.infer<typeof EvalSuite>;
 
+/**
+ * `GET /skills/:id/eval-carriers` — agents that can carry an eval of this skill:
+ * those linking it with the link ENABLED (`agent_skills.enabled`). Most completed
+ * runs with the skill first, ties by name; exactly the first is `is_default`.
+ * Empty when no agent qualifies (the client shows "link the skill to an agent").
+ */
+export const EvalCarrier = z.object({
+  agent_id: z.string(),
+  agent_name: z.string(),
+  /** Completed runs of this agent that injected the skill. */
+  runs: z.number().int().nonnegative(),
+  is_default: z.boolean(),
+});
+export type EvalCarrier = z.infer<typeof EvalCarrier>;
+
 /** `POST /skills/:id/eval-suites`. Creates a suite in `estimated`; nothing runs yet. */
 export const CreateEvalSuiteBody = z
   .object({
+    /** Must link the skill with an enabled link, else 422 `eval_carrier_not_linked`. */
     carrier_agent_id: z.string().uuid(),
     mode: EvalSuiteMode,
   })

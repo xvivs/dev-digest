@@ -335,7 +335,18 @@ export class EvalCaseFileNotInPrError extends AppError {
 
 export class EvalNoCarrierError extends AppError {
   constructor() {
-    super('eval_no_carrier', 'No carrier agent given and no agent links this skill', 422);
+    super('eval_no_carrier', 'No carrier agent given and no agent links this skill with the link enabled', 422);
+  }
+}
+
+export class EvalCarrierNotLinkedError extends AppError {
+  constructor(agentId: string) {
+    super(
+      'eval_carrier_not_linked',
+      'The carrier agent does not link this skill, or its link is disabled',
+      422,
+      { carrier_agent_id: agentId },
+    );
   }
 }
 
@@ -623,10 +634,17 @@ export interface CarrierCandidate {
   runs: number;
 }
 
-/** Plan decision #5: the agent with the most runs with the skill; ties by name. */
+/**
+ * Candidates ordered for display: most runs with the skill first, ties by name.
+ * The caller passes ONLY eligible carriers (enabled link, `carrierCandidates`).
+ */
+export function rankCarriers(candidates: CarrierCandidate[]): CarrierCandidate[] {
+  return [...candidates].sort((a, b) => b.runs - a.runs || a.agentName.localeCompare(b.agentName));
+}
+
+/** Plan decision #5: the eligible agent with the most runs with the skill; ties by name. */
 export function pickDefaultCarrier(candidates: CarrierCandidate[]): string | null {
-  const sorted = [...candidates].sort((a, b) => b.runs - a.runs || a.agentName.localeCompare(b.agentName));
-  return sorted[0]?.agentId ?? null;
+  return rankCarriers(candidates)[0]?.agentId ?? null;
 }
 
 /**

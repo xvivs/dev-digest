@@ -231,6 +231,8 @@ function setup() {
     systemPrompt: 'Review.',
     strategy: 'single-pass',
   });
+  // The default fixture carrier links the skill with an enabled link.
+  store.candidates = [{ agentId: 'ag', agentName: 'alpha', runs: 0 }];
   for (const id of ['c1', 'c2']) {
     store.cases.set(id, {
       id,
@@ -353,6 +355,35 @@ describe('EvalsService.createSuite', () => {
     ];
     const suite = await env.service.createSuite(WS, 'sk', { mode: 'quick' });
     expect(suite?.carrierAgentId).toBe('ag');
+  });
+
+  it('an explicit carrier that is not an eligible candidate is 422 eval_carrier_not_linked, before any estimate', async () => {
+    env.store.candidates = [];
+    await expect(env.service.createSuite(WS, 'sk', { carrierAgentId: 'ag', mode: 'quick' })).rejects.toMatchObject({
+      code: 'eval_carrier_not_linked',
+      statusCode: 422,
+    });
+    expect(env.store.inserts).toBe(0);
+  });
+
+  it('no candidates and no explicit carrier is eval_no_carrier; an unknown carrier stays 404', async () => {
+    env.store.candidates = [];
+    await expect(env.service.createSuite(WS, 'sk', { mode: 'quick' })).rejects.toMatchObject({ code: 'eval_no_carrier' });
+    await expect(env.service.createSuite(WS, 'sk', { carrierAgentId: 'nope', mode: 'quick' })).rejects.toMatchObject({
+      statusCode: 404,
+    });
+  });
+
+  it('listCarriers ranks candidates and flags only the first as default', async () => {
+    env.store.candidates = [
+      { agentId: 'zz', agentName: 'zeta', runs: 1 },
+      { agentId: 'ag', agentName: 'alpha', runs: 9 },
+    ];
+    expect(await env.service.listCarriers(WS, 'sk')).toEqual([
+      { agentId: 'ag', agentName: 'alpha', runs: 9, isDefault: true },
+      { agentId: 'zz', agentName: 'zeta', runs: 1, isDefault: false },
+    ]);
+    expect(await env.service.listCarriers('other', 'sk')).toBeUndefined();
   });
 
   it('undefined for a skill outside the workspace', async () => {

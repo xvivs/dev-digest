@@ -179,7 +179,23 @@ d('evals: cases, suites and the ablation runner (Testcontainers pg)', () => {
     }
   }
 
-  async function createSuite(a: FastifyInstance, skillId: string, carrierId: string | undefined, mode: 'quick' | 'full') {
+  /** Direct link row: unlike PUT /agents/:id/skills it never replaces the agent's other links. */
+  async function linkAgent(agentId: string, skillId: string, enabled = true) {
+    await pg.handle.db
+      .insert(t.agentSkills)
+      .values({ agentId, skillId, enabled })
+      .onConflictDoUpdate({ target: [t.agentSkills.agentId, t.agentSkills.skillId], set: { enabled } });
+  }
+
+  /** A carrier must link the skill with an enabled link; `link: false` opts out to test the refusal. */
+  async function createSuite(
+    a: FastifyInstance,
+    skillId: string,
+    carrierId: string | undefined,
+    mode: 'quick' | 'full',
+    opts: { link?: boolean } = {},
+  ) {
+    if (carrierId && opts.link !== false) await linkAgent(carrierId, skillId);
     return a.inject({
       method: 'POST',
       url: `/skills/${skillId}/eval-suites`,
@@ -414,6 +430,101 @@ d('evals: cases, suites and the ablation runner (Testcontainers pg)', () => {
       expect(none.json().error.code).toBe('eval_no_carrier');
     });
 
+    describe('carrier eligibility', () => {
+      const addRun = async (agentId: string, skillId: string, status = 'done') => {
+        const [run] = await pg.handle.db
+          .insert(t.agentRuns)
+          .values({ workspaceId, agentId, status, model: 'gpt-4.1' })
+          .returning();
+        await pg.handle.db
+          .insert(t.runSkills)
+          .values({ runId: run!.id, skillId, skillVersion: 1, bodySha256: 'x', tokens: 5 });
+      };
+      const carriers = async (skillId: string) => {
+        const res = await app.inject({ method: 'GET', url: `/skills/${skillId}/eval-carriers` });
+        expect(res.statusCode).toBe(200);
+        return res.json() as { agent_id: string; agent_name: string; runs: number; is_default: boolean }[];
+      };
+
+      it('lists only agents with an ENABLED link; default = most completed runs, even over a busier disabled link', async () => {
+        const skill = await createSkill();
+        const busyButDisabled = await createAgent();
+        const few = await createAgent();
+        const many = await createAgent();
+        const unlinked = await createAgent();
+        await linkAgent(busyButDisabled.id, skill.id, false);
+        await linkAgent(few.id, skill.id);
+        await linkAgent(many.id, skill.id);
+        for (let i = 0; i < 5; i++) await addRun(busyButDisabled.id, skill.id);
+        await addRun(few.id, skill.id);
+        await addRun(many.id, skill.id);
+        await addRun(many.id, skill.id);
+        await addRun(many.id, skill.id, 'failed'); // only completed runs count
+
+        const list = await carriers(skill.id);
+        expect(list.map((c) => c.agent_id)).toEqual([many.id, few.id]);
+        expect(list.map((c) => c.runs)).toEqual([2, 1]);
+        expect(list.map((c) => c.is_default)).toEqual([true, false]);
+        expect(list.map((c) => c.agent_id)).not.toContain(unlinked.id);
+        expect(list.map((c) => c.agent_id)).not.toContain(busyButDisabled.id);
+
+        await addCases(skill.id, 1);
+        const res = await createSuite(app, skill.id, undefined, 'quick', { link: false });
+        expect(res.statusCode).toBe(201);
+        expect(res.json().carrier_agent_id).toBe(many.id);
+      });
+
+      it('ties on runs break by name; no enabled link → empty list, no default, eval_no_carrier', async () => {
+        const skill = await createSkill();
+        const [x, y] = [await createAgent(), await createAgent()];
+        await linkAgent(x.id, skill.id);
+        await linkAgent(y.id, skill.id);
+        const list = await carriers(skill.id);
+        const byName = [x, y].sort((p, q) => p.name.localeCompare(q.name));
+        expect(list.map((c) => c.agent_id)).toEqual(byName.map((a) => a.id));
+        expect(list.filter((c) => c.is_default).map((c) => c.agent_id)).toEqual([byName[0]!.id]);
+
+        const off = await createSkill();
+        await addCases(off.id, 1);
+        await linkAgent(x.id, off.id, false);
+        expect(await carriers(off.id)).toEqual([]);
+        const none = await createSuite(app, off.id, undefined, 'quick', { link: false });
+        expect(none.statusCode).toBe(422);
+        expect(none.json().error.code).toBe('eval_no_carrier');
+      });
+
+      it('an explicit carrier without an enabled link is 422 eval_carrier_not_linked (disabled and unlinked)', async () => {
+        const skill = await createSkill();
+        await addCases(skill.id, 1);
+        const disabled = await createAgent();
+        const unlinked = await createAgent();
+        await linkAgent(disabled.id, skill.id, false);
+        for (const agent of [disabled, unlinked]) {
+          const res = await createSuite(app, skill.id, agent.id, 'quick', { link: false });
+          expect(res.statusCode).toBe(422);
+          expect(res.json().error.code).toBe('eval_carrier_not_linked');
+        }
+        const suites = await pg.handle.db.select().from(t.evalSuites).where(eq(t.evalSuites.skillId, skill.id));
+        expect(suites).toHaveLength(0);
+      });
+
+      it('a globally disabled skill can still be evaluated through an enabled link', async () => {
+        const skill = await createSkill();
+        await addCases(skill.id, 1);
+        const agent = await createAgent();
+        await linkAgent(agent.id, skill.id);
+        const off = await app.inject({ method: 'PUT', url: `/skills/${skill.id}`, payload: { enabled: false } });
+        expect(off.statusCode).toBe(200);
+        expect((await carriers(skill.id)).map((c) => c.agent_id)).toEqual([agent.id]);
+        expect((await createSuite(app, skill.id, agent.id, 'quick')).statusCode).toBe(201);
+      });
+
+      it('unknown skill is 404', async () => {
+        const res = await app.inject({ method: 'GET', url: `/skills/${crypto.randomUUID()}/eval-carriers` });
+        expect(res.statusCode).toBe(404);
+      });
+    });
+
     it('trust gate: an unvetted imported skill is 409 until vetted', async () => {
       const skill = await createSkill({ source: 'imported' });
       const agent = await createAgent();
@@ -433,7 +544,7 @@ d('evals: cases, suites and the ablation runner (Testcontainers pg)', () => {
       const res = await createSuite(app, skill.id, agent.id, 'quick');
       expect(res.statusCode).toBe(422);
       expect(res.json().error.code).toBe('eval_price_unknown');
-      expect((await createSuite(app, skill.id, crypto.randomUUID(), 'quick')).statusCode).toBe(404);
+      expect((await createSuite(app, skill.id, crypto.randomUUID(), 'quick', { link: false })).statusCode).toBe(404);
     });
 
     it('422 above 150 jobs (26 cases × 2 × 3)', async () => {

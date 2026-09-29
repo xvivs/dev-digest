@@ -21,6 +21,7 @@ import {
   matchesMustFind,
   matchesMustNotFind,
   pickDefaultCarrier,
+  rankCarriers,
   scoreRun,
   suiteCost,
   summarizeSuite,
@@ -398,6 +399,19 @@ describe('pickDefaultCarrier', () => {
       ]),
     ).toBe('b');
     expect(pickDefaultCarrier([])).toBeNull();
+  });
+});
+
+describe('rankCarriers', () => {
+  it('most runs first, ties by name; the first is what pickDefaultCarrier returns', () => {
+    const list = [
+      { agentId: 'a', agentName: 'zeta', runs: 0 },
+      { agentId: 'b', agentName: 'beta', runs: 2 },
+      { agentId: 'c', agentName: 'alpha', runs: 2 },
+    ];
+    expect(rankCarriers(list).map((c) => c.agentId)).toEqual(['c', 'b', 'a']);
+    expect(pickDefaultCarrier(list)).toBe('c');
+    expect(list[0]!.agentId).toBe('a'); // input untouched
   });
 });
 

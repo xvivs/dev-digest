@@ -6,6 +6,7 @@
  *   POST   /skills/:id/eval-cases     → 201 SkillEvalCase (paste diff or PR files)
  *   PUT    /eval-cases/:id            → SkillEvalCase (partial; new source re-snapshots)
  *   DELETE /eval-cases/:id            → { ok: true }
+ *   GET    /skills/:id/eval-carriers  → EvalCarrier[] (enabled links only, default first)
  *   GET    /skills/:id/eval-suites    → EvalSuite[], newest first
  *   POST   /skills/:id/eval-suites    → 201 EvalSuite (status 'estimated'; nothing runs)
  *   POST   /eval-suites/:id/start     → EvalSuite (single-use; a replay is a no-op)
@@ -23,6 +24,7 @@ import {
   CreateEvalCaseBody,
   CreateEvalSuiteBody,
   UpdateEvalCaseBody,
+  type EvalCarrier as EvalCarrierDto,
   type EvalSuite as EvalSuiteDto,
   type EvalSuiteDetail as EvalSuiteDetailDto,
   type EvalSuiteRun as EvalSuiteRunDto,
@@ -37,7 +39,7 @@ import { buildEvalsService } from './wiring.js';
 
 /**
  * The contract requires `carrier_agent_id`; the server also accepts it
- * missing and then picks the plan's default carrier (the linked agent with
+ * missing and then picks the plan's default carrier (the enabled-link agent with
  * the most runs with the skill). A strict superset of the wire contract.
  */
 const CreateSuiteBody = CreateEvalSuiteBody.extend({
@@ -139,6 +141,13 @@ export default async function evalsRoutes(appBase: FastifyInstance) {
   });
 
   // ---- suites
+
+  app.get('/skills/:id/eval-carriers', { schema: { params: IdParams } }, async (req): Promise<EvalCarrierDto[]> => {
+    const { workspaceId } = await getContext(app.container, req);
+    const carriers = await service.listCarriers(workspaceId, req.params.id);
+    if (!carriers) throw new NotFoundError('Skill not found');
+    return carriers.map((c) => ({ agent_id: c.agentId, agent_name: c.agentName, runs: c.runs, is_default: c.isDefault }));
+  });
 
   app.get('/skills/:id/eval-suites', { schema: { params: IdParams } }, async (req): Promise<EvalSuiteDto[]> => {
     const { workspaceId } = await getContext(app.container, req);

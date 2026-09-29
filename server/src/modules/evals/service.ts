@@ -34,6 +34,7 @@ import {
   EVAL_REPEATS,
   EvalCancelledError,
   EvalCaseFileNotInPrError,
+  EvalCarrierNotLinkedError,
   EvalNoCarrierError,
   EvalNoCasesError,
   EvalPriceUnknownError,
@@ -41,6 +42,7 @@ import {
   expectationFilesOutsideDiff,
   jobTimeoutMs,
   pickDefaultCarrier,
+  rankCarriers,
   scoreRun,
   skillsChars,
   suiteCost,
@@ -67,7 +69,7 @@ export interface CreateCaseInput {
 export type UpdateCaseInput = Partial<CreateCaseInput>;
 
 export interface CreateSuiteInput {
-  /** Omitted → the linked agent with the most runs with the skill. */
+  /** Omitted → the enabled-link agent with the most runs with the skill. Must link the skill (enabled). */
   carrierAgentId?: string;
   mode: EvalSuiteMode;
 }
@@ -192,6 +194,17 @@ export class EvalsService {
     return this.deps.store.listSuites(workspaceId, skillId);
   }
 
+  /** Eligible carriers, default first (undefined: skill not in this workspace). */
+  async listCarriers(
+    workspaceId: string,
+    skillId: string,
+  ): Promise<{ agentId: string; agentName: string; runs: number; isDefault: boolean }[] | undefined> {
+    const skill = await this.deps.store.findSkill(workspaceId, skillId);
+    if (!skill) return undefined;
+    const ranked = rankCarriers(await this.deps.store.carrierCandidates(workspaceId, skillId));
+    return ranked.map((c, i) => ({ ...c, isDefault: i === 0 }));
+  }
+
   /**
    * Estimate only (ADR 0018 §4): freezes the prompt of both arms, prices
    * every job, applies the trust gate and the budget, and stores the suite in
@@ -204,11 +217,15 @@ export class EvalsService {
     // The target version IS the current version, so its body is the current body.
     assertEvalTrusted(skill, skill.bodySha256);
 
-    const carrierId =
-      input.carrierAgentId ?? pickDefaultCarrier(await store.carrierCandidates(workspaceId, skillId));
+    // Eligible carriers = agents linking the skill with an enabled link. The
+    // skill itself may be globally disabled: the eval pins the target body
+    // explicitly (ADR 0018 amendment 2026-09-29).
+    const candidates = await store.carrierCandidates(workspaceId, skillId);
+    const carrierId = input.carrierAgentId ?? pickDefaultCarrier(candidates);
     if (!carrierId) throw new EvalNoCarrierError();
     const carrier = await store.findCarrier(workspaceId, carrierId);
     if (!carrier) throw new NotFoundError('Carrier agent not found', { carrier_agent_id: carrierId });
+    if (!candidates.some((c) => c.agentId === carrier.id)) throw new EvalCarrierNotLinkedError(carrier.id);
 
     const cases = (await store.listCases(workspaceId, skillId)).filter((c) => c.expectation !== null);
     if (cases.length === 0) throw new EvalNoCasesError();
