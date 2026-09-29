@@ -5,6 +5,7 @@
  */
 import { z } from 'zod';
 import type { SkillSource } from '@devdigest/shared';
+import { ValidationError } from '../../platform/errors.js';
 import { sha256Hex } from './hash.js';
 import { containsInvisibleChars } from './text-hygiene.js';
 
@@ -23,11 +24,13 @@ export const SkillName = z
 
 export const SkillDescription = z.string().max(SKILL_DESCRIPTION_MAX);
 
-export const SkillBody = z
-  .string()
-  .min(1)
-  .max(SKILL_BODY_MAX)
-  .refine((body) => !containsInvisibleChars(body), { message: INVISIBLE_CHARS_MESSAGE });
+/** Shape only. The invisible-character rule is `assertSkillBodyHygiene`, run by the services. */
+export const SkillBody = z.string().min(1).max(SKILL_BODY_MAX);
+
+/** ADR 0012: reject a body with invisible/bidi-control characters (422 `validation_error`). */
+export function assertSkillBodyHygiene(body: string): void {
+  if (containsInvisibleChars(body)) throw new ValidationError(INVISIBLE_CHARS_MESSAGE);
+}
 
 export interface SourcePolicy {
   enabled: boolean;

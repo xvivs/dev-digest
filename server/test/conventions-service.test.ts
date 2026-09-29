@@ -98,7 +98,9 @@ class InMemoryStore implements ConventionStore {
     this.s.scans.push(scan);
     return scan;
   }
+  failSetScanJob = false;
   async setScanJob(scanId: string, jobId: string) {
+    if (this.failSetScanJob) throw new Error('db down');
     const scan = this.s.scans.find((x) => x.id === scanId);
     if (scan) scan.jobId = jobId;
   }
@@ -264,11 +266,11 @@ class InMemoryStore implements ConventionStore {
     return {
       links: a.links.map((l) => ({ skillId: l.skillId, enabled: l.enabled })),
       skills: skills.map((k) => ({ id: k.id, enabled: k.enabled, body: k.body })),
-      maxOrder: a.links.reduce((m, l) => Math.max(m, l.order), -1),
     };
   }
-  async appendAgentLink(agentId: string, skillId: string, order: number) {
-    this.s.agents.find((x) => x.id === agentId)!.links.push({ skillId, enabled: true, order });
+  async appendAgentLink(agentId: string, skillId: string) {
+    const a = this.s.agents.find((x) => x.id === agentId)!;
+    a.links.push({ skillId, enabled: true, order: a.links.reduce((m, l) => Math.max(m, l.order), -1) + 1 });
   }
   async linkConventionsToSkill(ids: string[], skillId: string) {
     for (const conventionId of ids) this.s.conventionSkills.push({ conventionId, skillId });
@@ -432,6 +434,18 @@ describe('ConventionsService.startScan', () => {
     const err = await h.service.startScan(WS, REPO.id).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(ScanRunningError);
     expect((err as ScanRunningError).details).toEqual({ scan_id: first!.scanId });
+  });
+});
+
+describe('ConventionsService.startScan compensation (onion#9)', () => {
+  it('fails the scan when setScanJob throws, so the next start is not a 409', async () => {
+    const h = harness();
+    h.store.failSetScanJob = true;
+    await expect(h.service.startScan(WS, REPO.id)).rejects.toThrow('db down');
+    expect(h.store.s.scans).toEqual([expect.objectContaining({ status: 'failed', error: 'db down' })]);
+
+    h.store.failSetScanJob = false;
+    await expect(h.service.startScan(WS, REPO.id)).resolves.toEqual({ scanId: expect.any(String) });
   });
 });
 

@@ -35,7 +35,7 @@ type ObservationRow = typeof t.conventionObservations.$inferSelect;
 /** Tx-bound repositories of the modules that own skills and agents (built by the container). */
 export interface TxRepositories {
   skillsOn(tx: DbTx): Pick<ReturnType<Container['skillsRepoOn']>, 'insert'>;
-  agentsOn(tx: DbTx): Pick<ReturnType<Container['agentsRepoOn']>, 'linkedSkills'>;
+  agentsOn(tx: DbTx): Pick<ReturnType<Container['agentsRepoOn']>, 'linkedSkills' | 'lockForSkillLink' | 'appendSkillLink'>;
 }
 
 const RUNNING_SCAN_UQ = 'convention_scans_repo_running_uq';
@@ -216,9 +216,22 @@ export class ConventionsRepository implements ConventionStore {
   }
 
   async recordScanProgress(scanId: string, attempt: number, progress: ScanProgress): Promise<boolean> {
-    // Only defined keys: drizzle skips `undefined`, but an empty SET is a syntax error.
-    const set = Object.fromEntries(Object.entries(progress).filter(([, v]) => v !== undefined));
-    if (Object.keys(set).length === 0) return false;
+    // Drizzle skips `undefined` keys, but an all-undefined SET is a syntax error.
+    const set: Partial<typeof t.conventionScans.$inferInsert> = {
+      sampleFileCount: progress.sampleFileCount,
+      foundCount: progress.foundCount,
+      verifiedCount: progress.verifiedCount,
+      droppedCount: progress.droppedCount,
+      relocatedCount: progress.relocatedCount,
+      matchedPriorCount: progress.matchedPriorCount,
+      duplicateCount: progress.duplicateCount,
+      model: progress.model,
+      tokensIn: progress.tokensIn,
+      tokensOut: progress.tokensOut,
+      costUsd: progress.costUsd,
+      costSource: progress.costSource,
+    };
+    if (Object.values(set).every((v) => v === undefined)) return false;
     const rows = await this.db
       .update(t.conventionScans)
       .set(set)
@@ -524,15 +537,8 @@ export class ConventionsRepository implements ConventionStore {
     return rows.flatMap((r) => r.evidence.map(toEvidence));
   }
 
-  async lockAgents(workspaceId: string, agentIds: string[]): Promise<string[]> {
-    if (agentIds.length === 0) return [];
-    const rows = await this.db
-      .select({ id: t.agents.id })
-      .from(t.agents)
-      .where(and(eq(t.agents.workspaceId, workspaceId), inArray(t.agents.id, agentIds)))
-      .orderBy(t.agents.id)
-      .for('update');
-    return rows.map((r) => r.id);
+  lockAgents(workspaceId: string, agentIds: string[]): Promise<string[]> {
+    return this.txRepos.agentsOn(this.requireTx()).lockForSkillLink(workspaceId, agentIds);
   }
 
   async insertSkill(input: NewExtractedSkill): Promise<CreatedSkill> {
@@ -568,12 +574,11 @@ export class ConventionsRepository implements ConventionStore {
     return {
       links: linked.map((l) => ({ skillId: l.skill.id, enabled: l.enabled })),
       skills: linked.map((l) => ({ id: l.skill.id, enabled: l.skill.enabled, body: l.skill.body })),
-      maxOrder: linked.reduce((max, l) => Math.max(max, l.order), -1),
     };
   }
 
-  async appendAgentLink(agentId: string, skillId: string, order: number): Promise<void> {
-    await this.db.insert(t.agentSkills).values({ agentId, skillId, order, enabled: true });
+  async appendAgentLink(agentId: string, skillId: string): Promise<void> {
+    await this.txRepos.agentsOn(this.requireTx()).appendSkillLink(agentId, skillId, true);
   }
 
   async linkConventionsToSkill(conventionIds: string[], skillId: string): Promise<void> {

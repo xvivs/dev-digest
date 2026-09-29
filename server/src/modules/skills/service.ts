@@ -13,7 +13,7 @@ import {
   type SkillListItem,
   type SkillPatch,
 } from './domain.js';
-import { applySourcePolicy } from '../_shared/skill-rules.js';
+import { applySourcePolicy, assertSkillBodyHygiene } from '../_shared/skill-rules.js';
 import type { SkillStore } from './ports.js';
 
 export interface CreateSkillInput {
@@ -39,6 +39,7 @@ export class SkillsService {
    *  request says — `applySourcePolicy` never reads a client-supplied
    *  enabled/needs_vetting because the input type has none. */
   create(workspaceId: string, input: CreateSkillInput): Promise<Skill> {
+    assertSkillBodyHygiene(input.body);
     // `create` only serves manual/imported (route-enforced): requestedEnabled is irrelevant there.
     const { enabled, needsVetting } = applySourcePolicy(input.source, input.body, false);
     return this.store.insert({
@@ -61,6 +62,7 @@ export class SkillsService {
    * workspace (route → 404).
    */
   update(workspaceId: string, id: string, patch: SkillPatch): Promise<Skill | undefined> {
+    if (patch.body !== undefined) assertSkillBodyHygiene(patch.body);
     return this.store.transaction(async (tx) => {
       const existing = await tx.findById(workspaceId, id);
       if (!existing) return undefined;

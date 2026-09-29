@@ -52,11 +52,10 @@ export interface NewExtractedSkill {
   evidenceFiles: string[];
 }
 
-/** An agent's current links, for the budget check and the next `order`. */
+/** An agent's current links, for the budget check. */
 export interface AgentLinkState {
   links: { skillId: string; enabled: boolean }[];
   skills: { id: string; enabled: boolean; body: string }[];
-  maxOrder: number;
 }
 
 export interface ConventionStore {
@@ -108,12 +107,13 @@ export interface ConventionStore {
   lockConventions(workspaceId: string, repoId: string, ids: string[]): Promise<ConventionRecord[]>;
   /** Evidence of each convention's last observation. */
   lastEvidence(conventionIds: string[]): Promise<ConventionEvidence[]>;
-  /** `SELECT … FROM agents … FOR UPDATE`; returns the ids found in this workspace. */
+  /** Locks the agents FOR UPDATE through the agents repository; returns the ids found in this workspace. */
   lockAgents(workspaceId: string, agentIds: string[]): Promise<string[]>;
   /** Inserts through the skills repository bound to this transaction. Throws `skill_name_taken` (409). */
   insertSkill(input: NewExtractedSkill): Promise<CreatedSkill>;
   agentLinkState(agentId: string): Promise<AgentLinkState>;
-  appendAgentLink(agentId: string, skillId: string, order: number): Promise<void>;
+  /** Appends an enabled link after the agent's last one (agent locked by `lockAgents`). */
+  appendAgentLink(agentId: string, skillId: string): Promise<void>;
   linkConventionsToSkill(conventionIds: string[], skillId: string): Promise<void>;
 
   /** Run `work` atomically; use the store handed to `work`, not `this`. */

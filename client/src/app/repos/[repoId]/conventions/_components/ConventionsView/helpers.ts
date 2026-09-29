@@ -80,3 +80,9 @@ export function isNotCloned({
 export function isIndexed(status: string | undefined): boolean {
   return status !== undefined && INDEXED_STATUSES.includes(status);
 }
+
+/** The message to show for a failed request: the server's own text for an ApiError, else `fallback`. */
+export function errorMessage(err: unknown, fallback: string): string | null {
+  if (!err) return null;
+  return err instanceof ApiError ? err.message : fallback;
+}

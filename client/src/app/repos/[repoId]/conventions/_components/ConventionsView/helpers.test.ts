@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { ApiError } from "@/lib/api";
 import { candidate, page, scan } from "../../fixtures";
-import { emptyTabKind, isIndexBlocked, isRepoBlockedError, resolveScreen, type ScreenInput } from "./helpers";
+import { emptyTabKind, errorMessage, isIndexBlocked, isRepoBlockedError, resolveScreen, type ScreenInput } from "./helpers";
 
 const base: ScreenInput = { page: page({ candidates: [candidate("a")] }), loading: false, loadFailed: false, indexBlocked: false, indexPending: false };
 const screenOf = (over: Partial<ScreenInput>) => resolveScreen({ ...base, ...over });
@@ -84,5 +84,20 @@ describe("emptyTabKind", () => {
     expect(emptyTabKind("list", "all")).toBeNull();
     expect(emptyTabKind("list", "accepted")).toBe("accepted");
     expect(emptyTabKind("allRejected", "rejected")).toBe("rejected");
+  });
+});
+
+describe("errorMessage", () => {
+  it("is null when there is no error", () => {
+    expect(errorMessage(null, "fallback")).toBeNull();
+    expect(errorMessage(undefined, "fallback")).toBeNull();
+  });
+
+  it("shows the server text of an ApiError", () => {
+    expect(errorMessage(new ApiError("Clone is locked", 409, "clone_locked"), "fallback")).toBe("Clone is locked");
+  });
+
+  it("falls back for any other error", () => {
+    expect(errorMessage(new Error("boom"), "fallback")).toBe("fallback");
   });
 });

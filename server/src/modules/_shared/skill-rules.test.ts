@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { SkillSource } from '@devdigest/shared';
-import { applySourcePolicy, SkillBody, SkillName } from './skill-rules.js';
+import { applySourcePolicy, assertSkillBodyHygiene, INVISIBLE_CHARS_MESSAGE, SkillBody, SkillName } from './skill-rules.js';
 import { sha256Hex } from './hash.js';
 
 describe('applySourcePolicy', () => {
@@ -42,7 +42,14 @@ describe('shared skill field schemas', () => {
   it('rejects a bad name and invisible characters in the body', () => {
     expect(SkillName.safeParse('Bad Name').success).toBe(false);
     expect(SkillName.safeParse('good-name').success).toBe(true);
-    expect(SkillBody.safeParse('hi​there').success).toBe(false);
     expect(SkillBody.safeParse('ok').success).toBe(true);
+    expect(SkillBody.safeParse('').success).toBe(false);
+  });
+
+  it('assertSkillBodyHygiene throws a 422 validation_error for invisible characters', () => {
+    expect(() => assertSkillBodyHygiene('ok')).not.toThrow();
+    expect(() => assertSkillBodyHygiene('hi\u200Bthere')).toThrow(
+      expect.objectContaining({ code: 'validation_error', statusCode: 422, message: INVISIBLE_CHARS_MESSAGE }),
+    );
   });
 });

@@ -32,10 +32,11 @@ import {
   tabCounts,
 } from "../../helpers";
 import { ConventionCard } from "../ConventionCard";
+import { NotIndexedState } from "../NotIndexedState";
 import { ScanHeader } from "../ScanHeader";
 import { TransformToSkillModal } from "../TransformToSkillModal";
 import { LOCAL_ERRORS, MAX_SELECTED, SKELETON_CARDS, SKELETON_CARD_HEIGHT } from "./constants";
-import { emptyTabKind, isIndexBlocked, isIndexed, isNotCloned, isRepoBlockedError, resolveScreen } from "./helpers";
+import { emptyTabKind, errorMessage, isIndexBlocked, isIndexed, isNotCloned, isRepoBlockedError, resolveScreen } from "./helpers";
 import { s } from "./styles";
 
 export function ConventionsView({ repoId }: { repoId: string }) {
@@ -49,16 +50,20 @@ export function ConventionsView({ repoId }: { repoId: string }) {
   const resync = useResyncRepoIntel(repoId, LOCAL_ERRORS);
   const clone = useRefreshRepo(LOCAL_ERRORS);
   const clonePath = activeRepo?.clone_path;
-  // Poll the index state after a resync/clone is accepted and while no clone exists,
-  // until the index is usable (AC-32).
-  const [indexPolling, setIndexPolling] = React.useState(false);
-  const indexState = useRepoIntelStatus(repoId, indexPolling || clonePath === null);
+  // `indexRequested` is only the explicit request (a resync/clone the person just started).
+  // Polling itself follows the data: while a request is open or no clone exists, until the
+  // index is usable (AC-32).
+  const [indexRequested, setIndexRequested] = React.useState(false);
+  const indexState = useRepoIntelStatus(repoId, indexRequested || clonePath === null);
+  const indexReady = isIndexed(indexState.data?.status);
+  // A request is settled once the index is usable: adjust during render, no effect round-trip.
+  if (indexRequested && indexReady) setIndexRequested(false);
   // A clone that just landed starts indexing in the background: keep watching the index.
-  const prevClonePath = React.useRef(clonePath);
-  React.useEffect(() => {
-    if (prevClonePath.current === null && clonePath) setIndexPolling(true);
-    prevClonePath.current = clonePath;
-  }, [clonePath]);
+  const [prevClonePath, setPrevClonePath] = React.useState(clonePath);
+  if (prevClonePath !== clonePath) {
+    setPrevClonePath(clonePath);
+    if (prevClonePath === null && clonePath && !indexReady) setIndexRequested(true);
+  }
   const extract = useExtractConventions(repoId, LOCAL_ERRORS);
   const update = useUpdateConvention(repoId);
 
@@ -74,15 +79,6 @@ export function ConventionsView({ repoId }: { repoId: string }) {
   const selection = effectiveSelection(selectedIds, accepted);
   const selectedCandidates = candidates.filter((c) => selection.includes(c.id));
 
-  const indexReady = isIndexed(indexState.data?.status);
-  React.useEffect(() => {
-    if (indexPolling && indexReady) {
-      setIndexPolling(false);
-      // The 409 that put the page in "not indexed" is stale now: fall through to "never scanned".
-      extract.reset();
-    }
-  }, [indexPolling, indexReady, extract]);
-
   const repoBlocked = isRepoBlockedError(extract.error);
   const screen = resolveScreen({
     page,
@@ -96,26 +92,25 @@ export function ConventionsView({ repoId }: { repoId: string }) {
   const crumb = [{ label: t("page.crumbLab") }, { label: t("page.crumbConventions") }];
 
   const runAnalysis = () => extract.mutate();
-  const indexRepo = () => resync.mutate(undefined, { onSuccess: () => setIndexPolling(true) });
-  const cloneRepo = () => clone.mutate(repoId, { onSuccess: () => setIndexPolling(true) });
+  // An accepted request makes the 409 that put the page in "not indexed" stale: drop it and
+  // let the index state decide the screen.
+  const onRequestAccepted = () => {
+    extract.reset();
+    setIndexRequested(true);
+  };
+  const indexRepo = () => resync.mutate(undefined, { onSuccess: onRequestAccepted });
+  const cloneRepo = () => clone.mutate(repoId, { onSuccess: onRequestAccepted });
   const notCloned = isNotCloned({
     clonePath: activeRepo?.clone_path,
     extractError: extract.error,
     indexReason: indexState.data?.reason,
   });
-  const indexing = resync.isPending || indexPolling;
+  const indexing = resync.isPending || indexRequested;
   // Accepted but the clone has not shown up yet: keep the button busy while it is polled for.
   const cloning = clone.isPending || (clone.isSuccess && clonePath === null);
-  const cloneError = clone.error
-    ? clone.error instanceof ApiError
-      ? clone.error.message
-      : t("states.notIndexed.errorFallback")
-    : null;
-  const indexError = resync.error
-    ? resync.error instanceof ApiError
-      ? resync.error.message
-      : t("states.notIndexed.errorFallback")
-    : null;
+  const errorFallback = t("states.notIndexed.errorFallback");
+  const cloneError = errorMessage(clone.error, errorFallback);
+  const indexError = errorMessage(resync.error, errorFallback);
   const decide = (id: string, status: ConventionStatus) => update.mutate({ id, patch: { status } });
   const edit = (id: string, next: { rule: string; category: ConventionCategory }) => {
     const current = candidates.find((c) => c.id === id);
@@ -163,8 +158,7 @@ export function ConventionsView({ repoId }: { repoId: string }) {
   const emptyKind = emptyTabKind(screen, tab);
   const failedScan = screen === "failed" ? page?.last_scan : null;
   const showList = screen === "list" || screen === "allRejected" || (screen === "failed" && candidates.length > 0);
-  const extractError =
-    extract.error && !repoBlocked ? (extract.error instanceof ApiError ? extract.error.message : t("extract.errorTitle")) : null;
+  const extractError = repoBlocked ? null : errorMessage(extract.error, t("extract.errorTitle"));
   const extractCode = extract.error instanceof ApiError ? knownErrorCode(extract.error.code) ?? knownErrorCode(extractError) : null;
 
   return (
@@ -204,41 +198,14 @@ export function ConventionsView({ repoId }: { repoId: string }) {
           </>
         )}
         {screen === "notIndexed" && (
-          <EmptyState
-            icon="Database"
-            title={t("states.notIndexed.title")}
-            body={
-              notCloned ? (
-                <>
-                  {t("states.notIndexed.notCloned")}
-                  {cloneError && (
-                    <div role="alert" style={s.inlineError}>
-                      <strong>{t("states.notIndexed.cloneErrorTitle")}</strong> {cloneError}
-                    </div>
-                  )}
-                </>
-              ) : (
-                <>
-                  {t("states.notIndexed.body")}
-                  {indexError && (
-                    <div role="alert" style={s.inlineError}>
-                      <strong>{t("states.notIndexed.errorTitle")}</strong> {indexError}
-                    </div>
-                  )}
-                </>
-              )
-            }
-            cta={
-              notCloned
-                ? cloning
-                  ? t("states.notIndexed.cloning")
-                  : t("states.notIndexed.cloneCta")
-                : indexing
-                  ? t("states.notIndexed.indexing")
-                  : t("states.notIndexed.cta")
-            }
-            onCta={notCloned ? cloneRepo : indexRepo}
-            ctaLoading={notCloned ? cloning : indexing}
+          <NotIndexedState
+            notCloned={notCloned}
+            cloning={cloning}
+            indexing={indexing}
+            cloneError={cloneError}
+            indexError={indexError}
+            onClone={cloneRepo}
+            onIndex={indexRepo}
           />
         )}
         {screen === "never" && (

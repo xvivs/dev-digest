@@ -13,7 +13,7 @@
 import type { ConventionCategory, ConventionStatus, RepoRef } from '@devdigest/shared';
 import { NotFoundError } from '../../platform/errors.js';
 import { AGENT_SKILLS_BODY_BUDGET_BYTES, enabledSkillsBodyBytes } from '../_shared/skill-budget.js';
-import { applySourcePolicy } from '../_shared/skill-rules.js';
+import { applySourcePolicy, assertSkillBodyHygiene } from '../_shared/skill-rules.js';
 import {
   CONFIG_FILE_SLOTS,
   FILE_MAX_BYTES,
@@ -133,19 +133,20 @@ export class ConventionsService {
 
     // The partial unique index decides a race between two requests (23505 → ScanRunningError).
     const scan = await this.store.insertRunningScan(workspaceId, repoId);
-    let job: { id: string; done: Promise<void> };
+    // Every step after the insert compensates with `failScan`: a scan row left `running`
+    // would answer every later start with 409 until the boot-time reaper runs.
     try {
-      job = await this.deps.jobs.enqueue(workspaceId, { scanId: scan.id });
+      const job = await this.deps.jobs.enqueue(workspaceId, { scanId: scan.id });
+      await this.store.setScanJob(scan.id, job.id);
+      // AC-18: retries exhausted or a non-retryable throw → the scan is failed, never left running.
+      job.done.catch((err: unknown) => {
+        this.deps.onJobError?.(scan.id, err);
+        return this.markFailed(scan.id, err).catch(() => undefined);
+      });
     } catch (err) {
       await this.store.failScan(scan.id, errorMessage(err));
       throw err;
     }
-    await this.store.setScanJob(scan.id, job.id);
-    // AC-18: retries exhausted or a non-retryable throw → the scan is failed, never left running.
-    job.done.catch((err: unknown) => {
-      this.deps.onJobError?.(scan.id, err);
-      return this.markFailed(scan.id, err).catch(() => undefined);
-    });
     return { scanId: scan.id };
   }
 
@@ -433,6 +434,7 @@ export class ConventionsService {
   async createSkill(workspaceId: string, repoId: string, input: CreateSkillInput): Promise<CreateSkillResult> {
     const repo = await this.store.findRepo(workspaceId, repoId);
     if (!repo) throw new NotFoundError('Repo not found');
+    assertSkillBodyHygiene(input.body);
     assertSnippetsWithinCap(input.body);
 
     const conventionIds = unique(input.conventionIds);
@@ -472,7 +474,7 @@ export class ConventionsService {
         if (bytes > AGENT_SKILLS_BODY_BUDGET_BYTES) {
           throw new AgentSkillsBudgetExceededError(agentId, bytes, AGENT_SKILLS_BODY_BUDGET_BYTES);
         }
-        await tx.appendAgentLink(agentId, skill.id, state.maxOrder + 1);
+        await tx.appendAgentLink(agentId, skill.id);
       }
       await tx.linkConventionsToSkill(conventionIds, skill.id);
       return { skill, linkedAgentIds: agentIds };

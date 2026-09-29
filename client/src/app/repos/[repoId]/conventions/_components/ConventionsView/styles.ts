@@ -12,7 +12,6 @@ export const s = {
     color: "var(--crit)",
     fontSize: 14,
   } satisfies CSSProperties,
-  inlineError: { marginTop: 10, color: "var(--crit)", fontSize: 13 } satisfies CSSProperties,
   errorTitle: { fontWeight: 700 } satisfies CSSProperties,
   failedBox: {
     marginTop: 18,
