@@ -2,7 +2,7 @@ import type { CSSProperties } from "react";
 
 /** Co-located styles for CaseEditorModal. */
 export const s = {
-  body: { display: "flex", flexDirection: "column", gap: 18, padding: "4px 0" } satisfies CSSProperties,
+  body: { display: "flex", flexDirection: "column", gap: 18, padding: 24 } satisfies CSSProperties,
   field: { display: "flex", flexDirection: "column", gap: 8 } satisfies CSSProperties,
   label: { fontSize: 13, fontWeight: 600, color: "var(--text-secondary)" } satisfies CSSProperties,
   sectionTitle: { fontSize: 14, fontWeight: 700, color: "var(--text-primary)" } satisfies CSSProperties,
