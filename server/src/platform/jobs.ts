@@ -46,7 +46,16 @@ export class JobRunner {
     this.handlers.set(kind, handler);
   }
 
-  async enqueue(workspaceId: string, kind: string, payload: unknown): Promise<EnqueuedJob> {
+  /**
+   * `opts.timeoutMs` overrides the runner-wide timeout for this one job (eval
+   * jobs size it from the diff's chunk count, ADR 0018).
+   */
+  async enqueue(
+    workspaceId: string,
+    kind: string,
+    payload: unknown,
+    opts: { timeoutMs?: number } = {},
+  ): Promise<EnqueuedJob> {
     const handler = this.handlers.get(kind);
     if (!handler) throw new Error(`No job handler registered for kind '${kind}'`);
 
@@ -55,6 +64,7 @@ export class JobRunner {
       .values({ workspaceId, kind, payload: payload as object, status: 'queued' })
       .returning({ id: t.jobs.id });
     const jobId = row!.id;
+    const timeoutMs = opts.timeoutMs ?? this.timeoutMs;
 
     const done = this.queue.add(async () => {
       await this.db
@@ -64,7 +74,7 @@ export class JobRunner {
       try {
         await withRetry(
           () =>
-            withTimeout(handler(payload, { jobId }), this.timeoutMs).then(async () => {
+            withTimeout(handler(payload, { jobId }), timeoutMs).then(async () => {
               await this.db
                 .update(t.jobs)
                 .set({ attempts: 1 })
