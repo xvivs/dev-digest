@@ -15,17 +15,24 @@ export type CaseSubtitle =
   | { kind: "never" }
   | { kind: "pending" }
   | { kind: "error" }
-  | { kind: "defect"; expected: number; matched: number }
-  | { kind: "clean"; got: number };
+  | { kind: "defect"; expected: number; matched: number; errored: number }
+  | { kind: "clean"; got: number; errored: number };
 
-/** Second line of the card, from the server's per-case summary (medians over the with-arm repeats). */
+/**
+ * Second line of the card. Figures ("matched X" / "got X") appear only when
+ * the server scored at least one with-arm repeat (its medians are null
+ * otherwise); with no scored repeat the line says why: run failed / running.
+ * A partly errored case keeps its figure and adds the errored count.
+ */
 export function caseSubtitle(result: EvalSuiteCaseResult | null): CaseSubtitle {
   if (!result) return { kind: "never" };
-  if (result.outcome === "error") return { kind: "error" };
   const expected = result.expected_count;
-  if (expected == null) return { kind: "pending" };
-  if (result.is_clean || expected === 0) return { kind: "clean", got: result.unexpected_median ?? 0 };
-  return { kind: "defect", expected, matched: result.matched_median ?? 0 };
+  const errored = result.with_errored ?? 0;
+  const clean = result.is_clean === true || expected === 0;
+  const scored = clean ? result.unexpected_median != null : result.matched_median != null;
+  if (expected == null || !scored) return { kind: result.outcome === "error" ? "error" : "pending" };
+  if (clean) return { kind: "clean", got: result.unexpected_median ?? 0, errored };
+  return { kind: "defect", expected, matched: result.matched_median ?? 0, errored };
 }
 
 /** Only the outcomes that say something about the skill get a chip; error shows as the icon. */

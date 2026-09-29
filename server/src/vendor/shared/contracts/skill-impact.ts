@@ -505,6 +505,8 @@ export const EvalSuiteCaseResult = z.object({
   unexpected_median: z.number().nonnegative().nullable().optional(),
   /** Clean case: expects no findings (`expected_count === 0`). */
   is_clean: z.boolean().nullable().optional(),
+  /** `with`-arm repeats that failed (timeout, provider error, cancel). Absent on older payloads. */
+  with_errored: z.number().int().nonnegative().optional(),
 });
 export type EvalSuiteCaseResult = z.infer<typeof EvalSuiteCaseResult>;
 

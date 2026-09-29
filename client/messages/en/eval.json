@@ -152,8 +152,9 @@
       },
       "subtitle": {
         "never": "never run",
-        "pending": "in progress",
+        "pending": "running…",
         "error": "run failed",
+        "erroredSuffix": "· {count} errored",
         "defect": "expected {expected, plural, one {# finding} other {# findings}}, matched {matched}",
         "clean": "expected 0 findings, got {got}"
       }

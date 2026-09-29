@@ -158,6 +158,7 @@ function CaseCard({
 }
 
 function subtitleFor(t: ReturnType<typeof useTranslations>, sub: ReturnType<typeof caseSubtitle>): string {
+  const errored = (n: number) => (n > 0 ? ` ${t("skillEvals.cases.subtitle.erroredSuffix", { count: n })}` : "");
   switch (sub.kind) {
     case "never":
       return t("skillEvals.cases.subtitle.never");
@@ -166,9 +167,9 @@ function subtitleFor(t: ReturnType<typeof useTranslations>, sub: ReturnType<type
     case "error":
       return t("skillEvals.cases.subtitle.error");
     case "defect":
-      return t("skillEvals.cases.subtitle.defect", { expected: sub.expected, matched: formatCount(sub.matched) });
+      return t("skillEvals.cases.subtitle.defect", { expected: sub.expected, matched: formatCount(sub.matched) }) + errored(sub.errored);
     case "clean":
-      return t("skillEvals.cases.subtitle.clean", { got: formatCount(sub.got) });
+      return t("skillEvals.cases.subtitle.clean", { got: formatCount(sub.got) }) + errored(sub.errored);
   }
 }
 

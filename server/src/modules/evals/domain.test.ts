@@ -554,6 +554,20 @@ describe('summarizeSuite per-case summary', () => {
     expect(cases[0]).toMatchObject({ expected_count: null, matched_median: null, unexpected_median: null, is_clean: null });
   });
 
+  it('with-arm failed, without-arm done: matched_median stays null and the failed repeat is counted', () => {
+    const failed: RunLite & { caseId: string } = { caseId: 'e', arm: 'with', status: 'failed', pass: null, unexpected: null };
+    const runs = [failed, doneRun('e', 'without', 1, 0, 1)];
+    const { cases } = summarizeSuite({ mode: 'quick', repeats: 1, cases: [{ id: 'e', name: 'e' }], runs });
+    expect(cases[0]).toMatchObject({ outcome: 'error', expected_count: 1, matched_median: null, unexpected_median: null, with_errored: 1 });
+  });
+
+  it('some with-arm repeats failed, some done: the median covers the done ones only', () => {
+    const failed: RunLite & { caseId: string } = { caseId: 'm', arm: 'with', status: 'failed', pass: null, unexpected: null };
+    const runs = [doneRun('m', 'with', 2, 0), doneRun('m', 'with', 2, 0), failed];
+    const { cases } = summarizeSuite({ mode: 'full', repeats: 3, cases: [{ id: 'm', name: 'm' }], runs });
+    expect(cases[0]).toMatchObject({ matched_median: 2, with_errored: 1 });
+  });
+
   it('expected_count falls back to a done without-arm run when no with-arm run is done', () => {
     const runs = [doneRun('w', 'without', 1, 0, 3)];
     const { cases } = summarizeSuite({ mode: 'quick', repeats: 1, cases: [{ id: 'w', name: 'w' }], runs });

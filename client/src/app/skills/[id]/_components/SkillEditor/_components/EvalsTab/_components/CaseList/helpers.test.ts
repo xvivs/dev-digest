@@ -38,19 +38,37 @@ describe("caseSubtitle", () => {
     expect(caseSubtitle(null)).toEqual({ kind: "never" });
   });
   it("expected N, matched X (median) for a defect case", () => {
-    expect(caseSubtitle(result({ expected_count: 2, matched_median: 1.5, is_clean: false }))).toEqual({ kind: "defect", expected: 2, matched: 1.5 });
+    expect(caseSubtitle(result({ expected_count: 2, matched_median: 1.5, is_clean: false }))).toEqual({ kind: "defect", expected: 2, matched: 1.5, errored: 0 });
   });
   it("expected 0, got U (median unexpected) for a clean case", () => {
-    expect(caseSubtitle(result({ expected_count: 0, unexpected_median: 1, is_clean: true }))).toEqual({ kind: "clean", got: 1 });
+    expect(caseSubtitle(result({ expected_count: 0, unexpected_median: 1, is_clean: true }))).toEqual({ kind: "clean", got: 1, errored: 0 });
   });
   it("in progress while the with arm has no scored repeat", () => {
     expect(caseSubtitle(result({ outcome: "pending", expected_count: null, matched_median: null }))).toEqual({ kind: "pending" });
   });
-  it("error wins even when the server sent counts from the other repeats", () => {
-    expect(caseSubtitle(result({ outcome: "error", expected_count: 1, matched_median: 0 }))).toEqual({ kind: "error" });
-  });
-  it("error when the case errored and nothing was scored", () => {
+  it("errored with no scored with-arm run is 'run failed', never 'matched 0'", () => {
+    expect(caseSubtitle(result({ outcome: "error", expected_count: 1, matched_median: null, with_errored: 1 }))).toEqual({ kind: "error" });
+    expect(caseSubtitle(result({ outcome: "error", expected_count: 1, matched_median: null }))).toEqual({ kind: "error" });
     expect(caseSubtitle(result({ outcome: "error", expected_count: null }))).toEqual({ kind: "error" });
+  });
+  it("pending with nothing scored is 'running', even when the without arm gave an expected count", () => {
+    expect(caseSubtitle(result({ outcome: "pending", expected_count: 1, matched_median: null }))).toEqual({ kind: "pending" });
+  });
+  it("some repeats scored, some errored: matched X plus the errored count", () => {
+    expect(caseSubtitle(result({ outcome: "error", expected_count: 2, matched_median: 1, with_errored: 1 }))).toEqual({
+      kind: "defect",
+      expected: 2,
+      matched: 1,
+      errored: 1,
+    });
+    expect(caseSubtitle(result({ outcome: "error", expected_count: 0, unexpected_median: 2, is_clean: true, with_errored: 2 }))).toEqual({
+      kind: "clean",
+      got: 2,
+      errored: 2,
+    });
+  });
+  it("a clean case with nothing scored is not 'got 0'", () => {
+    expect(caseSubtitle(result({ outcome: "error", expected_count: 0, unexpected_median: null, is_clean: true }))).toEqual({ kind: "error" });
   });
 });
 

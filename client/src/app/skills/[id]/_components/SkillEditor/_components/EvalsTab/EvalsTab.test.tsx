@@ -602,7 +602,7 @@ describe("EvalsTab — errored cases", () => {
       detail: {
         ...DETAIL,
         ...suite,
-        cases: [{ case_id: "c1", case_name: "stripe-key-leak", with: { passed: 0, total: 1 }, without: { passed: 1, total: 1 }, outcome: "error" }],
+        cases: [{ case_id: "c1", case_name: "stripe-key-leak", with: { passed: 0, total: 1 }, without: { passed: 1, total: 1 }, outcome: "error", expected_count: 1, matched_median: null, unexpected_median: null, is_clean: false, with_errored: 1 }],
         runs: [
           { ...run("c1", "with", 0, false, 0), status: "failed" as const, pass: null, error: TIMEOUT_MSG },
           run("c1", "without", 0, true, 0),
@@ -663,8 +663,29 @@ describe("EvalsTab — errored cases", () => {
     renderTab();
     const card = await screen.findByRole("button", { name: /stripe-key-leak: errored/ });
     expect(within(card).getByText("run failed")).toBeInTheDocument();
+    expect(within(card).queryByText(/matched/)).not.toBeInTheDocument();
     expect(within(card).queryByText("error")).not.toBeInTheDocument();
     expect(screen.queryByText(TIMEOUT_MSG)).not.toBeInTheDocument();
+  });
+});
+
+describe("EvalsTab — partly errored case", () => {
+  it("keeps the scored figure and adds the errored count", async () => {
+    const suite: EvalSuite = { ...SUITE, results: { ...SUITE.results!, passing: 0, total: 0, errored: 1 } };
+    world = {
+      carriers: CARRIERS,
+      cases: [CASE_DEFECT],
+      suites: [suite],
+      detail: {
+        ...DETAIL,
+        ...suite,
+        cases: [{ case_id: "c1", case_name: "stripe-key-leak", with: { passed: 2, total: 3 }, without: { passed: 0, total: 3 }, outcome: "error", expected_count: 1, matched_median: 1, unexpected_median: 0, is_clean: false, with_errored: 1 }],
+        runs: [],
+      },
+    };
+    renderTab();
+    const card = await screen.findByRole("button", { name: /stripe-key-leak: errored/ });
+    expect(within(card).getByText("expected 1 finding, matched 1 · 1 errored")).toBeInTheDocument();
   });
 });
 
