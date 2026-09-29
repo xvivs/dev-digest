@@ -669,6 +669,45 @@ describe("EvalsTab — errored cases", () => {
   });
 });
 
+describe("EvalsTab — card actions and summary line", () => {
+  const actionsOf = (name: string) => screen.getByRole("button", { name }).parentElement as HTMLElement;
+
+  it("icons rest faded and neutral; the card's hover or focus reveals them; delete is red only on its own hover or focus", async () => {
+    renderTab();
+    await screen.findByText("stripe-key-leak");
+    const del = screen.getByRole("button", { name: "Delete stripe-key-leak" });
+    const actions = actionsOf("Delete stripe-key-leak");
+    expect(actions.style.opacity).toBe("0.4");
+    expect(screen.getByRole("button", { name: "Edit stripe-key-leak" }).style.color).toBe("var(--text-secondary)");
+    expect(del.style.color).toBe("var(--text-secondary)");
+
+    fireEvent.mouseEnter(del.closest("li")!);
+    expect(actions.style.opacity).toBe("1");
+    expect(del.style.color).toBe("var(--text-secondary)");
+    fireEvent.mouseEnter(del);
+    expect(del.style.color).toBe("var(--crit)");
+    fireEvent.mouseLeave(del);
+    expect(del.style.color).toBe("var(--text-secondary)");
+    fireEvent.focus(del);
+    expect(del.style.color).toBe("var(--crit)");
+    fireEvent.blur(del);
+    expect(del.style.color).toBe("var(--text-secondary)");
+    fireEvent.mouseLeave(del.closest("li")!);
+    expect(actions.style.opacity).toBe("0.4");
+  });
+
+  it("the summary line never breaks inside a segment (cost keeps its separator)", async () => {
+    renderTab();
+    const summary = await screen.findByRole("region", { name: "Latest suite" });
+    expect(summary.style.flexWrap).toBe("wrap");
+    const cost = within(summary).getByText("$0.420");
+    expect(cost.closest("[data-segment]")).not.toBeNull();
+    for (const seg of summary.querySelectorAll<HTMLElement>("[data-segment]")) expect(seg.style.whiteSpace).toBe("nowrap");
+    const segs = [...summary.querySelectorAll("[data-segment]")].map((el) => el.textContent);
+    expect(segs.some((t) => t?.includes("·") && t.includes("$0.420"))).toBe(true);
+  });
+});
+
 describe("EvalsTab — partly errored case", () => {
   it("keeps the scored figure and adds the errored count", async () => {
     const suite: EvalSuite = { ...SUITE, results: { ...SUITE.results!, passing: 0, total: 0, errored: 1 } };

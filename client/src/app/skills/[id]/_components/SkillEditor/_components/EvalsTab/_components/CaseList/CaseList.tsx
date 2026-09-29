@@ -190,6 +190,8 @@ function ActionBtn({
   title?: string;
 }) {
   const I = Icon[icon];
+  const [hover, setHover] = React.useState(false);
+  const [focus, setFocus] = React.useState(false);
   return (
     <button
       type="button"
@@ -197,7 +199,11 @@ function ActionBtn({
       title={title ?? label}
       disabled={disabled}
       onClick={onClick}
-      style={s.actionBtn(danger, disabled)}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      onFocus={() => setFocus(true)}
+      onBlur={() => setFocus(false)}
+      style={s.actionBtn(danger, disabled, hover || focus)}
     >
       <I size={14} />
     </button>

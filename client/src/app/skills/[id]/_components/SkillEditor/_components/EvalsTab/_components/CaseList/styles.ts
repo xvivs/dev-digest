@@ -57,7 +57,7 @@ export const s = {
     opacity: visible ? 1 : 0.4,
     transition: "opacity .12s ease",
   }),
-  actionBtn: (danger: boolean, disabled: boolean): CSSProperties => ({
+  actionBtn: (danger: boolean, disabled: boolean, hot: boolean): CSSProperties => ({
     width: 26,
     height: 26,
     display: "inline-grid",
@@ -65,7 +65,8 @@ export const s = {
     borderRadius: 6,
     border: "none",
     background: "transparent",
-    color: danger ? "var(--crit)" : "var(--text-secondary)",
+    // Neutral at rest (design: #999 icons); delete turns red only on its own hover/focus.
+    color: danger && hot && !disabled ? "var(--crit)" : "var(--text-secondary)",
     cursor: disabled ? "not-allowed" : "pointer",
     opacity: disabled ? 0.4 : 1,
     padding: 0,

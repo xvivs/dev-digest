@@ -37,36 +37,34 @@ export function SuiteSummary({
 
   return (
     <section aria-label={t("skillEvals.summary.label")} title={weak.length > 0 ? weak.join(" ") : undefined} style={s.wrap}>
-      <VerdictBadge verdict={verdict} stale={suite.stale} />
-      <Badge mono>{t(`skillEvals.summary.mode.${suite.mode}`)}</Badge>
-      <span style={s.muted}>
+      <Seg>
+        <VerdictBadge verdict={verdict} stale={suite.stale} />
+      </Seg>
+      <Seg>
+        <Badge mono>{t(`skillEvals.summary.mode.${suite.mode}`)}</Badge>
+      </Seg>
+      <Seg muted>
         {suite.carrier_name
           ? t("skillEvals.summary.carrier", { name: suite.carrier_name })
           : t("skillEvals.summary.carrierDeleted")}
-      </span>
+      </Seg>
 
       {results ? (
         <>
-          <Sep />
-          <span>{t("skillEvals.summary.caught", { count: results.caught })}</span>
-          <Sep />
-          <span>{t("skillEvals.summary.regressed", { count: results.regressed })}</span>
-          <Sep />
-          <span>{t("skillEvals.summary.flaky", { count: results.flaky })}</span>
+          <Seg sep>{t("skillEvals.summary.caught", { count: results.caught })}</Seg>
+          <Seg sep>{t("skillEvals.summary.regressed", { count: results.regressed })}</Seg>
+          <Seg sep>{t("skillEvals.summary.flaky", { count: results.flaky })}</Seg>
           {results.errored > 0 && (
-            <>
-              <Sep />
-              <span style={s.errored} title={t("skillEvals.summary.erroredTitle")}>
-                {t("skillEvals.summary.errored", { count: results.errored })}
-              </span>
-            </>
+            <Seg sep errored title={t("skillEvals.summary.erroredTitle")}>
+              {t("skillEvals.summary.errored", { count: results.errored })}
+            </Seg>
           )}
-          <Sep />
-          <span title={t("skillEvals.summary.deltaUnexpectedTitle")}>
+          <Seg sep title={t("skillEvals.summary.deltaUnexpectedTitle")}>
             {t("skillEvals.summary.deltaUnexpected", { value: formatSignedDelta(results.delta_unexpected) })}
-          </span>
-          <Sep />
-          <RunCostValue usd={suite.cost_usd} source={suite.cost_source} />
+          </Seg>
+          <Seg sep>
+            <RunCostValue usd={suite.cost_usd} source={suite.cost_source} />
+          </Seg>
         </>
       ) : running ? (
         <div role="status" style={s.progress}>
@@ -98,10 +96,32 @@ export function SuiteSummary({
   );
 }
 
-function Sep() {
+/**
+ * One unbreakable segment of the line. The "·" separator lives inside it, so a
+ * wrap can only happen between segments and a segment never splits (the cost
+ * keeps its dot).
+ */
+function Seg({
+  children,
+  sep = false,
+  muted = false,
+  errored = false,
+  title,
+}: {
+  children: React.ReactNode;
+  sep?: boolean;
+  muted?: boolean;
+  errored?: boolean;
+  title?: string;
+}) {
   return (
-    <span aria-hidden="true" style={s.sep}>
-      ·
+    <span data-segment="" title={title} style={{ ...s.seg, ...(muted ? s.muted : null), ...(errored ? s.errored : null) }}>
+      {sep && (
+        <span aria-hidden="true" style={s.sep}>
+          ·
+        </span>
+      )}
+      {children}
     </span>
   );
 }

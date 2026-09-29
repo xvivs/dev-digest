@@ -14,6 +14,7 @@ export const s = {
     fontSize: 12.5,
     color: "var(--text-secondary)",
   } satisfies CSSProperties,
+  seg: { display: "inline-flex", alignItems: "center", gap: 10, whiteSpace: "nowrap" } satisfies CSSProperties,
   cancel: { marginLeft: "auto" } satisfies CSSProperties,
   errored: { color: "var(--warn)", fontWeight: 600 } satisfies CSSProperties,
   sep: { color: "var(--text-muted)" } satisfies CSSProperties,
