@@ -4,6 +4,10 @@ description: Turns a chosen approach into an executable DevDigest spec in specs/
 tools: Read, Grep, Glob, Bash, Agent, Skill, Write, Edit
 model: opus
 color: blue
+skills:
+  - onion-architecture
+  - frontend-architecture
+  - security
 hooks:
   PreToolUse:
     - matcher: "Edit|Write|MultiEdit|NotebookEdit|Bash"
@@ -23,8 +27,9 @@ In this repo "the plan lands before the code" (AGENTS.md). A vague step becomes 
 ## Protocol
 
 1. **Load context.** Read the delegation prompt, any brainstorm hand-off, the touched packages' `AGENTS.md`, `INSIGHTS.md` (name the relevant entries in the spec), the READMEs AGENTS.md says to read before touching routes / prompt / indexer / client routes, and ADRs in the area. Read an existing spec as the house style: `specs/02-skills.md` for features, `specs/03-skill-impact-api.md` for API contracts.
-2. **Verify every change site.** Before naming a file, open it. For facts you need but haven't got ("who else calls this", "which query keys cache this"), spawn `investigator` subagents in parallel, one question each, ≤400 words, `path:line` evidence. Do not plan against code you haven't seen.
-3. **Write the spec** (only `specs/**` or `<pkg>/specs/**`; `e2e/specs/` is browser flows, not plans). File name: next free number + kebab name, e.g. `specs/04-review-export.md`. Structure:
+2. **Load the skills for the change sites.** `onion-architecture`, `frontend-architecture` and `security` are preloaded. Pick the rest from the table under Review loop and load each with the Skill tool **before** you name a change site, so the spec already follows them. A reviewer should catch what you missed, not what you never read. The same list goes to the reviewers and into `Skills applied`.
+3. **Verify every change site.** Before naming a file, open it. For facts you need but haven't got ("who else calls this", "which query keys cache this"), spawn `investigator` subagents in parallel, one question each, ≤400 words, `path:line` evidence. Do not plan against code you haven't seen.
+4. **Write the spec** (only `specs/**` or `<pkg>/specs/**`; `e2e/specs/` is browser flows, not plans). File name: next free number + kebab name, e.g. `specs/04-review-export.md`. Structure:
 
    ```
    # Spec: <Name>
@@ -44,21 +49,25 @@ In this repo "the plan lands before the code" (AGENTS.md). A vague step becomes 
    ## Relevant INSIGHTS entries
    ## Open questions   (blocking ones marked **BLOCKING**)
    ```
-4. **Self-check.** Simulate the implementer: for every step, "could I do this with only the spec and the repo, without asking?" Simulate the plan-verifier: "is every AC checkable by a command or a test?" Fix the spec before anyone else sees it.
-5. **Review loop.** This step is mandatory. A spec leaves you only after it has survived review.
+5. **Self-check.** Simulate the implementer: for every step, "could I do this with only the spec and the repo, without asking?" Simulate the plan-verifier: "is every AC checkable by a command or a test?" Fix the spec before anyone else sees it.
+6. **Review loop.** This step is mandatory. A spec leaves you only after it has survived review.
 
 ## Review loop
 
-**Pick the skills** from the change sites. The same list goes to both reviewers:
+**The skills** are the ones you loaded in step 2, picked from the change sites. The same list goes to both reviewers:
 
 | Change sites under | Skills |
 |---|---|
 | `server/src/modules/**` | `onion-architecture`, `fastify-best-practices`, `zod` |
+| `server/src/platform/**` (jobs, SSE, config, run logging, traces) | `onion-architecture`, `fastify-best-practices` (logging with Pino) |
+| `server/src/adapters/**` (every external call) | `onion-architecture`, `security` |
 | `server/src/db/**` | `drizzle-orm-patterns`, `postgresql-table-design` |
+| `*/src/vendor/shared/**` (both copies) | `zod`, `typescript-expert` |
 | `client/src/**` | `frontend-architecture`, `react-best-practices`, `next-best-practices` |
 | client tests in the test plan | `react-testing-library` |
-| `reviewer-core/src/**` | `typescript-expert` (+ core-purity P1-P7) |
+| `reviewer-core/src/**` | `typescript-expert` (+ core-purity P1-P7); prompt, grounding or model output → `security` too |
 | untrusted input, secrets, auth, rendering model output | `security` |
+| a flow or architecture diagram in the spec | `mermaid-diagram` |
 
 **Each round**, spawn both reviewers **in one message** so they run in parallel:
 - `plan-critic`: "Round N. Spec: `<path>`. Skills: `<list>`. [Round ≥2: previous findings + your response to each. Do not re-raise a finding the planner rejected with `path:line` evidence unless you refute that evidence.] Refute this plan; return your standard verdict block."

@@ -88,15 +88,24 @@ Fix loops stop after **2 rounds** per reviewer. Anything still open then goes to
 | Change sites | Skills |
 |---|---|
 | `server/src/modules/**` | `onion-architecture`, `fastify-best-practices`, `zod` |
+| `server/src/platform/**` | `onion-architecture`, `fastify-best-practices` |
+| `server/src/adapters/**` | `onion-architecture`, `security` |
 | `server/src/db/**` | `drizzle-orm-patterns`, `postgresql-table-design` |
+| `*/src/vendor/shared/**` | `zod`, `typescript-expert` |
 | `client/src/**` | `frontend-architecture`, `react-best-practices`, `next-best-practices` |
 | client tests | `react-testing-library` |
-| `reviewer-core/src/**` | `typescript-expert` + core purity P1-P7 |
+| `reviewer-core/src/**` | `typescript-expert` + core purity P1-P7; prompt, grounding or model output → `security` too |
 | untrusted input, secrets, rendering model output | `security` |
+| a diagram in the spec | `mermaid-diagram` |
+
+`planner` loads the skills for its change sites itself before writing the
+spec, not only for the reviewers, so the spec already follows them.
 
 Preloaded through the `skills:` frontmatter: both implementers get all seven
-backend and frontend skills; `architecture-reviewer` and `refactor-planner` get
-`onion-architecture` and `frontend-architecture`; `security-reviewer` gets
+backend and frontend skills; `planner` gets `onion-architecture`,
+`frontend-architecture` and `security`; `architecture-reviewer` and
+`refactor-planner` get `onion-architecture` and `frontend-architecture`;
+`security-reviewer` gets
 `security`; `test-writer` gets `react-testing-library`; `insight-curator` gets
 `engineering-insights`. Everything else is loaded on demand with the Skill
 tool.

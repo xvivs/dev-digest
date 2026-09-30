@@ -45,6 +45,8 @@ lives in the engineering-insights skill).
 
 - **Skills are picked up mid-session, agents are not** — `.claude/skills/agent-authoring/SKILL.md` appeared in the Skill tool list right after it was written, while a freshly written `.claude/agents/*.md` stays `not found` until restart. So a new skill can be used to author an agent in the same session, but the agent itself can only be exercised headlessly (`claude -p --agent <name>`, `.claude/skills/agent-authoring/scripts/smoke-guard.mjs`) until the session restarts. Claude Code 2.1.285. _(2026-09-30)_
 
+- **Anthropic's "Claude Code best practices" article no longer lives on anthropic.com — cite `code.claude.com/docs/en/best-practices`** — `curl -sI https://www.anthropic.com/engineering/claude-code-best-practices` returns `308` with `location: https://code.claude.com/docs/en/best-practices`, and the `.md` suffix on the new URL serves greppable markdown. The agent-rule sources in `.claude/agents/README.md:55` use the new address. _(2026-09-30)_
+
 ## Recurring Errors & Fixes
 
 - **`./scripts/dev.sh` cannot complete on this machine: it dies at `applying migrations`, hitting both known blockers in sequence.** First `pnpm db:migrate` exits 1 on `[ERR_PNPM_IGNORED_BUILDS]` (the preflight-install issue above) — and `--config.strict-dep-builds=false` / `npm_config_*` env vars do NOT help, because the preflight `pnpm install` is spawned as a separate process that ignores the outer invocation's flags; only an `.npmrc`/`package.json` config or `pnpm approve-builds` would. Second, even bypassing pnpm, `tsx src/db/migrate.ts` fails with `42701 column "cost_usd" of relation "agent_runs" already exists`. Working bring-up that needs no file changes: `docker start devdigest-postgres`, then `server/node_modules/.bin/tsx src/db/seed.ts` (seed alone — skip migrate, the shared DB is already ahead), then `server/node_modules/.bin/tsx watch src/server.ts` and `client/node_modules/.bin/next dev -p 3000`. Verified: `/health`, `/repos`, `/workspace`, `/agents`, `/settings` all 200. _(2026-09-20)_
@@ -83,6 +85,9 @@ Wrote SPEC-02 and ADR 0012, froze the contracts and the reviewer-core/client-hoo
 
 ### 2026-09-30 — dev-agents session
 Added 15 Claude Code subagents in `.claude/agents/` with a feature and a refactor chain, nested skeptics (plan-critic, finding-verifier) and a profile-based write guard `.claude/hooks/agent-guard.mjs` with `node --test` coverage. Documented in `docs/dev-agents.md` and ADR 0019. Left: guard hooks unverified in an interactive trusted session, and no orchestrator skill yet to drive the chains.
+
+### 2026-09-30 — .claude/agents session
+Audited the 16 dev agents against a README proposal: roster and chains were already in `docs/dev-agents.md`, but no agent rule cited an external source. Added `.claude/agents/README.md` (map + practice → source → rule → location tables, sources fetched by researcher and spot-checked). Planner now preloads onion-architecture, frontend-architecture and security and loads change-site skills itself before writing a spec; skill table extended for platform, adapters, vendored shared and diagrams. Left: ADR 0019 still says `Status: proposed` and "Fifteen" agents.
 
 ## Open Questions
 
