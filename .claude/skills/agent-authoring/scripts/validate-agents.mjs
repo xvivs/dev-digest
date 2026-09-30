@@ -153,6 +153,9 @@ for (const f of files) {
     const covered = matcher ? matcher[1].split('|') : [];
     const missing = GUARD_MATCHER_NEEDS.filter((t) => !covered.includes(t));
     if (missing.length) errors.push(`guard matcher misses ${missing.join(', ')} — Bash can write files too`);
+    if ((tools.includes('Agent') || !tools.length) && !covered.includes('Agent')) {
+      errors.push('agent can spawn but the guard matcher misses Agent — the Spawns: line is enforced only through the hook');
+    }
     if (!/\$CLAUDE_PROJECT_DIR/.test(fmText)) errors.push('guard command must use "$CLAUDE_PROJECT_DIR" — relative paths break when the agent cds');
   }
 

@@ -62,7 +62,14 @@ only).
 ## Hooks in agent frontmatter
 
 - `PreToolUse` input on stdin: `tool_name`, `tool_input` (`file_path`,
-  `command`, `notebook_path`), `cwd`, `agent_type`, `agent_id`.
+  `command`, `notebook_path`), `cwd`, `agent_type`, `agent_id`. For the
+  `Agent` tool, `tool_input` carries `subagent_type` and `prompt`
+  (`hooks.md`, "Agent"), so a frontmatter hook can deny a child type.
+  🧪 `smoke-guard.mjs` shows it: with `Agent` in the matcher the probe's spawn
+  is denied, without it the same spawn goes through.
+- 🧪 A `-p` model told to run several guarded steps stops at the first block
+  unless the prompt says the steps are independent. A smoke probe that doesn't
+  say so reports later steps as "blocked" without ever trying them.
 - Block with exit 0 plus
   `{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"…"}}`.
   The reason is shown to the agent. Exit 0 with no output means no opinion.

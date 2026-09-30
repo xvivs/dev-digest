@@ -51,7 +51,12 @@ that agent instead.
 - **Allowed children** go in the prompt, never as `Agent(x)` in `tools`. That
   form is ignored in subagent definitions. Record them in exactly one body
   line: ``Spawns: `a`, `b` `` or `Spawns: none`. The validator reads that
-  line.
+  line, and `agent-guard.mjs` **enforces** it: an `Agent` call whose
+  `subagent_type` isn't backticked there is denied. If every child must get
+  `no sub-spawn`, say so in the same line as plain text, without backticks
+  (``Spawns: `investigator` — every child prompt carries no sub-spawn``); the
+  guard then denies a child prompt without that phrase. A backticked word in
+  that line is read as an agent name.
 
 ### 3. Model: by the work, not the role's prestige
 
@@ -77,8 +82,9 @@ so routing survives model releases. Add `effort:` only with a measured reason.
   `agent-guard.test.mjs` + a row in the guard table of `docs/dev-agents.md`.
   Never hand-roll a per-agent script.
 - The hook entry is always the same block (copy from `templates/agent.md`):
-  matcher `Edit|Write|MultiEdit|NotebookEdit|Bash`, command via
-  `"$CLAUDE_PROJECT_DIR"`. Bash is matched because Bash can write files.
+  matcher `Edit|Write|MultiEdit|NotebookEdit|Bash|Agent`, command via
+  `"$CLAUDE_PROJECT_DIR"`. Bash is matched because Bash can write files;
+  Agent because it's the only place the `Spawns:` allowlist is enforced.
 
 ### 5. Skills
 

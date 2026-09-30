@@ -8,7 +8,7 @@ skills:
   - engineering-insights
 hooks:
   PreToolUse:
-    - matcher: "Edit|Write|MultiEdit|NotebookEdit|Bash"
+    - matcher: "Edit|Write|MultiEdit|NotebookEdit|Bash|Agent"
       hooks:
         - type: command
           command: node "$CLAUDE_PROJECT_DIR/.claude/hooks/agent-guard.mjs" insights
@@ -68,7 +68,7 @@ Cleanup is the one mode where editing by hand is sanctioned. Never add new entri
 - Don't commit. The orchestrator lands this as its own reviewed commit (`chore(insights): cleanup — <files>`), never mixed with feature work.
 - Delegate only to `investigator`.
 
-Spawns: `investigator`
+Spawns: `investigator` — every child prompt carries no sub-spawn
 
 ## Output format
 

@@ -125,8 +125,10 @@ Two things the docs make easy to miss:
 
 - `Agent(name, …)` allowlists in a subagent's `tools` are **ignored**. They
   apply only to `claude --agent`. Listing `Agent` enables spawning any type, so
-  the allowed children are named in each prompt and summarised in the roster
-  above. The graph is acyclic: nothing spawns an agent upstream of itself.
+  the allowed children are named in each prompt's one `Spawns:` line and
+  summarised in the roster above, and the write guard enforces that line on
+  every `Agent` call (see Write guard). The graph is acyclic: nothing spawns an
+  agent upstream of itself.
 - At most 20 subagents run at once per session
   (`CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS`). The worst stage is security-reviewer ∥
   dependency-auditor: 2 reviewers + 2×4 verifiers + their investigators = 18.
@@ -137,7 +139,14 @@ Two things the docs make easy to miss:
 ## Write guard
 
 Each agent's frontmatter runs `agent-guard.mjs <profile>` as a `PreToolUse`
-hook on `Edit|Write|MultiEdit|NotebookEdit|Bash`:
+hook on `Edit|Write|MultiEdit|NotebookEdit|Bash|Agent`.
+
+On `Agent`, for every profile, the guard reads the caller's `Spawns:` line
+(the caller is `agent_type` in the hook payload) and denies any
+`subagent_type` not listed there. `finding-verifier`, `insight-curator` and
+`researcher` say "every child prompt carries no sub-spawn" in that line, so a
+child prompt without `no sub-spawn` is denied too. An unknown caller or a
+missing `Spawns:` line is denied (fail-closed). File writes:
 
 | Profile | Agents | File writes allowed |
 |---|---|---|

@@ -1,6 +1,6 @@
 # ADR 0021 — A fixed pipeline of scoped dev subagents with nested skeptics and a hook-enforced write guard
 
-**Status:** accepted · renumbered from 0019 on 2026-09-30 (the number collided with [ADR 0019](0019-extracted-skill-trust-tier.md))
+**Status:** accepted · renumbered from 0019 on 2026-09-30 (the number collided with [ADR 0019](0019-extracted-skill-trust-tier.md)) · Decision 5 extended 2026-09-30 (see Update)
 **Date:** 2026-09-30
 **Relates to:** ADR 0004 (AGENTS.md as instructions source), ADR 0006 / 0014 (self-review gate)
 
@@ -80,3 +80,27 @@ are ignored there.
 | Path rules via `permissions` in `.claude/settings.json` | Session-wide: they can't differ per agent, and would restrict the main session too |
 | Skeptic only for CRITICAL (as in pr-self-review) | Leaves HIGH/MEDIUM noise that erodes trust in the reviews; the extra cost is bounded by the 25-finding caps |
 | Separate guard script per agent | Sixteen near-identical scripts drift; profiles in one tested file don't |
+| `permissions.deny: ["Agent(x)"]` for the spawn allowlist | Session-wide: it can't differ per caller, and would block the main session from spawning those types too |
+
+## Update 2026-09-30: the spawn allowlist is enforced
+
+Decision 5 now covers delegation too. `Agent` in `tools` enables spawning any
+type, and `Agent(x)` allowlists are ignored in subagent definitions, so the
+allowed children lived only in each prompt's `Spawns:` line. Nothing stopped a
+reviewer's `finding-verifier` (layer 2) from spawning a `general-purpose` agent
+with every tool.
+
+- Every agent's guard matcher includes `Agent`. On an `Agent` call the guard
+  looks up the caller (`agent_type` in the hook payload) in `.claude/agents/`
+  and denies a `subagent_type` that its `Spawns:` line doesn't list. An unknown
+  caller or a missing line is denied (fail-closed).
+- A `Spawns:` line that says "no sub-spawn" as plain text makes the phrase
+  mandatory in the child's prompt. `finding-verifier`, `insight-curator` and
+  `researcher` carry it, which keeps the concurrency budget in
+  `docs/dev-agents.md` true even if the depth limit is raised.
+- `validate-agents.mjs` fails an agent that has `Agent` in `tools` but not in
+  the matcher; `smoke-guard.mjs` probes a spawn inside Claude Code.
+
+Consequence: the `Spawns:` line is now executable. Adding a child means editing
+that line, and the roster's Spawns column still has to match it. Like the rest
+of the guard, this depends on workspace trust.

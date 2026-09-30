@@ -6,7 +6,7 @@ model: opus
 color: purple
 hooks:
   PreToolUse:
-    - matcher: "Edit|Write|MultiEdit|NotebookEdit|Bash"
+    - matcher: "Edit|Write|MultiEdit|NotebookEdit|Bash|Agent"
       hooks:
         - type: command
           command: node "$CLAUDE_PROJECT_DIR/.claude/hooks/agent-guard.mjs" readonly

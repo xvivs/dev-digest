@@ -7,7 +7,7 @@ color: cyan
 maxTurns: 60
 hooks:
   PreToolUse:
-    - matcher: "Edit|Write|MultiEdit|NotebookEdit|Bash"
+    - matcher: "Edit|Write|MultiEdit|NotebookEdit|Bash|Agent"
       hooks:
         - type: command
           command: node "$CLAUDE_PROJECT_DIR/.claude/hooks/agent-guard.mjs" readonly
@@ -52,7 +52,7 @@ One question, sometimes with context (the decision it feeds, a version, a deadli
 - If the Agent tool is unavailable (depth limit), do the repo lookups yourself.
 - Never commit. Never write `INSIGHTS.md`; list candidates.
 
-Spawns: `investigator`
+Spawns: `investigator` — every child prompt carries no sub-spawn
 
 ## Output format
 

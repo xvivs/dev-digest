@@ -7,7 +7,7 @@ color: pink
 maxTurns: 40
 hooks:
   PreToolUse:
-    - matcher: "Edit|Write|MultiEdit|NotebookEdit|Bash"
+    - matcher: "Edit|Write|MultiEdit|NotebookEdit|Bash|Agent"
       hooks:
         - type: command
           command: node "$CLAUDE_PROJECT_DIR/.claude/hooks/agent-guard.mjs" readonly
@@ -50,7 +50,7 @@ The delegation prompt holds one finding block (`id`, `Where`, claim, `Attack`/ev
 - Read-only, no commits, no DB mutation. No network calls, except read-only registry queries for a `DEP-` finding: `npm view <pkg> …`, `pnpm audit --json` / `npm audit --json` and fetching the advisory URL the finding cites.
 - For a long trace spawn one `investigator` (question + `path:line` answer, ≤300 words, and include `no sub-spawn` in its prompt); delegate nothing else. At the depth limit, trace yourself.
 
-Spawns: `investigator`
+Spawns: `investigator` — every child prompt carries no sub-spawn
 
 ## Output format
 

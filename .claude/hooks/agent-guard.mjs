@@ -14,6 +14,13 @@
 // not a temp dir, history-rewriting / publishing git commands, and the
 // commands AGENTS.md forbids (`docker compose down -v`, `--no-verify`, …).
 //
+// Agent calls, for every profile: the child type must be listed in the
+// caller's one `Spawns:` line (`Agent(x)` allowlists are ignored in subagent
+// `tools`, so that line is the allowlist). A `Spawns:` line that says
+// "no sub-spawn" outside backticks also requires that phrase in the child's
+// prompt. The caller is `agent_type` from the payload, looked up in
+// .claude/agents/.
+//
 // This is defense in depth, not a sandbox: `node -e "fs.writeFileSync(…)"` and
 // similar interpreter one-liners are not parsed. The agent prompts state the
 // same rules; this hook catches the accidental violation, not a determined one.
@@ -22,7 +29,7 @@
 // exit 0 with a `permissionDecision: "deny"` JSON = block, reason shown to the
 // agent. Unknown profile or an unparsable payload blocks (fail-closed).
 
-import { existsSync, readFileSync, realpathSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, realpathSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { basename, dirname, isAbsolute, relative, resolve, sep } from 'node:path';
@@ -267,6 +274,55 @@ function checkBash(profile, root, command, cwd) {
   return null;
 }
 
+// ---------------------------------------------------------------- Agent
+
+const AGENT_NAME = /^[a-z0-9][a-z0-9-]*$/i;
+const NO_SUB_SPAWN = /no sub-spawn/i;
+
+// The caller's `Spawns:` line, parsed the way validate-agents.mjs parses it:
+// every backticked name is an allowed child. null = not found (fail-closed).
+function spawnPolicy(root, agentType) {
+  const dir = resolve(root, '.claude/agents');
+  if (!existsSync(dir)) return null;
+  let text = null;
+  const direct = resolve(dir, `${agentType}.md`);
+  if (existsSync(direct)) text = readFileSync(direct, 'utf8');
+  else {
+    // name differs from the file name (the validator warns about it)
+    for (const f of readdirSync(dir).filter((x) => x.endsWith('.md'))) {
+      const t = readFileSync(resolve(dir, f), 'utf8');
+      const fm = t.startsWith('---') ? t.split('---\n')[1] ?? '' : '';
+      if (fm.split('\n').some((l) => l.trim() === `name: ${agentType}`)) {
+        text = t;
+        break;
+      }
+    }
+  }
+  if (text === null) return null;
+  const lines = text.split('\n').filter((l) => /^Spawns:/.test(l));
+  if (lines.length !== 1) return null;
+  return {
+    allowed: new Set([...lines[0].matchAll(/`([a-zA-Z][a-zA-Z0-9-]*)`/g)].map((m) => m[1])),
+    noSubSpawn: NO_SUB_SPAWN.test(lines[0].replace(/`[^`]*`/g, '')),
+  };
+}
+
+function checkAgent(root, agentType, ti) {
+  if (!agentType) return 'Agent call without `agent_type` in the hook payload (fail-closed)';
+  if (!AGENT_NAME.test(agentType)) return `unexpected agent_type "${agentType}" (fail-closed)`;
+  const policy = spawnPolicy(root, agentType);
+  if (!policy) return `no single \`Spawns:\` line for ${agentType} in .claude/agents/ (fail-closed)`;
+  const child = ti.subagent_type || 'general-purpose';
+  if (!policy.allowed.has(child)) {
+    const list = [...policy.allowed].join(', ') || 'nothing';
+    return `${agentType} may spawn only ${list} (its \`Spawns:\` line), not \`${child}\` — do the work yourself or report the gap`;
+  }
+  if (policy.noSubSpawn && !NO_SUB_SPAWN.test(String(ti.prompt ?? ''))) {
+    return `children of ${agentType} must carry \`no sub-spawn\` in their prompt (concurrency budget, docs/dev-agents.md)`;
+  }
+  return null;
+}
+
 // ---------------------------------------------------------------- main
 
 const profile = process.argv[2];
@@ -285,6 +341,8 @@ if (tool === 'Edit' || tool === 'Write' || tool === 'MultiEdit' || tool === 'Not
   else reason = checkWrite(profile, root, target, cwd);
 } else if (tool === 'Bash') {
   reason = checkBash(profile, root, String(ti.command ?? ''), cwd);
+} else if (tool === 'Agent' || tool === 'Task') {
+  reason = checkAgent(root, input.agent_type, ti);
 }
 
 if (reason) deny(`[${profile}] ${reason}`);

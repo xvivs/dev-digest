@@ -49,7 +49,7 @@ lives in the engineering-insights skill).
 
 - **Skills are picked up mid-session, agents are not** — `.claude/skills/agent-authoring/SKILL.md` appeared in the Skill tool list right after it was written, while a freshly written `.claude/agents/*.md` stays `not found` until restart. So a new skill can be used to author an agent in the same session, but the agent itself can only be exercised headlessly (`claude -p --agent <name>`, `.claude/skills/agent-authoring/scripts/smoke-guard.mjs`) until the session restarts. Claude Code 2.1.285. _(2026-09-30)_
 
-- **Anthropic's "Claude Code best practices" article no longer lives on anthropic.com — cite `code.claude.com/docs/en/best-practices`** — `curl -sI https://www.anthropic.com/engineering/claude-code-best-practices` returns `308` with `location: https://code.claude.com/docs/en/best-practices`, and the `.md` suffix on the new URL serves greppable markdown. The agent-rule sources in `.claude/agents/README.md:55` use the new address. _(2026-09-30)_
+- **Anthropic's "Claude Code best practices" article no longer lives on anthropic.com — cite `code.claude.com/docs/en/best-practices`** — `curl -sI https://www.anthropic.com/engineering/claude-code-best-practices` returns `308` with `location: https://code.claude.com/docs/en/best-practices`, and the `.md` suffix on the new URL serves greppable markdown. The agent-rule sources in `.claude/agents/README.md:57` use the new address. _(2026-09-30)_
 
 ## Recurring Errors & Fixes
 

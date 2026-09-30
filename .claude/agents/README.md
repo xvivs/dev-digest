@@ -18,8 +18,10 @@ so update it in the same edit as the agent.
 ## Agents
 
 Every agent has an allowlisted `tools` field and runs
-`.claude/hooks/agent-guard.mjs <profile>` as a `PreToolUse` hook. `readonly`
-agents also carry no `Edit`/`Write`. Tool abbreviations: R Read, G Grep,
+`.claude/hooks/agent-guard.mjs <profile>` as a `PreToolUse` hook on
+`Edit|Write|MultiEdit|NotebookEdit|Bash|Agent`. `readonly` agents also carry
+no `Edit`/`Write`. The Spawns column is enforced: the guard denies an `Agent`
+call for any type not in the caller's `Spawns:` line. Tool abbreviations: R Read, G Grep,
 Gl Glob, B Bash, A Agent, S Skill, W Write, E Edit, WS WebSearch, WF WebFetch.
 
 | Agent | Responsibility | Model | Tools | Writes (profile) | Preloaded skills | Input | Output | Spawns |
@@ -104,6 +106,7 @@ Short names: **BP** [Claude Code best practices](https://code.claude.com/docs/en
 | Fixed pipeline over dynamic routing | BEA: "Workflows offer predictability for well-defined tasks" | feature and refactor chains orchestrated by main | `docs/dev-agents.md` Chains; ADR 0021 |
 | Least-privilege tools | SA, "Available tools" (`tools` allowlist) | every agent lists its tools; `readonly` drops Edit/Write | frontmatter `tools:` |
 | Write guard as an agent-scoped hook | SA, "Conditional rules with hooks"; HK | `agent-guard.mjs <profile>` on `Edit\|Write\|MultiEdit\|NotebookEdit\|Bash` | frontmatter `hooks:`; `.claude/hooks/agent-guard.mjs` |
+| Delegation allowlist enforced, not requested | HK, PreToolUse input for `Agent` (`subagent_type`, `prompt`); BP, "Set up hooks" | the caller's `Spawns:` line is the allowlist; "no sub-spawn" callers must pass it on | `agent-guard.mjs` `checkAgent`; `Spawns:` lines |
 | Model by the work | SA, "Choose a model" (mechanism; mapping is ours) | judgment → opus, execution → sonnet, sweeps → haiku | frontmatter `model:`; `agent-authoring` step 3 |
 | Adversarial verification per finding | BP: a fresh model "try to refute the result, so the agent doing the work isn't the one grading it" | one finding-verifier per finding before a reviewer returns | `finding-verifier.md:22`, `:42`; the four reviewers |
 | Pre-mortem | Klein, "Performing a Project Premortem", HBR, Sept 2007 ([link](https://hbr.org/2007/09/performing-a-project-premortem); paywalled, abstract only) | "it was implemented exactly as written and failed" → causes | `plan-critic.md:41`, `brainstorm.md:34` |
