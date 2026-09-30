@@ -20,26 +20,21 @@ function renderHeader(props: Partial<Parameters<typeof ScanHeader>[0]> = {}) {
 }
 
 describe("ScanHeader", () => {
-  it("titles the page with the repo name", () => {
+  it("finished scan: heading, 'Detected from N sample files · last scan X ago' and every stat", () => {
     renderHeader();
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Conventions in payments-api");
-  });
-
-  it("reads 'Detected from N sample files · last scan X ago'", () => {
-    renderHeader();
     expect(screen.getByText(/^Detected from 84 sample files · last scan .+ ago$/)).toBeInTheDocument();
-  });
 
-  it("shows every stat of the scan", () => {
-    renderHeader();
     const stats = screen.getByRole("group", { name: "Scan statistics" });
-    const values = Object.fromEntries(
-      ["Found", "Verified", "Dropped", "Relocated", "Model", "Tokens", "Cost", "Duration"].map((label) => [
-        label,
-        within(stats).getByText(label).nextElementSibling?.textContent,
-      ]),
-    );
-    expect(values).toEqual({
+    const statValue = (label: string) => {
+      const term = within(stats).getByText(label, { selector: "dt" });
+      // Each stat is a `div` wrapping one dt/dd pair; scope to it instead of walking siblings.
+      const pair = term.parentElement;
+      if (!pair) throw new Error(`no wrapper for stat ${label}`);
+      return within(pair).getByRole("definition").textContent;
+    };
+    const labels = ["Found", "Verified", "Dropped", "Relocated", "Model", "Tokens", "Cost", "Duration"];
+    expect(Object.fromEntries(labels.map((label) => [label, statValue(label)]))).toEqual({
       Found: "5",
       Verified: "3",
       Dropped: "2",
@@ -51,60 +46,52 @@ describe("ScanHeader", () => {
     });
   });
 
-  it("marks an estimated cost with ~ and a provider-billed one without", () => {
-    cleanup();
+  it("marks an estimated cost with ~, a provider-billed one without, and dashes unrecorded stats", () => {
     renderHeader({ scan: scan({ cost_usd: 0.5, cost_source: "provider" }) });
     expect(screen.getByText("$0.500")).toBeInTheDocument();
-  });
+    expect(screen.queryByText("~$0.500")).not.toBeInTheDocument();
+    cleanup();
 
-  it("shows a dash for stats the scan did not record", () => {
     renderHeader({ scan: scan({ model: null, tokens_in: null, tokens_out: null, cost_usd: null, cost_source: null, duration_ms: null }) });
     const stats = screen.getByRole("group", { name: "Scan statistics" });
     expect(within(stats).getAllByText("—")).toHaveLength(4);
   });
 
-  it("explains the page and hides the stats before a first scan", () => {
+  it("before a first scan: explains the page, hides stats and Re-scan (B6)", () => {
     renderHeader({ scan: null });
     expect(screen.getByText(/Scan the cloned repo to surface house-rules/)).toBeInTheDocument();
     expect(screen.queryByRole("group", { name: "Scan statistics" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Re-scan|Scanning/ })).not.toBeInTheDocument();
   });
 
-  it("re-scans on click", async () => {
+  it("Re-scan: clickable when idle, disabled when told to and while scanning", async () => {
     const user = userEvent.setup();
     const { onRescan } = renderHeader();
     await user.click(screen.getByRole("button", { name: "Re-scan" }));
     expect(onRescan).toHaveBeenCalledTimes(1);
-  });
+    cleanup();
 
-  it("disables Re-scan and says so while scanning", () => {
+    renderHeader({ rescanDisabled: true });
+    expect(screen.getByRole("button", { name: "Re-scan" })).toBeDisabled();
+    cleanup();
+
     renderHeader({ scanning: true });
     expect(screen.getByRole("button", { name: "Scanning…" })).toBeDisabled();
   });
 
-  it("disables Re-scan when told to", () => {
-    renderHeader({ rescanDisabled: true });
-    expect(screen.getByRole("button", { name: "Re-scan" })).toBeDisabled();
-  });
-
-  it("hides Re-scan before the first scan (B6)", () => {
-    renderHeader({ scan: null });
-    expect(screen.queryByRole("button", { name: /Re-scan|Scanning/ })).not.toBeInTheDocument();
-  });
-
-  it("while a scan runs: 'Scanning… started X ago', no stats, disabled button (B5)", () => {
+  it("while a scan runs: 'Scanning… started X ago', no stats, disabled button even without `scanning` (B5)", () => {
     renderHeader({ runningScan: scan({ id: "s2", status: "running", finished_at: null }), scanning: true });
     expect(screen.getByText(/^Scanning… started .+ ago$/)).toBeInTheDocument();
     expect(screen.queryByText(/^Detected from/)).not.toBeInTheDocument();
     expect(screen.queryByRole("group", { name: "Scan statistics" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Scanning…" })).toBeDisabled();
-  });
+    cleanup();
 
-  it("disables Re-scan for a running scan even when `scanning` is not set", () => {
     renderHeader({ runningScan: scan({ status: "running", finished_at: null }) });
     expect(screen.getByRole("button", { name: "Scanning…" })).toBeDisabled();
   });
 
-  it("after a failure: 'Last scan failed X ago' plus a muted note dating the older results (B5)", () => {
+  it("after a failure: 'Last scan failed X ago', a note dating the older results when there are any (B5)", () => {
     renderHeader({
       failedScan: scan({ id: "f", status: "failed" }),
       scan: scan({ finished_at: "2026-09-20T09:00:42.000Z" }),
@@ -112,9 +99,8 @@ describe("ScanHeader", () => {
     expect(screen.getByText(/^Last scan failed .+ ago$/)).toBeInTheDocument();
     expect(screen.getByText("Showing results from scan of Sep 20, 2026")).toBeInTheDocument();
     expect(screen.queryByText(/^Detected from/)).not.toBeInTheDocument();
-  });
+    cleanup();
 
-  it("after a failure with no earlier results: no 'Showing results' note", () => {
     renderHeader({ failedScan: scan({ status: "failed" }), scan: null });
     expect(screen.getByText(/^Last scan failed/)).toBeInTheDocument();
     expect(screen.queryByText(/Showing results/)).not.toBeInTheDocument();
@@ -180,16 +166,20 @@ describe("ScanHeader clock while a scan runs", () => {
     expect(screen.getByText("Scanning… started 5 seconds ago")).toBeInTheDocument();
   });
 
-  it("does not tick when no scan is running", () => {
+  it("keeps 'last scan X ago' aging after a scan finished, ticking every 30 s only", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-09-29T09:05:00.000Z"));
     renderHeader({ scan: scan({ finished_at: "2026-09-29T09:00:42.000Z" }) });
-    const label = /^Detected from 84 sample files · last scan 4 minutes ago$/;
-    expect(screen.getByText(label)).toBeInTheDocument();
+    expect(screen.getByText("Detected from 84 sample files · last scan 4 minutes ago")).toBeInTheDocument();
 
     act(() => {
-      vi.advanceTimersByTime(600_000);
+      vi.advanceTimersByTime(29_000);
     });
-    expect(screen.getByText(label)).toBeInTheDocument();
+    expect(screen.getByText("Detected from 84 sample files · last scan 4 minutes ago")).toBeInTheDocument();
+
+    act(() => {
+      vi.advanceTimersByTime(10 * 60_000);
+    });
+    expect(screen.getByText("Detected from 84 sample files · last scan 14 minutes ago")).toBeInTheDocument();
   });
 });

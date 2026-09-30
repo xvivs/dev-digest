@@ -10,8 +10,9 @@ import { useFormatter, useTranslations } from "next-intl";
 import { Button } from "@devdigest/ui";
 import type { ConventionScan } from "@devdigest/shared";
 import { RunCostValue } from "@/components/run-cost-value";
+import { ScanAgo } from "./_components/ScanAgo";
 import { ScanningSince } from "./_components/ScanningSince";
-import { formatDuration, formatTokenCount, isJustNow } from "./helpers";
+import { formatDuration, formatTokenCount } from "./helpers";
 import { s } from "./styles";
 
 export function ScanHeader({
@@ -40,14 +41,6 @@ export function ScanHeader({
   const format = useFormatter();
   const none = t("stats.none");
 
-  // `now` is explicit: next-intl has no global default here, and this only renders once the
-  // scan has loaded on the client, so there is no server/client markup to mismatch.
-  const ago = (s: ConventionScan) => {
-    const at = new Date(s.finished_at ?? s.started_at);
-    const now = new Date();
-    return isJustNow(at, now) ? t("header.justNow") : format.relativeTime(at, now);
-  };
-  const when = scan ? ago(scan) : null;
   const hasScanned = scan !== null || runningScan !== null || failedScan !== null;
   // A running scan has no results yet; a failed one shows the older results, labelled as such.
   const showStats = scan !== null && runningScan === null;
@@ -56,14 +49,18 @@ export function ScanHeader({
   if (runningScan) {
     subtitle = <ScanningSince since={runningScan.finished_at ?? runningScan.started_at} />;
   } else if (failedScan) {
-    subtitle = t("header.failed", { when: ago(failedScan) });
+    subtitle = <ScanAgo kind="failed" since={failedScan.finished_at ?? failedScan.started_at} />;
     if (scan) {
       olderNote = t("header.showingFrom", {
         date: format.dateTime(new Date(scan.finished_at ?? scan.started_at), { dateStyle: "medium" }),
       });
     }
   } else {
-    subtitle = scan ? t("header.detected", { count: scan.sample_file_count, when: when ?? "" }) : t("page.subtitle");
+    subtitle = scan ? (
+      <ScanAgo kind="detected" sampleCount={scan.sample_file_count} since={scan.finished_at ?? scan.started_at} />
+    ) : (
+      t("page.subtitle")
+    );
   }
   const duration = scan ? formatDuration(scan.duration_ms) : null;
   const tokens =

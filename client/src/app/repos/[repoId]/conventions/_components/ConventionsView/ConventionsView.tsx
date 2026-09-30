@@ -42,10 +42,12 @@ import {
   canCreateSkill,
   emptyTabKind,
   errorMessage,
+  extractErrorCode,
   isIndexBlocked,
   isIndexed,
   isNotCloned,
   isRepoBlockedError,
+  isRescanDisabled,
   resolveScreen,
   shouldShowList,
   toggleAllSelected,
@@ -87,7 +89,7 @@ export function ConventionsView({ repoId }: { repoId: string }) {
   const [creating, setCreating] = React.useState(false);
 
   const page = conventions.data;
-  const candidates = React.useMemo(() => page?.candidates ?? [], [page]);
+  const candidates = page?.candidates ?? [];
   const counts = tabCounts(candidates);
   const visible = filterByTab(candidates, tab);
   const accepted = acceptedIds(candidates);
@@ -157,7 +159,7 @@ export function ConventionsView({ repoId }: { repoId: string }) {
   const failedScan = screen === "failed" ? page?.last_scan : null;
   const showList = shouldShowList(screen, candidates.length);
   const extractError = repoBlocked ? null : errorMessage(extractFailure, t("extract.errorTitle"));
-  const extractCode = extractFailure?.status !== undefined ? knownErrorCode(extractFailure.code) ?? knownErrorCode(extractError) : null;
+  const extractCode = extractErrorCode(extractFailure, extractError);
 
   return (
     <AppShell crumb={crumb}>
@@ -169,7 +171,7 @@ export function ConventionsView({ repoId }: { repoId: string }) {
           failedScan={failedScan ?? null}
           onRescan={runAnalysis}
           scanning={scanning}
-          rescanDisabled={screen === "loading" || screen === "loadError" || screen === "notIndexed"}
+          rescanDisabled={isRescanDisabled(screen)}
         />
 
         {extractError && (

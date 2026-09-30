@@ -2,7 +2,8 @@
    render (AC-32) and what the extract error means. */
 import type { ConventionCandidate, ConventionCategory, ConventionsPage, UpdateConventionBody } from "@devdigest/shared";
 import type { ErrorInfo } from "@/lib/types";
-import { CONFLICT_STATUS, MAX_SKILL_CONVENTIONS, type TabKey } from "../../constants";
+import { CONFLICT_STATUS, MAX_SKILL_CONVENTIONS, type KnownErrorCode, type TabKey } from "../../constants";
+import { knownErrorCode } from "../../helpers";
 import { INDEXED_STATUSES, NOT_CLONED_CODE, REPO_BLOCKED_CODES } from "./constants";
 
 /**
@@ -138,4 +139,19 @@ export function canCreateSkill(selectedCount: number): boolean {
 /** Whether the tabbed list renders: it stays readable under a failed-scan banner when older candidates exist. */
 export function shouldShowList(screen: Screen, candidateCount: number): boolean {
   return screen === "list" || screen === "allRejected" || (screen === "failed" && candidateCount > 0);
+}
+
+/**
+ * The known error code behind a failed extract request, for the localised message. Only an answer
+ * from the server has one (a network failure has no `status`); the server's `code` wins over one
+ * parsed from the message head.
+ */
+export function extractErrorCode(failure: ErrorInfo | null, message: string | null): KnownErrorCode | null {
+  if (failure?.status === undefined) return null;
+  return knownErrorCode(failure.code) ?? knownErrorCode(message);
+}
+
+/** The Re-scan button is held while the page has nothing to scan yet or cannot scan at all. */
+export function isRescanDisabled(screen: Screen): boolean {
+  return screen === "loading" || screen === "loadError" || screen === "notIndexed";
 }

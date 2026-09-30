@@ -272,3 +272,80 @@ describe("C2 SkillsTab — response handling", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("Budget exceeded: 26 KB > 24 KB");
   });
 });
+
+describe("C2 SkillsTab — a click is never lost (QA: first click did nothing)", () => {
+  const zuluBox = () => screen.getByRole("checkbox", { name: "Enable zulu-skill for this agent" });
+  const yankeeBox = () => screen.getByRole("checkbox", { name: "Enable yankee-skill for this agent" });
+
+  it("keeps a click made while the previous save is in flight, and saves it", async () => {
+    const { putCalls } = setup();
+    await settle();
+
+    fireEvent.click(zuluBox());
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(400);
+    });
+    expect(putCalls).toHaveLength(1); // first save is now in flight
+
+    fireEvent.click(yankeeBox()); // click inside the in-flight window, debounce armed again
+    expect(yankeeBox()).toHaveAttribute("aria-checked", "true");
+
+    putCalls[0]!.deferred.resolve([...LINKS, { agent_id: AGENT.id, skill_id: "zulu", order: 2, enabled: true }]);
+    await settleDeep();
+
+    // The first response must not wipe the newer, not-yet-sent click.
+    expect(yankeeBox()).toHaveAttribute("aria-checked", "true");
+    expect(zuluBox()).toHaveAttribute("aria-checked", "true");
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(400);
+    });
+    expect(putCalls).toHaveLength(2);
+    expect(putCalls[1]!.body).toEqual({
+      links: [
+        { skill_id: "alpha", enabled: true },
+        { skill_id: "beta", enabled: false },
+        { skill_id: "zulu", enabled: true },
+        { skill_id: "yankee", enabled: true },
+      ],
+    });
+  });
+
+  it("offers no checkbox before the agent's links load, then the first click sticks", async () => {
+    const queryClient = createTestQueryClient();
+    const links = deferred<AgentSkillLink[]>();
+    vi.mocked(api.get).mockImplementation((path: string) => {
+      if (path === "/skills") return Promise.resolve(SKILLS);
+      if (path === `/agents/${AGENT.id}/skills`) return links.promise;
+      throw new Error(`unexpected GET ${path}`);
+    });
+    const putBodies: unknown[] = [];
+    vi.mocked(api.put).mockImplementation((_path: string, body: unknown) => {
+      putBodies.push(body);
+      return new Promise<AgentSkillLink[]>(() => {});
+    });
+    renderWithProviders(<SkillsTab agent={AGENT} />, { namespaces: { agents: messages }, queryClient });
+    await settle();
+
+    // Skills are known, the links request is pending: nothing can be ticked on an empty baseline.
+    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+    links.resolve(LINKS);
+    await settleDeep();
+
+    fireEvent.click(zuluBox());
+
+    expect(zuluBox()).toHaveAttribute("aria-checked", "true");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(400);
+    });
+    expect(putBodies).toEqual([
+      {
+        links: [
+          { skill_id: "alpha", enabled: true },
+          { skill_id: "beta", enabled: false },
+          { skill_id: "zulu", enabled: true },
+        ],
+      },
+    ]);
+  });
+});

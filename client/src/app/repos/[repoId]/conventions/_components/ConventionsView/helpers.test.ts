@@ -7,8 +7,10 @@ import {
   canCreateSkill,
   emptyTabKind,
   errorMessage,
+  extractErrorCode,
   isIndexBlocked,
   isRepoBlockedError,
+  isRescanDisabled,
   resolveScreen,
   shouldShowList,
   toggleAllSelected,
@@ -205,5 +207,27 @@ describe("shouldShowList", () => {
     for (const screen of ["loading", "loadError", "scanning", "notIndexed", "never", "zeroVerified"] as const) {
       expect(shouldShowList(screen, 5)).toBe(false);
     }
+  });
+});
+
+describe("extractErrorCode", () => {
+  it("has no code without a server answer, whatever the message says", () => {
+    expect(extractErrorCode(null, "repo_not_indexed: x")).toBeNull();
+    expect(extractErrorCode({ message: "offline" }, "repo_not_indexed: x")).toBeNull();
+  });
+
+  it("prefers the server's code, falls back to the message head, else null", () => {
+    expect(extractErrorCode({ message: "m", status: 409, code: "repo_not_indexed" }, "repo_not_cloned: y")).toBe("repo_not_indexed");
+    expect(extractErrorCode({ message: "m", status: 500 }, "repo_not_indexed: y")).toBe("repo_not_indexed");
+    expect(extractErrorCode({ message: "m", status: 500, code: "weird" }, "something else")).toBeNull();
+  });
+});
+
+describe("isRescanDisabled", () => {
+  it("holds Re-scan only while there is nothing to scan yet or scanning is impossible", () => {
+    const held = (["loading", "loadError", "notIndexed"] as const).map(isRescanDisabled);
+    const open = (["scanning", "never", "failed", "zeroVerified", "allRejected", "list"] as const).map(isRescanDisabled);
+    expect(held).toEqual([true, true, true]);
+    expect(open.every((v) => v === false)).toBe(true);
   });
 });
