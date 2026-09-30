@@ -1,4 +1,5 @@
 export type { LinkLike, RepoSummary, ShellContext, Crumb } from "./types";
+export { Logo } from "./Logo";
 export { NavItem } from "./NavItem";
 export { RepoSwitcher } from "./RepoSwitcher";
 export { Sidebar } from "./Sidebar";

@@ -219,3 +219,12 @@ No new untrusted input. Crumb labels (repo full names, PR numbers from GitHub) w
 | 3 | plan-critic | PC-11 60% cap truncates "Pull requests" at 768, contradicting step 9 | MAJOR | Fixed with the critic's proposed text: 75% cap, step 9 check and exception. **Not re-reviewed** (3-round cap reached) |
 | 3 | plan-critic | PC-12 change-site numbering gap | MINOR | Fixed: renumbered 1-16. Review-log rows from earlier rounds keep the old numbers |
 | — | human (2026-09-30) | Human decisions: OQ-3 → icon search below 1024 (lg breakpoint `max-width: 1023px`, the sidebar stays at 767); ADR 0024 in this change confirmed; PC-11 verified in the browser at step 9 instead of a re-review; work directly on `feat/pr-overview` @ `fe581cb`, one PR | — | Applied: Status, D1, D2, D4 (with 768/900/1023 measurements), G3, AC-2/8/10, sites 1/8/14/15, steps 0/1/9, Edge cases, R4/R6/R7, OQs. No new review loop: the change swaps one class breakpoint and removes the search shrink rules, with no structural change |
+
+## Amendment 2026-10-01
+
+Human decision (Vlad), mobile widths only (below 768px); desktop unchanged.
+
+- **Topbar:** the DevDigest logo (mark + wordmark) is always shown, centered in the header (absolute, `left: 50%`, `dd-show-below-md`). The crumbs row and the Notifications placeholder button hide below md (`dd-hide-below-md`) so nothing collides with the logo; a flex spacer keeps the right-hand icons aligned. At 320px the logo may overlap the icon group by a few px (compact `sm` variant used).
+- **Drawer:** the visible "Navigation" title is replaced by the logo in the drawer header. The dialog keeps its accessible name from `shell.navDrawer.title`, rendered as visually hidden text next to the logo inside the `Drawer` title (the `Drawer` API is unchanged: other callers pass both `title` and `ariaLabel`). `SidebarContent` gets `hideLogo` so the logo is not repeated inside the drawer body.
+- **Reuse:** the logo markup moved from `SidebarContent` into `vendor/ui/shell/Logo.tsx` (exported from `@devdigest/ui`), used by the sidebar, Topbar and drawer.
+- **Tests:** `shell/Topbar.test.tsx`, `components/app-shell/AppShell.test.tsx`.

@@ -2,6 +2,7 @@ import React from "react";
 import { Icon } from "../icons";
 import { IconBtn, Avatar, Kbd } from "../primitives";
 import { DefaultLink } from "./DefaultLink";
+import { Logo } from "./Logo";
 import type { ShellContext, Crumb } from "./types";
 
 /** Topbar height (px). Screens that fill the viewport under it subtract this. */
@@ -20,6 +21,7 @@ export function Topbar({ ctx, crumb = [] }: { ctx: ShellContext; crumb?: Crumb[]
         alignItems: "center",
         gap: "var(--dd-topbar-gap)",
         padding: "0 var(--dd-topbar-pad-x)",
+        position: "relative",
       }}
     >
       {ctx.onOpenNav && (
@@ -31,7 +33,23 @@ export function Topbar({ ctx, crumb = [] }: { ctx: ShellContext; crumb?: Crumb[]
           onClick={ctx.onOpenNav}
         />
       )}
-      <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, flex: "1 1 auto", overflow: "hidden" }}>
+      {/* Below md the logo is centered in the header; crumbs would collide with it, so they hide. */}
+      <div
+        className="dd-show-below-md"
+        style={{
+          position: "absolute",
+          left: "50%",
+          top: "50%",
+          transform: "translate(-50%, -50%)",
+          pointerEvents: "none",
+        }}
+      >
+        <Logo size="sm" />
+      </div>
+      <div
+        className="dd-hide-below-md"
+        style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, flex: "1 1 auto", overflow: "hidden" }}
+      >
         {crumb.map((c, i) => {
           const last = i === crumb.length - 1;
           // Ancestors shrink first; the current page keeps its width up to 75% of the row.
@@ -74,6 +92,7 @@ export function Topbar({ ctx, crumb = [] }: { ctx: ShellContext; crumb?: Crumb[]
           );
         })}
       </div>
+      <div className="dd-show-below-md" style={{ flex: 1 }} />
       <button
         type="button"
         className="dd-hide-below-lg"
@@ -110,7 +129,7 @@ export function Topbar({ ctx, crumb = [] }: { ctx: ShellContext; crumb?: Crumb[]
         />
       )}
       {ctx.onRefresh && <IconBtn icon="RefreshCw" label="Refresh" onClick={ctx.onRefresh} />}
-      <IconBtn icon="Bell" label="Notifications" />
+      <IconBtn icon="Bell" label="Notifications" className="dd-hide-below-md" />
       <Avatar name="you" size={26} />
     </header>
   );

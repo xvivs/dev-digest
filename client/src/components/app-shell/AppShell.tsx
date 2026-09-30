@@ -11,11 +11,13 @@ import {
   AppFrame,
   CommandPalette,
   Drawer,
+  Logo,
   NAV_DRAWER_WIDTH,
   ShortcutsHelp,
   SidebarContent,
   type Crumb,
 } from "@devdigest/ui";
+import { visuallyHidden } from "./styles";
 import { useGlobalShortcuts, useShellCommands, useShellContext } from "./hooks";
 
 export function AppShell({ children, crumb }: { children: React.ReactNode; crumb?: Crumb[] }) {
@@ -51,11 +53,16 @@ export function AppShell({ children, crumb }: { children: React.ReactNode; crumb
         <Drawer
           side="left"
           width={NAV_DRAWER_WIDTH}
-          title={t("navDrawer.title")}
+          title={
+            <>
+              <Logo />
+              <span style={visuallyHidden}>{t("navDrawer.title")}</span>
+            </>
+          }
           closeLabel={t("ui.close")}
           onClose={closeNav}
         >
-          <SidebarContent ctx={ctx} onNavigate={closeNav} />
+          <SidebarContent ctx={ctx} onNavigate={closeNav} hideLogo />
         </Drawer>
       )}
       <CommandPalette open={paletteOpen} commands={commands} onClose={closePalette} />

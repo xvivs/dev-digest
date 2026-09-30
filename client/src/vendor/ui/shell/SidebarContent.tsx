@@ -1,8 +1,8 @@
 import React from "react";
-import { Icon } from "../icons";
 import { NAV, SETTINGS_ITEM } from "../nav";
 import { DefaultLink } from "./DefaultLink";
 import type { ShellContext } from "./types";
+import { Logo } from "./Logo";
 import { NavItem } from "./NavItem";
 import { RepoSwitcher } from "./RepoSwitcher";
 
@@ -13,28 +13,26 @@ export const NAV_DRAWER_WIDTH = 304;
  * The sidebar's content (logo, repo switcher, nav, settings). Owns its column
  * layout so it renders the same in the fixed aside and in a block Drawer body.
  */
-export function SidebarContent({ ctx, onNavigate }: { ctx: ShellContext; onNavigate?: () => void }) {
+export function SidebarContent({
+  ctx,
+  onNavigate,
+  hideLogo = false,
+}: {
+  ctx: ShellContext;
+  onNavigate?: () => void;
+  /** Omit the logo row when the host (the nav Drawer header) already shows it. */
+  hideLogo?: boolean;
+}) {
   const Link = ctx.Link ?? DefaultLink;
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 2, flex: 1, minHeight: 0 }}>
-      <Link href="/" onClick={onNavigate}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "2px 5px 14px" }}>
-          <div
-            style={{
-              width: 26,
-              height: 26,
-              borderRadius: 7,
-              background: "var(--text-primary)",
-              display: "grid",
-              placeItems: "center",
-              flexShrink: 0,
-            }}
-          >
-            <Icon.Layers size={15} style={{ color: "var(--bg-primary)" }} />
+      {!hideLogo && (
+        <Link href="/" onClick={onNavigate}>
+          <div style={{ padding: "2px 5px 14px" }}>
+            <Logo />
           </div>
-          <span style={{ fontSize: 16, fontWeight: 700, letterSpacing: "-0.02em" }}>DevDigest</span>
-        </div>
-      </Link>
+        </Link>
+      )}
       <RepoSwitcher ctx={ctx} />
       <div style={{ overflowY: "auto", flex: 1, margin: "5px -5px 0", padding: "0 5px" }}>
         {NAV.map((grp, gi) => (
