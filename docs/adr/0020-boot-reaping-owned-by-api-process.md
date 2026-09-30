@@ -1,4 +1,4 @@
-# ADR 0017 — Boot-time reaping belongs to the API process, not `buildApp`
+# ADR 0020 — Boot-time reaping belongs to the API process, not `buildApp`
 
 **Status:** accepted
 **Date:** 2026-09-30

@@ -20,8 +20,17 @@ import { SkillsListPane } from "@/app/skills/_components/SkillsListPane";
 import { CreateSkillModal } from "@/app/skills/_components/CreateSkillModal";
 import { ImportSkillDrawer } from "@/app/skills/_components/ImportSkillDrawer";
 import { SkillEditor } from "../SkillEditor";
-import { DIRTY_GUARD_MODAL_WIDTH, HEADER_ICON_SIZE, SKELETON_BODY_HEIGHT, SKELETON_TITLE } from "./constants";
-import { resolveTab, withTab } from "./helpers";
+import type { SkillStatsWindow } from "@devdigest/shared";
+import {
+  CASE_PARAM,
+  DIRTY_GUARD_MODAL_WIDTH,
+  HEADER_ICON_SIZE,
+  SKELETON_BODY_HEIGHT,
+  SKELETON_TITLE,
+  STATS_WINDOW_PARAM,
+  SUITE_PARAM,
+} from "./constants";
+import { caseQuery, editorQuery, parseCaseParam, parseStatsWindow, resolveTab, statsWindowQuery } from "./helpers";
 import { s } from "./styles";
 
 export function SkillEditorView({ id }: { id: string }) {
@@ -35,10 +44,33 @@ export function SkillEditorView({ id }: { id: string }) {
   const [importing, setImporting] = React.useState(false);
 
   const tab = resolveTab(search.get("tab"));
+  const statsWindow = parseStatsWindow(search.get(STATS_WINDOW_PARAM));
+  // The Evals case drawer lives in `?case=` (+ `&suite=`): it only exists on the Evals tab.
+  const evalCase = tab === "evals" ? parseCaseParam(search.get(CASE_PARAM)) : null;
+  const evalSuite = evalCase ? parseCaseParam(search.get(SUITE_PARAM)) : null;
+  const href = (query: string) => `${SKILLS_HREF}/${encodeURIComponent(id)}?${query}`;
+  const replaceQuery = (query: string) => router.replace(href(query));
+  // Opening pushes a history entry so Back closes the drawer; closing and switching suite replace.
+  const openEvalCase = (caseId: string) => router.push(href(caseQuery(search.toString(), caseId, null)));
+  const closeEvalCase = () => replaceQuery(caseQuery(search.toString(), null, null));
+  const selectEvalSuite = (suiteId: string) => replaceQuery(caseQuery(search.toString(), evalCase, suiteId));
+  const navigate = (next: string) => replaceQuery(editorQuery(search.toString(), next));
+  // Stats window in `?window=`: survives reloads and shared links, and tab
+  // switches keep it (editorQuery preserves unrelated params).
+  const setStatsWindow = (w: SkillStatsWindow) => replaceQuery(statsWindowQuery(search.toString(), w));
   // Not guarded here — SkillEditor's Tabs already route every change through
   // `guard.confirmNavigation` before calling this.
-  const setTab = (next: string) =>
-    router.replace(`${SKILLS_HREF}/${encodeURIComponent(id)}?${withTab(search.toString(), next)}`);
+  const setTab = (next: string) => navigate(next);
+  // Header "Run on evals": open the Evals tab and ask it for its Run modal.
+  // A flag, not a nonce: the tab clears it once the modal is open, so a later
+  // visit to Evals does not reopen it.
+  const [runRequested, setRunRequested] = React.useState(false);
+  const clearRunRequest = React.useCallback(() => setRunRequested(false), []);
+  const runOnEvals = () =>
+    guard.confirmNavigation(() => {
+      if (tab !== "evals") navigate("evals");
+      setRunRequested(true);
+    });
 
   // A mutable ref, not state: the Config tab reports every keystroke's dirty
   // flag, and a `dirty` re-render of this whole screen per keystroke would be
@@ -128,13 +160,27 @@ export function SkillEditorView({ id }: { id: string }) {
                   </span>
                 )}
                 <div style={s.editorActions}>
-                  <Button kind="secondary" size="sm" icon="FlaskConical" disabled title={t("detail.runOnEvalsHint")}>
+                  <Button kind="secondary" size="sm" icon="FlaskConical" onClick={runOnEvals} title={t("detail.runOnEvalsTitle")}>
                     {t("detail.runOnEvals")}
                   </Button>
                 </div>
               </div>
               <div style={s.editorBody}>
-                <SkillEditor key={skill.id} skill={skill} tab={tab} onTab={setTab} />
+                <SkillEditor
+                  key={skill.id}
+                  skill={skill}
+                  tab={tab}
+                  onTab={setTab}
+                  statsWindow={statsWindow}
+                  onStatsWindow={setStatsWindow}
+                  runRequested={runRequested}
+                  onRunRequestHandled={clearRunRequest}
+                  evalCaseId={evalCase}
+                  evalSuiteId={evalSuite}
+                  onOpenEvalCase={openEvalCase}
+                  onCloseEvalCase={closeEvalCase}
+                  onSelectEvalSuite={selectEvalSuite}
+                />
               </div>
             </div>
           )}

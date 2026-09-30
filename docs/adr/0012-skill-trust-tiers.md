@@ -1,6 +1,6 @@
 # ADR 0012 — Skills are trusted instructions behind a vetting gate
 
-**Status:** accepted · Decision 3 amended by [ADR 0013](0013-nonce-prompt-delimiters.md) · §4 extended by [ADR 0016](0016-extracted-skill-trust-tier.md)
+**Status:** accepted · Decision 3 amended by [ADR 0013](0013-nonce-prompt-delimiters.md) · §4 extended by [ADR 0019](0019-extracted-skill-trust-tier.md)
 **Date:** 2026-09-28
 
 ## Context

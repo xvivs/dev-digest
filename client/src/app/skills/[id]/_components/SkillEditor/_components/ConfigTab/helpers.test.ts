@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { Skill } from "@devdigest/shared";
-import { isSkillDirty } from "./helpers";
+import { buildSavePatch, isSkillDirty } from "./helpers";
 
 const SKILL: Skill = {
   id: "sk1",
@@ -26,5 +26,21 @@ describe("isSkillDirty", () => {
     expect(isSkillDirty(SKILL, { ...base, name: "other-name" })).toBe(true);
     expect(isSkillDirty(SKILL, { ...base, enabled: false })).toBe(true);
     expect(isSkillDirty(SKILL, { ...base, type: "security" })).toBe(true);
+  });
+});
+
+describe("buildSavePatch", () => {
+  const draft = { name: SKILL.name, description: SKILL.description, type: SKILL.type, body: SKILL.body, enabled: SKILL.enabled };
+
+  it("sends the trimmed note with a content change", () => {
+    expect(buildSavePatch(SKILL, { ...draft, body: "# New" }, "  tightened  ")).toEqual({ ...draft, body: "# New", change_note: "tightened" });
+  });
+
+  it("omits a blank note", () => {
+    expect(buildSavePatch(SKILL, { ...draft, body: "# New" }, "   ")).not.toHaveProperty("change_note");
+  });
+
+  it("omits the note on an enabled-only save, which creates no version", () => {
+    expect(buildSavePatch(SKILL, { ...draft, enabled: false }, "why")).not.toHaveProperty("change_note");
   });
 });

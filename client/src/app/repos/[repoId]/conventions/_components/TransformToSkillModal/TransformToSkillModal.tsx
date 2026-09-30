@@ -1,6 +1,6 @@
 /* TransformToSkillModal — "Create skill from conventions" (AC-42..AC-48).
    Merges the accepted, selected conventions into one skill body the person can
-   edit before it is saved. Creating IS the vetting act (D10, ADR 0016): the
+   edit before it is saved. Creating IS the vetting act (D10, ADR 0019): the
    server stores the skill vetted and enabled from the toggle, so the full raw
    body is shown here and nothing else stands between save and a prompt.
 

@@ -110,22 +110,71 @@
     {
       "idx": 15,
       "version": "7",
-      "when": 1790709926498,
-      "tag": "0015_delete_legacy_conventions",
+      "when": 1790638123347,
+      "tag": "0015_magenta_ezekiel",
       "breakpoints": true
     },
     {
       "idx": 16,
       "version": "7",
-      "when": 1790709957780,
-      "tag": "0016_add_conventions_extractor",
+      "when": 1790638128016,
+      "tag": "0016_skill_versions_backfill",
       "breakpoints": true
     },
     {
       "idx": 17,
       "version": "7",
-      "when": 1790709962534,
-      "tag": "0017_drop_legacy_convention_columns",
+      "when": 1790638786654,
+      "tag": "0017_elite_rogue",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1790639982571,
+      "tag": "0018_eval_suites",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1790639992423,
+      "tag": "0019_eval_cases_skill_backfill",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1790640007083,
+      "tag": "0020_eval_cases_skill_fk",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1790689360726,
+      "tag": "0021_eval_suites_case_ids",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1790767983884,
+      "tag": "0022_delete_legacy_conventions",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1790768001542,
+      "tag": "0023_add_conventions_extractor",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1790768009307,
+      "tag": "0024_drop_legacy_convention_columns",
       "breakpoints": true
     }
   ]

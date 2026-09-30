@@ -1,4 +1,4 @@
-# ADR 0016 — Extracted skills are vetted by the act of creating them
+# ADR 0019 — Extracted skills are vetted by the act of creating them
 
 **Status:** accepted · extends ADR 0012 §4
 **Date:** 2026-09-29

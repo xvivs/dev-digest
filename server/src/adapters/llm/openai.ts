@@ -8,6 +8,7 @@ import type {
   StructuredResult,
 } from '@devdigest/shared';
 import { withRetry, withTimeout } from '../../platform/resilience.js';
+import { LLM_CALL_TIMEOUT_MS, LLM_STRUCTURED_MAX_RETRIES } from '../../platform/llm-limits.js';
 import { toJsonSchema, parseWithRepair } from '../../platform/structured.js';
 import { estimateCost } from './pricing.js';
 import { ExternalServiceError } from '../../platform/errors.js';
@@ -19,7 +20,7 @@ import {
   deadlineFrom,
 } from '@devdigest/reviewer-core';
 
-const DEFAULT_TIMEOUT = 60_000;
+const DEFAULT_TIMEOUT = LLM_CALL_TIMEOUT_MS;
 const EMBED_MODEL = 'text-embedding-3-small';
 
 /**
@@ -98,7 +99,7 @@ export class OpenAIProvider implements LLMProvider {
 
   async completeStructured<T>(req: StructuredRequest<T>): Promise<StructuredResult<T>> {
     const jsonSchema = toJsonSchema(req.schema, req.schemaName);
-    const maxRetries = req.maxRetries ?? 2;
+    const maxRetries = req.maxRetries ?? LLM_STRUCTURED_MAX_RETRIES;
     const messages = [...req.messages];
     let tokensIn = 0;
     let tokensOut = 0;

@@ -604,6 +604,18 @@ export async function seed(db: Db): Promise<{ workspaceId: string; userId: strin
         version: 1,
       })
       .returning({ id: t.skills.id });
+    // ADR 0016: every skill has a v1 snapshot, same as SkillsRepository.insert.
+    await db
+      .insert(t.skillVersions)
+      .values({
+        skillId: created!.id,
+        version: 1,
+        body: def.body,
+        name: def.name,
+        description: def.description,
+        type: def.type,
+      })
+      .onConflictDoNothing();
     return created!.id;
   }
 

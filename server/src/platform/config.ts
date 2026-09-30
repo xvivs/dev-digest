@@ -26,6 +26,10 @@ const EnvSchema = z.object({
   // Note: even when on, sections only populate once the repo is indexed; an
   // unindexed repo degrades gracefully. Per-agent override: agents.repo_intel.
   REPO_INTEL_ENABLED: z.string().optional(),
+  // ADR 0018: hard cap on one eval suite's pre-run estimate (USD). A suite
+  // whose estimate is above it is refused before anything runs.
+  // Empty (`EVAL_MAX_BUDGET_USD=`) falls through to the default, like LOG_LEVEL.
+  EVAL_MAX_BUDGET_USD: z.preprocess((v) => (v === '' ? undefined : v), z.coerce.number().positive().default(5)),
   API_PORT: z.coerce.number().int().default(3001),
   WEB_PORT: z.coerce.number().int().default(3000),
   DEVDIGEST_CLONE_DIR: z.string().optional(),
@@ -59,6 +63,8 @@ export type AppConfig = {
    * EXACTLY like the ripgrep-only baseline.
    */
   repoIntelEnabled: boolean;
+  /** ADR 0018: max estimate (USD) of one eval suite. Default 5. */
+  evalMaxBudgetUsd: number;
 };
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
@@ -77,5 +83,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     webOrigin: `http://localhost:${parsed.WEB_PORT}`,
     embeddingsEnabled: parsed.EMBEDDINGS_ENABLED === 'true',
     repoIntelEnabled: parsed.REPO_INTEL_ENABLED !== 'false',
+    evalMaxBudgetUsd: parsed.EVAL_MAX_BUDGET_USD,
   };
 }

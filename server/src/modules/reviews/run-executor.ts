@@ -48,6 +48,7 @@ interface ResolvedSkill {
   version: number;
   body: string;
   sha256: string;
+  promptSha256: string;
 }
 
 /**
@@ -94,6 +95,7 @@ export class ReviewRunExecutor {
     // succeeded) so the failure trace still carries `skills_used`.
     const failAll = async (msg: string, skillsByAgent: Map<string, ResolvedSkill[]>) => {
       for (const { runId, agent } of jobs) {
+        await this.saveRunSkills(runId, skillsByAgent.get(agent.id), logger);
         // Trace + terminal status in ONE locked transaction (see finishRun):
         // a reader that sees `failed` finds the trace, and a run the user
         // already cancelled keeps its cancel trace.
@@ -158,6 +160,7 @@ export class ReviewRunExecutor {
           runId,
           runLog,
           skillsByAgent.get(agent.id) ?? [],
+          logger,
         );
         logger?.info(
           {
@@ -191,6 +194,7 @@ export class ReviewRunExecutor {
     runId: string,
     parentLog: RunLogger,
     resolvedSkills: ResolvedSkill[],
+    logger?: Logger,
   ): Promise<RunOutcome> {
     const start = Date.now();
     // Narrow the fanned-out pre-work logger to THIS run; the shared diff/intent
@@ -306,6 +310,9 @@ export class ReviewRunExecutor {
       // no done-trace over the cancel trace); if we commit first the cancel
       // sees `done` and is a no-op. Within the transaction the trace still
       // lands before the status, and both become visible together.
+      // Best effort and outside the transaction (stats are a read model), but
+      // before it, so a persisted trace implies the rows were attempted.
+      await this.saveRunSkills(runId, resolvedSkills, logger);
       const persisted = await this.repo.transaction(async (tx) => {
         const current = await tx.lockRunStatus(runId);
         if (current !== 'running') return { committed: false as const, status: current };
@@ -407,6 +414,7 @@ export class ReviewRunExecutor {
       const status = cancelled ? 'cancelled' : 'failed';
       const msg = cancelled ? 'Cancelled by user' : (err as Error).message;
       runLog.error(cancelled ? 'Run cancelled by user' : `Run failed: ${msg}`);
+      await this.saveRunSkills(runId, resolvedSkills, logger);
       // Trace + terminal status in one locked transaction — same invariant as
       // the success path (see finishRun for which states it may overwrite).
       await this.finishRun(
@@ -424,6 +432,38 @@ export class ReviewRunExecutor {
       ).catch(() => undefined);
       this.container.runBus.complete(runId);
       throw err;
+    }
+  }
+
+  /**
+   * Plan Phase 2: the run's effective skills as `run_skills` rows, written
+   * right BEFORE `saveRunTrace` on every path that records `skills_used`, so
+   * a persisted trace implies the rows were attempted. Best
+   * effort: stats are a read model, so a failed write is logged and the run
+   * keeps its status (never fails or rethrows because of it).
+   */
+  private async saveRunSkills(
+    runId: string,
+    skills: ResolvedSkill[] | undefined,
+    logger?: Logger,
+  ): Promise<void> {
+    if (!skills || skills.length === 0) return;
+    try {
+      await this.repo.saveRunSkills(
+        runId,
+        skills.map((s) => ({
+          skillId: s.id,
+          skillVersion: s.version,
+          bodySha256: s.sha256,
+          promptSha256: s.promptSha256,
+          tokens: estimateTokens(s.body),
+        })),
+      );
+    } catch (err) {
+      logger?.warn(
+        { runId, err: (err as Error).message },
+        'run_skills: write failed; skill stats will not count this run',
+      );
     }
   }
 

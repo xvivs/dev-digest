@@ -59,7 +59,8 @@ export const PromptAssembly = z.object({
   specs: z.string().nullish(),
   /** Callers-of-changed-symbols digest (repo-intel); null when absent. */
   callers: z.string().nullish(),
-  /** Repo skeleton / map (repo-intel); null when absent. */
+  /** Repo skeleton / map (repo-intel); null when absent. Enables per-slot token
+      attribution in the run trace. */
   repo_map: z.string().nullish(),
   /** PR author's description/body (truncated); null when absent. */
   pr_description: z.string().nullish(),

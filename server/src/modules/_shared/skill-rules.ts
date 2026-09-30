@@ -1,6 +1,6 @@
 /**
  * Skill invariants shared by `skills` (HTTP create/update) and `conventions`
- * (extracted skills): the zod field schemas and the ADR 0012 / ADR 0016 source
+ * (extracted skills): the zod field schemas and the ADR 0012 / ADR 0019 source
  * policy. Imported by routes/services, never by a `domain.ts`.
  */
 import { z } from 'zod';
@@ -8,12 +8,9 @@ import type { SkillSource } from '@devdigest/shared';
 import { ValidationError } from '../../platform/errors.js';
 import { sha256Hex } from './hash.js';
 import { containsInvisibleChars } from './text-hygiene.js';
+import { SKILL_BODY_MAX, SKILL_DESCRIPTION_MAX, SKILL_NAME_PATTERN } from './skill-limits.js';
 
-/** Skill name grammar: a lowercase slug, 2-64 chars. */
-export const SKILL_NAME_PATTERN = /^[a-z0-9][a-z0-9-]{1,63}$/;
-export const SKILL_DESCRIPTION_MAX = 500;
-/** Body: 1..32768 chars (spec `body 1..32768 chars`). */
-export const SKILL_BODY_MAX = 32768;
+export { SKILL_BODY_MAX, SKILL_DESCRIPTION_MAX, SKILL_NAME_PATTERN };
 
 export const INVISIBLE_CHARS_MESSAGE =
   'Body contains disallowed invisible/bidi-control characters (Unicode tags, bidi overrides, zero-width, BOM)';
@@ -43,7 +40,7 @@ export interface SourcePolicy {
  * community: always disabled + unvetted whatever was requested (ADR 0012).
  * extracted: the person reviewed the full body in the create flow, so it is
  * auto-vetted with the hash of exactly that body and `enabled` is honoured
- * (ADR 0016).
+ * (ADR 0019).
  */
 export function applySourcePolicy(
   source: SkillSource,

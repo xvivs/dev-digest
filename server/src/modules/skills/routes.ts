@@ -10,17 +10,39 @@
  *   PUT    /skills/:id         → partial update (D8)
  *   DELETE /skills/:id         → hard delete (links cascade)
  *   POST   /skills/:id/vet     → ADR 0012 vetting
+ *   GET    /skills/:id/versions              → snapshots, newest first (ADR 0016)
+ *   GET    /skills/:id/versions/:version     → one snapshot with body
+ *   POST   /skills/:id/versions/:version/restore → guarded, append-only restore
+ *   GET    /skills/:id/stats?window=7d|30d|90d  → Usage + Cost + Impact (plan Phases 2-3)
  */
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
-import { SkillType, type Skill as SkillDto } from '@devdigest/shared';
+import {
+  RestoreSkillVersionBody,
+  SkillChangeNote,
+  SkillStatsQuery,
+  type SkillListItem as SkillListItemDto,
+  type SkillStats as SkillStatsDto,
+  SkillType,
+  type RestoreSkillVersionResult,
+  type Skill as SkillDto,
+  type SkillVersion as SkillVersionDto,
+  type SkillVersionSummary as SkillVersionSummaryDto,
+} from '@devdigest/shared';
 import { getContext } from '../_shared/context.js';
 import { IdParams } from '../_shared/schemas.js';
+import { toEvalSuiteDto } from '../_shared/eval-suite.js';
 import { NotFoundError } from '../../platform/errors.js';
-import type { Skill } from './domain.js';
+import type {
+  Skill,
+  SkillListItem,
+  SkillStatsSummary,
+  SkillVersionSnapshot,
+  SkillVersionSummary,
+} from './domain.js';
 import { SkillBody, SkillDescription, SkillName } from '../_shared/skill-rules.js';
-import { buildSkillsService } from './wiring.js';
+import { buildSkillStatsService, buildSkillsService } from './wiring.js';
 
 /** Client can only ever create a 'manual' or 'imported' skill (ADR 0012). Not
  *  'imported_url' / 'community' — those are unused, no server-side fetch. */
@@ -37,12 +59,18 @@ const CreateSkillBody = z
   .strict();
 
 /** CreateSkillBody minus `source` (not updatable) plus `enabled` (not
- *  creatable), all optional. `source` is omitted BEFORE `.partial()` so its
- *  `.default('manual')` never leaks into an update. */
+ *  creatable) and `change_note` (ADR 0016), all optional. `source` is omitted
+ *  BEFORE `.partial()` so its `.default('manual')` never leaks into an update. */
 const UpdateSkillBody = CreateSkillBody.omit({ source: true })
   .partial()
-  .extend({ enabled: z.boolean().optional() })
+  .extend({ enabled: z.boolean().optional(), change_note: SkillChangeNote.optional() })
   .strict();
+
+/** Same shape as `/agents/:id/versions/:version`: non-numeric → 422. */
+const VersionParams = z.object({
+  id: z.string().uuid(),
+  version: z.coerce.number().int().positive(),
+});
 
 /** Public DTO (snake_case, ISO dates) — matches the frozen `Skill` contract. */
 function toDto(s: Skill): SkillDto {
@@ -61,13 +89,69 @@ function toDto(s: Skill): SkillDto {
   };
 }
 
-function toListDto(s: Skill & { agentCount: number }): SkillDto & { agent_count: number } {
-  return { ...toDto(s), agent_count: s.agentCount };
+function toVersionSummaryDto(v: SkillVersionSummary): SkillVersionSummaryDto {
+  return {
+    skill_id: v.skillId,
+    version: v.version,
+    name: v.name,
+    description: v.description,
+    type: v.type,
+    change_note: v.changeNote,
+    created_at: v.createdAt.toISOString(),
+  };
+}
+
+function toVersionDto(v: SkillVersionSnapshot): SkillVersionDto {
+  const { body, ...summary } = v;
+  return { ...toVersionSummaryDto(summary), body };
+}
+
+function toListDto(s: SkillListItem): SkillListItemDto {
+  return {
+    ...toDto(s),
+    agent_count: s.agentCount,
+    runs_30d: s.runs30d,
+    latest_verdict: s.latestVerdict
+      ? {
+          verdict: s.latestVerdict.verdict,
+          carrier_name: s.latestVerdict.carrierName,
+          stale: s.latestVerdict.stale,
+        }
+      : null,
+  };
+}
+
+function toStatsDto(s: SkillStatsSummary): SkillStatsDto {
+  return {
+    skill_id: s.skillId,
+    window: s.window,
+    usage: {
+      runs: s.usage.runs,
+      agents: s.usage.agents.map((a) => ({
+        agent_id: a.agentId,
+        agent_name: a.agentName,
+        status: a.status,
+        runs: a.runs,
+      })),
+    },
+    cost: { tokens: s.cost.tokens, cost_usd: s.cost.costUsd, cost_source: s.cost.costSource },
+    by_version: s.byVersion.map((v) => ({
+      version: v.version,
+      runs: v.runs,
+      tokens: v.tokens,
+      cost_usd: v.costUsd,
+      cost_source: v.costSource,
+    })),
+    impact: s.impact
+      ? { verdict: s.impact.verdict, stale: s.impact.stale, suite: toEvalSuiteDto(s.impact.suite) }
+      : null,
+  };
 }
 
 export default async function skillsRoutes(appBase: FastifyInstance) {
   const app = appBase.withTypeProvider<ZodTypeProvider>();
   const service = buildSkillsService(app.container);
+  const statsService = buildSkillStatsService(app.container);
 
   app.get('/skills', { schema: { querystring: z.object({ q: z.string().max(200).optional() }) } }, async (req) => {
     const { workspaceId } = await getContext(app.container, req);
@@ -101,7 +185,11 @@ export default async function skillsRoutes(appBase: FastifyInstance) {
     { schema: { params: IdParams, body: UpdateSkillBody } },
     async (req) => {
       const { workspaceId } = await getContext(app.container, req);
-      const skill = await service.update(workspaceId, req.params.id, req.body);
+      const { change_note: changeNote, ...patch } = req.body;
+      const skill = await service.update(workspaceId, req.params.id, {
+        ...patch,
+        ...(changeNote !== undefined ? { changeNote } : {}),
+      });
       if (!skill) throw new NotFoundError('Skill not found');
       return toDto(skill);
     },
@@ -123,4 +211,47 @@ export default async function skillsRoutes(appBase: FastifyInstance) {
     if (!skill) throw new NotFoundError('Skill not found');
     return toDto(skill);
   });
+
+  app.get('/skills/:id/versions', { schema: { params: IdParams } }, async (req) => {
+    const { workspaceId } = await getContext(app.container, req);
+    const versions = await service.listVersions(workspaceId, req.params.id);
+    if (!versions) throw new NotFoundError('Skill not found');
+    return versions.map(toVersionSummaryDto);
+  });
+
+  app.get('/skills/:id/versions/:version', { schema: { params: VersionParams } }, async (req) => {
+    const { workspaceId } = await getContext(app.container, req);
+    const version = await service.getVersion(workspaceId, req.params.id, req.params.version);
+    if (!version) throw new NotFoundError('Skill version not found');
+    return toVersionDto(version);
+  });
+
+  app.post(
+    '/skills/:id/versions/:version/restore',
+    { schema: { params: VersionParams, body: RestoreSkillVersionBody } },
+    async (req): Promise<RestoreSkillVersionResult> => {
+      const { workspaceId } = await getContext(app.container, req);
+      const result = await service.restore(
+        workspaceId,
+        req.params.id,
+        req.params.version,
+        req.body.expected_version,
+      );
+      if (!result) throw new NotFoundError('Skill not found');
+      return { skill: toDto(result.skill), restored: result.restored };
+    },
+  );
+
+  // `window` outside the enum is a 422 validation_error (zod on the route,
+  // like every other input); a missing one defaults to 30d.
+  app.get(
+    '/skills/:id/stats',
+    { schema: { params: IdParams, querystring: SkillStatsQuery } },
+    async (req): Promise<SkillStatsDto> => {
+      const { workspaceId } = await getContext(app.container, req);
+      const stats = await statsService.stats(workspaceId, req.params.id, req.query.window);
+      if (!stats) throw new NotFoundError('Skill not found');
+      return toStatsDto(stats);
+    },
+  );
 }

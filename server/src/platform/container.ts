@@ -8,6 +8,7 @@ import type {
   LLMProvider,
   FeatureModelChoice,
   FeatureModelId,
+  UnifiedDiff,
 } from '@devdigest/shared';
 import type { AppConfig } from './config.js';
 import type { Db, DbTx } from '../db/client.js';
@@ -17,6 +18,7 @@ import { LocalSecretsProvider } from '../adapters/secrets/local.js';
 import { LocalNoAuthProvider } from '../adapters/auth/local.js';
 import { OctokitGitHubClient } from '../adapters/github/octokit.js';
 import { SimpleGitClient } from '../adapters/git/simple-git.js';
+import { parseUnifiedDiff } from '../adapters/git/diff-parser.js';
 import { RipgrepCodeIndex } from '../adapters/codeindex/ripgrep.js';
 import { OpenAIProvider } from '../adapters/llm/openai.js';
 import { AnthropicProvider } from '../adapters/llm/anthropic.js';
@@ -29,6 +31,7 @@ import { AgentsRepository } from '../modules/agents/repository.js';
 import { ReviewRepository } from '../modules/reviews/repository.js';
 import { SkillsRepository } from '../modules/skills/repository.js';
 import { resolveFeatureModel } from '../modules/settings/feature-models.js';
+import { EvalsRepository } from '../modules/evals/repository.js';
 import type { RepoIntel } from '../modules/repo-intel/types.js';
 import { RepoIntelService } from '../modules/repo-intel/service.js';
 import { type DepGraph, DepCruiseGraph } from '../adapters/depgraph/index.js';
@@ -63,6 +66,13 @@ export class Container {
   readonly secrets: SecretsProvider;
   readonly auth: AuthProvider;
   readonly jobs: JobRunner;
+  /**
+   * ADR 0018: a dedicated runner so eval load never starves real reviews.
+   * Concurrency 2, no job-level retries (adapters already retry, a retry here
+   * would double-spend). Eval jobs pass their own timeout per enqueue, sized
+   * from the diff's chunk count; the default below is only a backstop.
+   */
+  readonly evalJobs: JobRunner;
   readonly runBus: RunBus;
 
   private _git?: GitClient;
@@ -77,6 +87,7 @@ export class Container {
   private _agentsRepo?: AgentsRepository;
   private _reviewRepo?: ReviewRepository;
   private _skillsRepo?: SkillsRepository;
+  private _evalsRepo?: EvalsRepository;
   private _repoIntel?: RepoIntel;
   private _depgraph?: DepGraph;
   private _tokenizer?: Tokenizer;
@@ -89,6 +100,7 @@ export class Container {
     this.auth = overrides.auth ?? new LocalNoAuthProvider(db);
     this.runBus = runBus;
     this.jobs = new JobRunner(db);
+    this.evalJobs = new JobRunner(db, { concurrency: 2, retries: 0, timeoutMs: 30 * 60_000 });
   }
 
   get git(): GitClient {
@@ -125,6 +137,16 @@ export class Container {
   /** Resolve a feature id to provider+model (workspace override, else default). */
   featureModel(workspaceId: string, id: FeatureModelId): Promise<FeatureModelChoice> {
     return resolveFeatureModel(this, workspaceId, id);
+  }
+
+  /** Eval suites read model; the skills Stats tab reads `impact` through it. */
+  get evalsRepo(): EvalsRepository {
+    return (this._evalsRepo ??= new EvalsRepository(this.db));
+  }
+
+  /** Pure unified-diff parser (the same one the git adapter uses). */
+  parseDiff(raw: string): UnifiedDiff {
+    return parseUnifiedDiff(raw);
   }
 
   get codeIndex(): CodeIndex {

@@ -1,0 +1,52 @@
+import type { CSSProperties } from "react";
+
+/** Co-located styles for RunEvalModal. */
+export const s = {
+  body: { display: "flex", flexDirection: "column", gap: 18, padding: 24 } satisfies CSSProperties,
+  field: { display: "flex", flexDirection: "column", gap: 6 } satisfies CSSProperties,
+  fieldset: { border: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 8 } satisfies CSSProperties,
+  label: { fontSize: 13, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 2 } satisfies CSSProperties,
+  select: {
+    padding: "9px 10px",
+    borderRadius: 7,
+    border: "1px solid var(--border-strong)",
+    background: "var(--bg-elevated)",
+    color: "var(--text-primary)",
+    fontSize: 14,
+  } satisfies CSSProperties,
+  radio: { display: "flex", alignItems: "flex-start", gap: 10, cursor: "pointer", fontSize: 13.5 } satisfies CSSProperties,
+  radioTitle: { display: "block", fontWeight: 600, color: "var(--text-primary)" } satisfies CSSProperties,
+  noCarrier: { margin: "0 0 6px", fontSize: 13, color: "var(--text-secondary)" } satisfies CSSProperties,
+  hint: { display: "block", fontSize: 12, color: "var(--text-muted)", lineHeight: 1.45 } satisfies CSSProperties,
+  estimate: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 4,
+    padding: "12px 14px",
+    borderRadius: 8,
+    border: "1px solid var(--border)",
+    background: "var(--bg-hover)",
+  } satisfies CSSProperties,
+  estimateCost: { display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12 } satisfies CSSProperties,
+  cost: { fontSize: 18, fontVariantNumeric: "tabular-nums" } satisfies CSSProperties,
+  estimateLine: { fontSize: 13, color: "var(--text-secondary)" } satisfies CSSProperties,
+  warning: {
+    fontSize: 13,
+    color: "var(--warn)",
+    background: "var(--warn-bg)",
+    borderRadius: 7,
+    padding: "8px 10px",
+  } satisfies CSSProperties,
+  error: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    fontSize: 13,
+    color: "var(--crit)",
+    background: "var(--crit-bg)",
+    borderRadius: 7,
+    padding: "8px 10px",
+  } satisfies CSSProperties,
+  footer: { display: "flex", justifyContent: "flex-end", gap: 8 } satisfies CSSProperties,
+} as const;

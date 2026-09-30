@@ -5,7 +5,7 @@
  * user message inside `<untrusted-NONCE>` blocks (`wrapUntrusted`, which also
  * runs `neutralizeDelimiters`), with ONE nonce per call from `newPromptNonce`
  * (ADR 0013). The guard naming that nonce is the last paragraph of the system
- * message (ADR 0016 §6).
+ * message (ADR 0019 §6).
  */
 import type { ChatMessage } from '@devdigest/shared';
 import { newPromptNonce, wrapUntrusted } from '../../platform/prompt.js';

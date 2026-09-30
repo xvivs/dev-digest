@@ -1,7 +1,7 @@
 /* BodyEditor — the skill body, editable or raw (AC-43, AC-44). Raw view shows
    the exact text the agent will receive, with invisible and bidirectional
    characters marked and HTML comments flagged: rendered Markdown hides both,
-   and the body came from repo code (ADR 0016). */
+   and the body came from repo code (ADR 0019). */
 "use client";
 
 import React from "react";

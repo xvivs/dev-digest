@@ -899,7 +899,7 @@ export function maxFencedBlockLines(body: string): number {
   return max;
 }
 
-/** ADR 0016 §3: a snippet in an extracted skill body is at most 12 lines. */
+/** ADR 0019 §3: a snippet in an extracted skill body is at most 12 lines. */
 export function assertSnippetsWithinCap(body: string): void {
   const lines = maxFencedBlockLines(body);
   if (lines > SNIPPET_MAX_LINES) throw new SnippetTooLongError(lines);

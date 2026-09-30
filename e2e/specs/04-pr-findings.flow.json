@@ -4,9 +4,11 @@
   "steps": [
     { "cmd": ["open", "{BASE}/"], "label": "load the app root" },
     { "cmd": ["wait", "--url", "/pulls"], "label": "land on the PR list" },
-    { "cmd": ["wait", "--text", "acme/payments-api"], "label": "guard: the home redirect landed on the demo repo — the seed holds TWO repos (acme/payments-api and xvivs/dev-digest) and ReposRepository.listByWorkspace has no ORDER BY, so which one `/` redirects to is not guaranteed by contract" },
+    { "cmd": ["wait", "--text", "acme/payments-api"], "label": "guard: the home redirect landed on the demo repo — the seed holds TWO repos and `/` redirects to the oldest (RepoRepository.list orders by created_at, id; the seed inserts acme/payments-api first), so landing elsewhere means the DB is not a fresh seed" },
     { "cmd": ["wait", "--load", "networkidle"], "label": "PR list data settles" },
     { "cmd": ["wait", "--text", "FINDINGS"], "label": "the FINDINGS column header is present on the list — headRow is text-transform: uppercase, and agent-browser matches rendered text" },
+    { "cmd": ["scrollintoview", "a[href$='/pulls/482']"], "label": "bring the #482 row into view: below the fold the title click silently no-ops" },
+    { "cmd": ["wait", "500"], "label": "let the scroll settle; a click fired mid-scroll is lost" },
     { "cmd": ["find", "text", "Add rate limiting to public API endpoints", "click"], "label": "open PR #482 by title — row order is not asserted (#482 has a NULL updated_at and sorts second, behind #479)" },
     { "cmd": ["wait", "--url", "/pulls/482"], "label": "navigate to the PR detail route" },
     { "cmd": ["wait", "--load", "networkidle"], "label": "PR detail data settles" },

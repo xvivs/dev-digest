@@ -10,7 +10,7 @@ import { eq } from 'drizzle-orm';
 import { startPg, dockerAvailable, type PgFixture } from '../../../test/helpers/pg.js';
 import * as t from '../../db/schema.js';
 import { SkillsRepository } from './repository.js';
-import { SkillNameTakenError } from './domain.js';
+import { SkillNameTakenError, SkillVersionStaleError } from './domain.js';
 
 const hasDocker = await dockerAvailable();
 const d = hasDocker ? describe : describe.skip;
@@ -91,34 +91,69 @@ d('SkillsRepository (Testcontainers pg)', () => {
     ).rejects.toBeInstanceOf(SkillNameTakenError);
   });
 
-  it('update: version bump + skill_versions row are atomic and happen ONLY when body changes', async () => {
-    const created = await repo.insert(newSkill({ name: `version-${Date.now()}` }));
-
-    const renamed = await repo.update(wsA, created.id, {
-      name: `renamed-${Date.now()}`,
-      needsVetting: false,
-      vettedBodyHash: null,
-      bumpVersion: false,
-    });
-    expect(renamed?.version).toBe(1);
-    expect(
-      await pg.handle.db.select().from(t.skillVersions).where(eq(t.skillVersions.skillId, created.id)),
-    ).toHaveLength(0);
-
-    const edited = await repo.update(wsA, created.id, {
-      body: 'A new body for version 2.',
-      needsVetting: false,
-      vettedBodyHash: null,
-      bumpVersion: true,
-    });
-    expect(edited?.version).toBe(2);
+  it('insert writes the v1 snapshot of every field (ADR 0016)', async () => {
+    const created = await repo.insert(newSkill({ name: `v1-${Date.now()}` }));
     const versions = await pg.handle.db
       .select()
       .from(t.skillVersions)
       .where(eq(t.skillVersions.skillId, created.id));
-    expect(versions).toHaveLength(1);
-    expect(versions[0]?.version).toBe(2);
-    expect(versions[0]?.body).toBe('A new body for version 2.');
+    expect(versions).toEqual([
+      expect.objectContaining({
+        version: 1,
+        name: created.name,
+        description: created.description,
+        type: created.type,
+        body: created.body,
+        changeNote: null,
+      }),
+    ]);
+  });
+
+  it('a failed insert (duplicate name) leaves no orphan snapshot', async () => {
+    const name = `dup-snap-${Date.now()}`;
+    await repo.insert(newSkill({ name }));
+    await expect(repo.insert(newSkill({ name }))).rejects.toBeInstanceOf(SkillNameTakenError);
+    const rows = await pg.handle.db.select().from(t.skillVersions).where(eq(t.skillVersions.name, name));
+    expect(rows).toHaveLength(1);
+  });
+
+  it('update: version bump + all-field snapshot are atomic and happen ONLY when bumpVersion', async () => {
+    const created = await repo.insert(newSkill({ name: `version-${Date.now()}` }));
+
+    const toggled = await repo.update(wsA, created.id, {
+      enabled: false,
+      needsVetting: false,
+      vettedBodyHash: null,
+      bumpVersion: false,
+    });
+    expect(toggled?.version).toBe(1);
+    expect(
+      await pg.handle.db.select().from(t.skillVersions).where(eq(t.skillVersions.skillId, created.id)),
+    ).toHaveLength(1);
+
+    const newName = `renamed-${Date.now()}`;
+    const edited = await repo.update(wsA, created.id, {
+      name: newName,
+      body: 'A new body for version 2.',
+      needsVetting: false,
+      vettedBodyHash: null,
+      bumpVersion: true,
+      changeNote: 'why',
+    });
+    expect(edited?.version).toBe(2);
+    const v2 = await repo.findVersion(created.id, 2);
+    expect(v2).toMatchObject({ name: newName, body: 'A new body for version 2.', changeNote: 'why' });
+    expect((await repo.listVersions(created.id)).map((v) => v.version)).toEqual([2, 1]);
+  });
+
+  it('restore: guarded by version — a stale expectation throws and writes nothing', async () => {
+    const created = await repo.insert(newSkill({ name: `restore-guard-${Date.now()}` }));
+    const patch = { body: 'restored', needsVetting: false, vettedBodyHash: null, bumpVersion: true };
+    await expect(repo.restore(wsA, created.id, 7, patch)).rejects.toBeInstanceOf(SkillVersionStaleError);
+    expect((await repo.findById(wsA, created.id))?.version).toBe(1);
+    expect(await repo.restore(wsB, created.id, 1, patch)).toBeUndefined();
+    const ok = await repo.restore(wsA, created.id, 1, { ...patch, changeNote: 'Restored from v1' });
+    expect(ok).toMatchObject({ version: 2, body: 'restored' });
   });
 
   it('vet: sets vetted_body_hash = sha256(body) and clears needs_vetting', async () => {

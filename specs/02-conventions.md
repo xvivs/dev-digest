@@ -6,7 +6,7 @@
 reviews · db · container · app boot) · `client` (new `repos/[repoId]/conventions` route ·
 skills components · vendor/ui nav, Tabs, Checkbox · next.config) · `reviewer-core` (prompt
 exports) · LLM adapters (per-request signal) · vendored shared contracts ×2 ·
-`docs/experiments/api-contract` · `docs/adr/0016-extracted-skill-trust-tier.md`
+`docs/experiments/api-contract` · `docs/adr/0019-extracted-skill-trust-tier.md`
 
 ## Problem & Motivation
 
@@ -26,7 +26,7 @@ Two risks decide the design:
 - **Hallucinated evidence.** A candidate that cites code the repo does not contain is worse
   than no candidate. Every evidence quote must be found in a real file at a pinned commit.
 - **Trust.** A skill created from extracted rules goes into the agent's prompt with the
-  authority of an instruction, and its text came from repo code. ADR 0016 (written with this
+  authority of an instruction, and its text came from repo code. ADR 0019 (written with this
   spec) records the trust tier that `extracted` skills get.
 
 The second half of the homework is a control experiment. SPEC-02's API Contract Reviewer arm
@@ -83,7 +83,7 @@ spec.
 | D7 | Inline edit of rule and category. Evidence is read-only. An "edited" badge marks changed rules | Evidence is what makes a candidate checkable, so it cannot change |
 | D8 | Tabs All / Accepted / Rejected with counts. Pending candidates appear only in All. Selection checkboxes appear only in Accepted. `selected > 0` enables "Create skill" | Selection can only contain vetted candidates |
 | D9 | Convention ↔ skill is many-to-many. Cards show "in: skill-name" badges. One convention can feed several skills | Users split conventions by theme |
-| D10 | Trust tier `extracted` (ADR 0016). "Create" in the modal is the vetting act: `needs_vetting = false`, `vetted_body_hash` set, enabled from the toggle. Body hygiene applies. A later body edit resets vetting. Residual risk in V20 | The user reads the full body before saving, so a second vetting step adds friction without information |
+| D10 | Trust tier `extracted` (ADR 0019). "Create" in the modal is the vetting act: `needs_vetting = false`, `vetted_body_hash` set, enabled from the toggle. Body hygiene applies. A later body edit resets vetting. Residual risk in V20 | The user reads the full body before saving, so a second vetting step adds friction without information |
 | D11 | Link to agents: (a) "Attach to agents" multiselect in the modal; the server appends links in the same transaction; (b) refined by V14: a success panel inside the modal with "Open skill" and "Open agent → Skills tab" replaces an action toast | Toasts auto-dismiss, which fails accessibility |
 | D12 | In scope: support count, stratified sample, review-history mining, scan stats (counts, model, tokens, `cost_usd` plus `cost_source`, duration). Future: rules derived from config | Quality signals the homework asks for |
 | D13 | Review mining supplies recurring findings (≥ 2 PRs) as `<untrusted>` signals and forces their files into the sample. Evidence is still code at HEAD | Review comments hint; only code proves |
@@ -441,7 +441,7 @@ the LLM's output.
 - **Residual risk (V20).** Natural-language injection from repo code can sit inside an
   auto-vetted body. Mitigations: the user reads the full raw body before saving; snippets are
   capped at 12 lines; hygiene applies; `INJECTION_GUARD` stays last in the system message.
-  ADR 0016 records this risk. D10 stays as the user decided.
+  ADR 0019 records this risk. D10 stays as the user decided.
 
 ## Data model
 
@@ -613,7 +613,7 @@ What D14 changes:
 - [ ] A created skill links to an agent and appears in the review's RunTraceDrawer.
 - [ ] API Contract Reviewer with four skills flags the subtle change that it misses without
       them; `results.md` written as measured.
-- [ ] ADR 0016 written; READMEs updated; INSIGHTS filed through `engineering-insights`.
+- [ ] ADR 0019 written; READMEs updated; INSIGHTS filed through `engineering-insights`.
 - [ ] Verification commands above pass.
 - [x] D1 gap review against `641b637` done and its gap list handled (see Gap review).
 - [ ] Demo video recorded.
@@ -646,7 +646,7 @@ the plan.
 | V17 | "Seen in N files" overstated prevalence | design | Label "N cited examples" |
 | V18 | Model id did not match the price-book slug | `server/src/adapters/llm/pricing.ts:40` | Provider and model as separate fields (D4) |
 | V19 | LLM rule text was not sanitised | design | VERIFY drops rules with invisible characters (AC-14) |
-| V20 | Natural-language injection can sit inside an auto-vetted body | design risk | Documented in ADR 0016; snippet cap; D10 kept by user decision |
+| V20 | Natural-language injection can sit inside an auto-vetted body | design risk | Documented in ADR 0019; snippet cap; D10 kept by user decision |
 | V21 | Missing tests for CAS, carry-over, traversal, failed state, hash gate | `TESTING.md` | Added to the Test plan |
 | V22 | `scanId` vs `scan_id` naming | plan | `scan_id` everywhere |
 

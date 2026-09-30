@@ -1,5 +1,7 @@
 /* SkillCard — name (mono), type badge, source label, 2-line description, an
-   enabled Toggle and N agents (SPEC-02 AC-1). Shared leaf: rendered by the
+   enabled Toggle and the "N agents · M runs · verdict" line (SPEC-02 AC-1,
+   skill-impact decision 3: runs are the last 30 days, the verdict is the
+   latest Full eval, "no evals" when there is none). Shared leaf: rendered by the
    /skills list and the /skills/:id editor's side list (ADR 0010 — both under
    the same route tree, so this sits at app/skills/_components/, not promoted).
 
@@ -19,6 +21,7 @@ import { Toggle } from "@devdigest/ui";
 import type { SkillListItem } from "@devdigest/shared";
 import { useUpdateSkill } from "@/lib/hooks";
 import { useNavigationGuard } from "../../navigation-guard";
+import { VerdictBadge } from "../VerdictBadge";
 import { VetSkillModal } from "../VetSkillModal";
 import { TOGGLE_SIZE } from "./constants";
 import { s } from "./styles";
@@ -96,9 +99,7 @@ export function SkillCard({
         <div style={s.metaRow}>
           <Badge color="var(--text-secondary)">{t(`type.${skill.type}`)}</Badge>
           <span style={s.sourceLabel}>{t(`source.${skill.source}`)}</span>
-          <Badge color="var(--text-secondary)" icon="Users">
-            {t("card.agentCount", { count: skill.agent_count })}
-          </Badge>
+          <SkillCardStats skill={skill} />
           {skill.needs_vetting && (
             <span title={t("card.vettingTitle")}>
               <Badge color="var(--warn)" bg="var(--warn-bg)" icon="AlertTriangle">
@@ -110,5 +111,41 @@ export function SkillCard({
       </div>
       {vetting && <VetSkillModal skill={skill} onClose={() => setVetting(false)} />}
     </>
+  );
+}
+
+/**
+ * `3 agents · 142 runs · ✓ Helps` / `· no evals` / `· Helps · stale`.
+ * `runs_30d` and `latest_verdict` are optional on the contract only so that
+ * pre-skill-impact payloads parse: `undefined` leaves the segment out, while
+ * `latest_verdict: null` is a real answer ("no evals").
+ */
+function SkillCardStats({ skill }: { skill: SkillListItem }) {
+  const t = useTranslations("skills");
+  const verdict = skill.latest_verdict;
+  return (
+    <span role="group" aria-label={t("card.statsLabel")} style={s.stats}>
+      <span>{t("card.agentCount", { count: skill.agent_count })}</span>
+      {skill.runs_30d !== undefined && (
+        <>
+          <span aria-hidden="true">·</span>
+          <span title={t("card.runsTitle")}>{t("card.runs", { count: skill.runs_30d })}</span>
+        </>
+      )}
+      {verdict !== undefined && (
+        <>
+          <span aria-hidden="true">·</span>
+          {verdict === null ? (
+            <span title={t("card.noEvalsTitle")}>{t("card.noEvals")}</span>
+          ) : (
+            <VerdictBadge
+              verdict={verdict.verdict}
+              stale={verdict.stale}
+              title={t("card.verdictTitle", { carrier: verdict.carrier_name })}
+            />
+          )}
+        </>
+      )}
+    </span>
   );
 }

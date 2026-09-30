@@ -59,7 +59,19 @@ export const skillVersions = pgTable(
       .references(() => skills.id, { onDelete: "cascade" }),
     version: integer("version").notNull(),
     body: text("body").notNull(),
+    // ADR 0016: every versioned field is snapshotted. Nullable because rows
+    // written before the all-field migration captured only the body.
+    name: text("name"),
+    description: text("description"),
+    type: text("type", { enum: SKILL_TYPES }),
+    changeNote: text("change_note"),
     createdAt: now(),
   },
-  (t) => ({ pk: primaryKey({ columns: [t.skillId, t.version] }) }),
+  (t) => ({
+    pk: primaryKey({ columns: [t.skillId, t.version] }),
+    typeCheck: check(
+      "skill_versions_type_check",
+      sql`${t.type} IS NULL OR ${t.type} IN (${inList(SKILL_TYPES)})`,
+    ),
+  }),
 );

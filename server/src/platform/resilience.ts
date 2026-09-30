@@ -43,10 +43,15 @@ function defaultIsRetryable(err: unknown): boolean {
   return code === 'ECONNRESET' || code === 'ETIMEDOUT' || code === 'ENOTFOUND';
 }
 
+/** `withRetry` defaults; exported so job budgets derive from the real numbers. */
+export const DEFAULT_RETRIES = 3;
+export const DEFAULT_BASE_DELAY_MS = 250;
+export const DEFAULT_MAX_DELAY_MS = 8000;
+
 export async function withRetry<T>(fn: () => Promise<T>, opts: RetryOptions = {}): Promise<T> {
-  const retries = opts.retries ?? 3;
-  const base = opts.baseDelayMs ?? 250;
-  const max = opts.maxDelayMs ?? 8000;
+  const retries = opts.retries ?? DEFAULT_RETRIES;
+  const base = opts.baseDelayMs ?? DEFAULT_BASE_DELAY_MS;
+  const max = opts.maxDelayMs ?? DEFAULT_MAX_DELAY_MS;
   const isRetryable = opts.isRetryable ?? defaultIsRetryable;
 
   let lastErr: unknown;

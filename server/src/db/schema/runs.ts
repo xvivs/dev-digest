@@ -1,7 +1,18 @@
-import { pgTable, uuid, text, integer, jsonb, timestamp, doublePrecision, index } from 'drizzle-orm/pg-core';
+import {
+  pgTable,
+  uuid,
+  text,
+  integer,
+  jsonb,
+  timestamp,
+  doublePrecision,
+  index,
+  primaryKey,
+} from 'drizzle-orm/pg-core';
 import { workspaces } from './core';
 import { agents } from './agents';
 import { pullRequests } from './pulls';
+import { skills } from './skills';
 
 // ============================================================ Observability
 
@@ -50,6 +61,37 @@ export const runTraces = pgTable('run_traces', {
     .references(() => agentRuns.id, { onDelete: 'cascade' }),
   trace: jsonb('trace').notNull(),
 });
+
+/**
+ * Which skills one run injected (plan Phase 2, Stats = Usage + Cost). A
+ * relational copy of `run_traces.trace.prompt_assembly.skills_used`, written
+ * best-effort next to `saveRunTrace` so stats aggregate with SQL instead of
+ * scanning jsonb. Deleting a skill drops its rows (the trace keeps its copy).
+ */
+export const runSkills = pgTable(
+  'run_skills',
+  {
+    runId: uuid('run_id')
+      .notNull()
+      .references(() => agentRuns.id, { onDelete: 'cascade' }),
+    skillId: uuid('skill_id')
+      .notNull()
+      .references(() => skills.id, { onDelete: 'cascade' }),
+    skillVersion: integer('skill_version').notNull(),
+    /** sha256(body): same value as the trace's `skills_used.sha256`. */
+    bodySha256: text('body_sha256').notNull(),
+    /** ADR 0017 sha256(name + "\n" + body). Null only on backfilled rows whose
+     *  body snapshot is gone or does not match `body_sha256`. */
+    promptSha256: text('prompt_sha256'),
+    /** chars/4 estimate of the skill body (reviewer-core `estimateTokens`). */
+    tokens: integer('tokens').notNull(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.runId, t.skillId] }),
+    // The PK leads with run_id; stats and the skills list look up by skill.
+    skillRunIdx: index('run_skills_skill_id_run_id_idx').on(t.skillId, t.runId),
+  }),
+);
 
 export const multiAgentRuns = pgTable('multi_agent_runs', {
   id: uuid('id').primaryKey().defaultRandom(),
