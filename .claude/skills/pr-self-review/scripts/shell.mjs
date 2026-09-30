@@ -10,8 +10,10 @@
 // the word list, `( )` subshells, `$( )` and backticks, `cd`/`pushd`,
 // env-assignment prefixes, `env|command|time|nohup|exec|sudo|nice` wrappers,
 // and `bash|sh|zsh -c '<string>'`.
-// Not handled: aliases, functions, variables holding a command name, `eval`,
-// `xargs git push`, heredoc bodies (treated as more words: at worst a false block).
+// Not handled: aliases, functions, variables holding a command name, heredoc
+// bodies (treated as more words: at worst a false block). `eval`, `xargs`,
+// `find -exec`, `source` and `bash -c "$VAR"` are flagged `indirect` on the
+// command; gate-hook.mjs blocks them when push / pr create appears in the text.
 
 import { homedir } from 'node:os';
 import { resolve } from 'node:path';
@@ -21,6 +23,9 @@ export const UNKNOWN_DIR = Symbol('unknown-dir');
 
 const WRAPPERS = new Set(['env', 'command', 'builtin', 'exec', 'time', 'nohup', 'sudo', 'nice']);
 const SHELLS = new Set(['bash', 'sh', 'zsh', 'dash']);
+// Commands that run text/other commands the tokenizer cannot follow.
+const INDIRECT = new Set(['eval', 'xargs', 'source', '.']);
+const FIND_EXEC = new Set(['-exec', '-execdir', '-ok', '-okdir']);
 
 /**
  * Tokenizes into a flat stream of `{ op }` (`&&`, `||`, `;`, `|`, `&`, `(`, `)`)
@@ -249,11 +254,15 @@ export function commands(command, cwd) {
     if (SHELLS.has(name)) {
       const c = rest.findIndex((r) => /^-[a-z]*c[a-z]*$/.test(r.word));
       if (c !== -1 && rest[c + 1]) {
+        // `bash -c "$CMD"`: the string is not known, only its expansion would say what runs.
+        if (rest[c + 1].dyn) out.push({ words, dyn, cwd: dir, env, indirect: 'shell-dynamic' });
         out.push(...commands(rest[c + 1].word, dir));
         return;
       }
     }
-    out.push({ words, dyn, cwd: dir, env });
+    // eval / xargs / source / find -exec: the command they run is not statically visible.
+    const indirect = INDIRECT.has(name) ? name : name === 'find' && words.some((w) => FIND_EXEC.has(w)) ? 'find -exec' : undefined;
+    out.push({ words, dyn, cwd: dir, env, ...(indirect ? { indirect } : {}) });
   }
 
   for (const it of items) {

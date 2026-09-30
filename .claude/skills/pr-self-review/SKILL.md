@@ -143,7 +143,16 @@ from the repo the command **acts on**, not from `$CLAUDE_PROJECT_DIR`:
 - `git -c k=v push`, `--no-pager`, `env`/`command`/`bash -c` wrappers are seen through.
 - `gh -R/--repo` only picks the target repo of the PR; the local branch and
   stamp are the cwd's. `gh pr create --head <other>` still blocks.
-- Known gaps: aliases, `eval`, `xargs git push`, variables as the command name.
+- `eval`, `xargs`, `find -exec/-execdir/-ok`, `source`/`.` and `bash|sh -c` with a
+  dynamic argument (`"$CMD"`, `$(...)`): if `git … push` or `gh … pr … create`
+  appears in the text, **block** with "динамічний виклик push/pr create не
+  перевіряється; запусти команду напряму". Static `bash -c 'git push'` is still
+  parsed and stamp-checked. `git ls-files | xargs wc -l` stays allowed.
+- **Known limitation:** shell aliases and functions (`alias gp='git push'`,
+  `gp() { git push; }`), a variable as the command name (`$G push`) and scripts
+  that push internally cannot be resolved statically and are not covered. The
+  gate is a guard against an accidental push, not a defence against deliberate
+  bypass; no relaxations are added for that reason.
 
 ## What is where
 

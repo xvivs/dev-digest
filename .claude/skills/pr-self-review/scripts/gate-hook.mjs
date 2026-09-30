@@ -139,7 +139,21 @@ function main() {
   if (!/\bgit\b[\s\S]*\bpush\b|\bgh\b[\s\S]*\bpr\b[\s\S]*\bcreate\b/.test(command)) process.exit(0);
 
   baseCwd = resolve(input.cwd || process.env.CLAUDE_PROJECT_DIR || process.cwd());
-  const parsed = commands(command, baseCwd).map(classify);
+  const simple = commands(command, baseCwd);
+  // eval / xargs / find -exec / source / `bash -c "$VAR"` run something we cannot
+  // see. If push or pr create shows up in what they are given, refuse (fail-closed).
+  const pushText = /\bgit\b[\s\S]*\bpush\b|\bgh\b[\s\S]*\bpr\b[\s\S]*\bcreate\b/;
+  for (const c of simple) {
+    if (!c.indirect) continue;
+    // `source` / dynamic `bash -c` take no inline command: judge the whole line.
+    const text = c.indirect === 'source' || c.indirect === '.' || c.indirect === 'shell-dynamic' ? command : c.words.slice(1).join(' ');
+    if (pushText.test(text))
+      block(
+        `динамічний виклик push/pr create не перевіряється (\`${c.indirect}\`). ` +
+          'Запусти команду напряму: `git push …` / `gh pr create …` без eval, xargs, find -exec, source чи `bash -c "$VAR"`.',
+      );
+  }
+  const parsed = simple.map(classify);
   const isGated = (p) => p && ((p.kind === 'git' && p.sub === 'push') || p.kind === 'gh-pr-create');
   const gatedAt = parsed.findIndex(isGated);
   if (gatedAt === -1) process.exit(0);
