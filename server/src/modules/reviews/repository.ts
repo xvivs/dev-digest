@@ -1,10 +1,10 @@
 import type { Db, DbTx } from '../../db/client.js';
 import * as t from '../../db/schema.js';
-import type { CostSource, Finding, Intent, RunSummary, RunTrace } from '@devdigest/shared';
+import type { CostSource, Finding, RunSummary, RunTrace } from '@devdigest/shared';
 
 /**
  * A2 — review data-access. The ONLY layer touching the DB for the review
- * domain. Owns `reviews`, `findings`, `pr_intent`, and persists the
+ * domain. Owns `reviews`, `findings`, and persists the
  * observability rows `agent_runs` + `run_traces` (one trace doc per run).
  * Workspace scoping is enforced via the PR (which carries workspace_id).
  *
@@ -46,6 +46,10 @@ export class ReviewRepository {
 
   getPrFiles(prId: string): Promise<(typeof t.prFiles.$inferSelect)[]> {
     return pullRepo.getPrFiles(this.db, prId);
+  }
+
+  getPrCommits(prId: string): Promise<(typeof t.prCommits.$inferSelect)[]> {
+    return pullRepo.getPrCommits(this.db, prId);
   }
 
   // ---- reviews + findings -------------------------------------------------
@@ -160,16 +164,6 @@ export class ReviewRepository {
     return reviewRepo.recurringFindings(this.db, workspaceId, repoId, minPrs, limit);
   }
 
-  // ---- intent -------------------------------------------------------------
-
-  upsertIntent(prId: string, intent: Intent): Promise<void> {
-    return pullRepo.upsertIntent(this.db, prId, intent);
-  }
-
-  getIntent(prId: string): Promise<Intent | undefined> {
-    return pullRepo.getIntent(this.db, prId);
-  }
-
   // ---- observability: agent_runs + run_traces ----------------------------
 
   /** Create an agent_runs row in `running` state; returns its id (= the runId). */
@@ -205,6 +199,14 @@ export class ReviewRepository {
     },
   ): Promise<void> {
     return runRepo.completeAgentRun(this.db, runId, values);
+  }
+
+  /** Persist a GitHub PR-detail refresh (body, diff stats, head SHA) onto the PR row. */
+  updatePullDetail(
+    prId: string,
+    values: { body: string | null; additions: number; deletions: number; filesCount: number; headSha: string },
+  ): Promise<void> {
+    return pullRepo.updateDetail(this.db, prId, values);
   }
 
   /** Record the head SHA a review ran against (PR-list freshness derivation). */

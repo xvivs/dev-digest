@@ -27,6 +27,13 @@ export interface ShellContext {
   theme?: "dark" | "light";
   onToggleTheme?: () => void;
   onOpenCommandPalette?: () => void;
+  /** Opens the navigation drawer; the Topbar shows the burger only when set. */
+  onOpenNav?: () => void;
+  /**
+   * Translated Topbar labels (the design system has no i18n of its own).
+   * Missing entries fall back to English.
+   */
+  labels?: { openNav?: string; search?: string };
   onSelectRepo?: (id: string) => void;
   /** Invoked when the user picks "Add repository…" in the repo switcher. */
   onAddRepo?: () => void;

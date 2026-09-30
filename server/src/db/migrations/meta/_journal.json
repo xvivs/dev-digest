@@ -176,6 +176,27 @@
       "when": 1790768009307,
       "tag": "0024_drop_legacy_convention_columns",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1790790524498,
+      "tag": "0025_adorable_penance",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1790798283269,
+      "tag": "0026_acoustic_lila_cheney",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1790799585462,
+      "tag": "0027_magenta_madame_masque",
+      "breakpoints": true
     }
   ]
 }

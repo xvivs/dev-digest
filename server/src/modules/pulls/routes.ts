@@ -77,6 +77,8 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
               },
             });
         }
+        // Fire-and-forget: schedules intent/risk derivation; never awaited, never rejects.
+        void container.prBrief.scheduleForRepo(workspaceId, repo.id, 'list_sync');
       } catch (err) {
         app.log.warn({ err }, 'GitHub PR sync skipped (no token / offline); serving persisted PRs');
       }
@@ -277,17 +279,18 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
           })),
         );
       }
-      await container.db
-        .update(t.pullRequests)
-        .set({
-          body: detail.body ?? null,
-          // Diff stats aren't on GitHub's PR-list payload — backfill them from
-          // the detail fetch so the Pull Requests list shows real size/files.
-          additions: detail.additions,
-          deletions: detail.deletions,
-          filesCount: detail.files_count,
-        })
-        .where(eq(t.pullRequests.id, pr.id));
+      await container.reviewRepo.updatePullDetail(pr.id, {
+        body: detail.body ?? null,
+        // Diff stats aren't on GitHub's PR-list payload — backfill them from
+        // the detail fetch so the Pull Requests list shows real size/files.
+        additions: detail.additions,
+        deletions: detail.deletions,
+        filesCount: detail.files_count,
+        // Keep head_sha fresh so status derivation and review targets see a pushed head.
+        headSha: detail.head_sha,
+      });
+
+      void container.prBrief.scheduleForPull(workspaceId, pr.id, 'detail');
 
       return { ...detail, id: pr.id };
     } catch (err) {

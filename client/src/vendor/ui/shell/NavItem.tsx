@@ -10,6 +10,7 @@ export function NavItem({
   repoId,
   Link = DefaultLink,
   label,
+  onNavigate,
 }: {
   item: NavItemDef;
   active?: boolean;
@@ -17,11 +18,13 @@ export function NavItem({
   Link?: LinkLike;
   /** Translated label; falls back to the English `item.label`. */
   label?: string;
+  /** Called when the link is clicked (e.g. to close the drawer it sits in). */
+  onNavigate?: () => void;
 }) {
   const I = Icon[item.icon];
   const [h, setH] = React.useState(false);
   return (
-    <Link href={resolveHref(item.href, repoId)}>
+    <Link href={resolveHref(item.href, repoId)} onClick={onNavigate}>
       <div
         onMouseEnter={() => setH(true)}
         onMouseLeave={() => setH(false)}

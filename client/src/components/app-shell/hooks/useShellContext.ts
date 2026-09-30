@@ -13,6 +13,7 @@ import { activeKeyFor, toShellRepo } from "../helpers";
 
 interface ShellContextOptions {
   onOpenCommandPalette: () => void;
+  onOpenNav: () => void;
 }
 
 /**
@@ -20,7 +21,7 @@ interface ShellContextOptions {
  * list/active repo (mapped to the shell shape), theme, PR count, and the repo
  * selection / add / removal actions.
  */
-export function useShellContext({ onOpenCommandPalette }: ShellContextOptions): ShellContext {
+export function useShellContext({ onOpenCommandPalette, onOpenNav }: ShellContextOptions): ShellContext {
   const t = useTranslations("shell");
   const pathname = usePathname() ?? "/";
   const router = useRouter();
@@ -75,6 +76,8 @@ export function useShellContext({ onOpenCommandPalette }: ShellContextOptions): 
       theme,
       onToggleTheme: toggle,
       onOpenCommandPalette,
+      onOpenNav,
+      labels: { openNav: t("topbar.openNav"), search: t("topbar.search") },
       onSelectRepo,
       onAddRepo,
       onRemoveRepo,
@@ -92,6 +95,7 @@ export function useShellContext({ onOpenCommandPalette }: ShellContextOptions): 
       theme,
       toggle,
       onOpenCommandPalette,
+      onOpenNav,
       onSelectRepo,
       onAddRepo,
       onRemoveRepo,

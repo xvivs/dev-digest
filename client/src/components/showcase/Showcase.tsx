@@ -32,6 +32,8 @@ import {
   Skeleton,
   Markdown,
   Drawer,
+  NAV_DRAWER_WIDTH,
+  SidebarContent,
   Modal,
   Tabs,
   Dropdown,
@@ -68,6 +70,7 @@ export function Gallery() {
   const [text, setText] = React.useState("");
   const [sel, setSel] = React.useState("gpt-4.1");
   const [drawer, setDrawer] = React.useState(false);
+  const [leftDrawer, setLeftDrawer] = React.useState(false);
   const [modal, setModal] = React.useState(false);
   const [collapsed, setCollapsed] = React.useState(true);
   const [pressed, setPressed] = React.useState(false);
@@ -289,6 +292,9 @@ export function Gallery() {
         <Button kind="ghost" onClick={() => setDrawer(true)}>
           Open Drawer
         </Button>
+        <Button kind="ghost" onClick={() => setLeftDrawer(true)}>
+          Open left Drawer
+        </Button>
         <Button kind="ghost" onClick={() => setModal(true)}>
           Open Modal
         </Button>
@@ -342,6 +348,11 @@ export function Gallery() {
       {drawer && (
         <Drawer title="Example Drawer" subtitle="720px wide" onClose={() => setDrawer(false)}>
           <p style={s.drawerBody}>Drawer body content.</p>
+        </Drawer>
+      )}
+      {leftDrawer && (
+        <Drawer side="left" width={NAV_DRAWER_WIDTH} title="Navigation" onClose={() => setLeftDrawer(false)}>
+          <SidebarContent ctx={{}} />
         </Drawer>
       )}
       {modal && (

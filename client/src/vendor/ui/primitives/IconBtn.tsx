@@ -8,6 +8,8 @@ export function IconBtn({
   active,
   onClick,
   danger,
+  className,
+  hasPopup,
 }: {
   icon: IconName;
   label: string;
@@ -15,6 +17,10 @@ export function IconBtn({
   active?: boolean;
   onClick?: () => void;
   danger?: boolean;
+  /** Extra class, e.g. a `dd-show-below-*` visibility utility. */
+  className?: string;
+  /** Renders `aria-haspopup` for triggers that open a dialog. */
+  hasPopup?: "dialog";
 }) {
   const I = Icon[icon];
   const [h, setH] = React.useState(false);
@@ -23,6 +29,8 @@ export function IconBtn({
       type="button"
       title={label}
       aria-label={label}
+      aria-haspopup={hasPopup}
+      className={className}
       onClick={onClick}
       onMouseEnter={() => setH(true)}
       onMouseLeave={() => setH(false)}

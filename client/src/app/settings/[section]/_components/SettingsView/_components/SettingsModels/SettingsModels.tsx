@@ -2,12 +2,13 @@
 
 import React from "react";
 import { useTranslations } from "next-intl";
-import { FormField, SearchableSelect, Icon } from "@devdigest/ui";
+import { FormField, SearchableSelect, Icon, Toggle } from "@devdigest/ui";
 import { useSettings, useUpdateSettings, useProviderModels } from "@/lib/hooks";
 import { toModelOptions } from "@/lib/model-label";
 import { FEATURE_MODELS } from "@/lib/feature-models";
 import type { FeatureModelChoice, FeatureModelId } from "@/lib/types";
 import { SectionTitle } from "../SectionTitle";
+import { isAutoBriefOn } from "./helpers";
 import { s } from "./styles";
 
 /**
@@ -34,6 +35,18 @@ export function SettingsModels() {
   return (
     <div style={s.wrap}>
       <SectionTitle title={t("models.title")} body={t("models.body")} />
+
+      <div style={s.autoBrief}>
+        <div style={s.autoBriefText}>
+          <div style={s.autoBriefLabel}>{t("models.autoBrief.label")}</div>
+          <div style={s.autoBriefHint}>{t("models.autoBrief.hint")}</div>
+        </div>
+        <Toggle
+          on={isAutoBriefOn(settings)}
+          onChange={(v) => update.mutate({ automatic_brief: v })}
+          label={t("models.autoBrief.label")}
+        />
+      </div>
 
       {FEATURE_MODELS.map((f) => {
         const current = chosen[f.id]?.model ?? f.defaultModel;

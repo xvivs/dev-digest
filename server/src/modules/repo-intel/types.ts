@@ -84,6 +84,8 @@ export interface BlastResult {
   factsByFile?: Record<string, { endpoints: string[]; crons: string[] }>;
   degraded?: boolean;
   reason?: DegradedReason;
+  /** True when a changed symbol's callers were cut to MAX_CALLERS_PER_SYMBOL. */
+  truncated?: boolean;
 }
 
 // ---------------------------------------------------------------------------

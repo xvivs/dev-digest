@@ -18,21 +18,41 @@ export function Topbar({ ctx, crumb = [] }: { ctx: ShellContext; crumb?: Crumb[]
         background: "var(--bg-primary)",
         display: "flex",
         alignItems: "center",
-        gap: 16,
-        padding: "0 24px",
+        gap: "var(--dd-topbar-gap)",
+        padding: "0 var(--dd-topbar-pad-x)",
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+      {ctx.onOpenNav && (
+        <IconBtn
+          icon="Menu"
+          label={ctx.labels?.openNav ?? "Open navigation"}
+          className="dd-show-below-md"
+          hasPopup="dialog"
+          onClick={ctx.onOpenNav}
+        />
+      )}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, flex: "1 1 auto", overflow: "hidden" }}>
         {crumb.map((c, i) => {
           const last = i === crumb.length - 1;
+          // Ancestors shrink first; the current page keeps its width up to 75% of the row.
+          const itemStyle: React.CSSProperties = {
+            minWidth: 0,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+            flex: last ? "0 0 auto" : "0 1 auto",
+            ...(last ? { maxWidth: "75%" } : null),
+          };
           const text = (
             <span
               className={c.mono ? "mono" : undefined}
+              title={c.label}
               style={{
                 fontSize: 14,
                 fontWeight: last ? 600 : 500,
                 color: last ? "var(--text-primary)" : "var(--text-secondary)",
-                whiteSpace: "nowrap",
+                ...(c.href ? null : itemStyle),
+                ...(c.href ? { display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } : null),
               }}
             >
               {c.label}
@@ -43,13 +63,20 @@ export function Topbar({ ctx, crumb = [] }: { ctx: ShellContext; crumb?: Crumb[]
               {i > 0 && (
                 <Icon.ChevronRight size={13} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
               )}
-              {c.href ? <Link href={c.href}>{text}</Link> : text}
+              {c.href ? (
+                <Link href={c.href} style={itemStyle}>
+                  {text}
+                </Link>
+              ) : (
+                text
+              )}
             </React.Fragment>
           );
         })}
       </div>
       <button
         type="button"
+        className="dd-hide-below-lg"
         onClick={ctx.onOpenCommandPalette}
         style={{
           marginLeft: "auto",
@@ -69,6 +96,12 @@ export function Topbar({ ctx, crumb = [] }: { ctx: ShellContext; crumb?: Crumb[]
         <span style={{ flex: 1, textAlign: "left" }}>Search or jump to…</span>
         <Kbd>⌘K</Kbd>
       </button>
+      <IconBtn
+        icon="Search"
+        label={ctx.labels?.search ?? "Search"}
+        className="dd-show-below-lg"
+        onClick={ctx.onOpenCommandPalette}
+      />
       {ctx.onToggleTheme && (
         <IconBtn
           icon={ctx.theme === "light" ? "Moon" : "Sun"}

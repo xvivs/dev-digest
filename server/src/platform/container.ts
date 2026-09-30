@@ -33,6 +33,8 @@ import { SkillsRepository } from '../modules/skills/repository.js';
 import { resolveFeatureModel } from '../modules/settings/feature-models.js';
 import { EvalsRepository } from '../modules/evals/repository.js';
 import type { RepoIntel } from '../modules/repo-intel/types.js';
+import type { PrBriefFacade } from '../modules/brief/types.js';
+import { buildBriefService } from '../modules/brief/wiring.js';
 import { RepoIntelService } from '../modules/repo-intel/service.js';
 import { type DepGraph, DepCruiseGraph } from '../adapters/depgraph/index.js';
 import { type Tokenizer, TiktokenTokenizer } from '../adapters/tokenizer/index.js';
@@ -58,7 +60,18 @@ export interface ContainerOverrides {
   /** repo-intel T3 adapters — only the indexer pipeline reads these. */
   depgraph?: DepGraph;
   tokenizer?: Tokenizer;
+  /** PR brief facade — tests inject spies / stubs (import triggers, review pre-work). */
+  prBrief?: PrBriefFacade;
 }
+
+/** Minimal structural logger (Fastify's `app.log` satisfies it). */
+export interface ContainerLogger {
+  debug(obj: Record<string, unknown>, msg: string): void;
+  info(obj: Record<string, unknown>, msg: string): void;
+  warn(obj: Record<string, unknown>, msg: string): void;
+}
+
+const NOOP_LOGGER: ContainerLogger = { debug() {}, info() {}, warn() {} };
 
 export class Container {
   readonly config: AppConfig;
@@ -73,7 +86,15 @@ export class Container {
    * from the diff's chunk count; the default below is only a backstop.
    */
   readonly evalJobs: JobRunner;
+  /**
+   * ADR 0022: a dedicated runner for PR brief derivation, so it never starves
+   * clone and index jobs on `jobs`. One job at a time and no retries (a retry
+   * would pay the LLM twice); 150 s backstop over the 45 + 60 s phase budgets.
+   */
+  readonly briefJobs: JobRunner;
   readonly runBus: RunBus;
+  /** Structured logger for services built here. No-op until app.ts assigns `app.log`. */
+  logger: ContainerLogger = NOOP_LOGGER;
 
   private _git?: GitClient;
   private _github?: GitHubClient;
@@ -92,6 +113,7 @@ export class Container {
   private _depgraph?: DepGraph;
   private _tokenizer?: Tokenizer;
   private _priceBook?: PriceBook;
+  private _prBrief?: PrBriefFacade;
 
   constructor(config: AppConfig, db: Db, private overrides: ContainerOverrides = {}) {
     this.config = config;
@@ -101,6 +123,7 @@ export class Container {
     this.runBus = runBus;
     this.jobs = new JobRunner(db);
     this.evalJobs = new JobRunner(db, { concurrency: 2, retries: 0, timeoutMs: 30 * 60_000 });
+    this.briefJobs = new JobRunner(db, { concurrency: 1, retries: 0, timeoutMs: 150_000 });
   }
 
   get git(): GitClient {
@@ -137,6 +160,25 @@ export class Container {
   /** Resolve a feature id to provider+model (workspace override, else default). */
   featureModel(workspaceId: string, id: FeatureModelId): Promise<FeatureModelChoice> {
     return resolveFeatureModel(this, workspaceId, id);
+  }
+
+  /**
+   * Effective workspace `automatic_brief` (missing row = ON). Uncached, like
+   * `featureModel`: a Settings change applies to the next sync without a restart.
+   */
+  automaticBrief(workspaceId: string): Promise<boolean> {
+    return this.prBrief.isAutomaticEnabled(workspaceId);
+  }
+
+  /**
+   * The PR brief facade (intent + risk areas). ONE memoized instance: it keeps
+   * queued/in-flight state that routes, the job handler and the review executor
+   * must share. Tests inject a stub via `ContainerOverrides.prBrief`.
+   */
+  get prBrief(): PrBriefFacade {
+    if (this.overrides.prBrief) return this.overrides.prBrief;
+    this._prBrief ??= buildBriefService(this);
+    return this._prBrief;
   }
 
   /** Eval suites read model; the skills Stats tab reads `impact` through it. */

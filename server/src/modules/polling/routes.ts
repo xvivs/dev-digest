@@ -62,6 +62,9 @@ export default async function pollingRoutes(appBase: FastifyInstance) {
       .set({ lastPolledAt: new Date() })
       .where(eq(t.repos.id, repo.id));
 
+    // Fire-and-forget: schedules intent/risk derivation; never awaited, never rejects.
+    void container.prBrief.scheduleForRepo(workspaceId, repo.id, 'poll');
+
     // NOTE: no review is triggered here — manual trigger only.
     return { synced, reviewTriggered: false };
   });

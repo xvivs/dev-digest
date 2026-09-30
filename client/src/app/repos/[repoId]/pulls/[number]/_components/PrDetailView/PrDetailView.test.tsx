@@ -14,6 +14,8 @@ import cost from "@/../messages/en/cost.json";
 import findings from "@/../messages/en/findings.json";
 import diffViewer from "@/../messages/en/diffViewer.json";
 import common from "@/../messages/en/common.json";
+import brief from "@/../messages/en/brief.json";
+import blast from "@/../messages/en/blast.json";
 import { renderWithProviders } from "@/test/render";
 
 let search = new URLSearchParams("tab=findings");
@@ -108,7 +110,7 @@ afterEach(() => {
 
 function renderView() {
   return renderWithProviders(<PrDetailView repoId="repo-1" number="482" />, {
-    namespaces: { prReview, cost, findings, diffViewer, common },
+    namespaces: { prReview, cost, findings, diffViewer, common, brief, blast },
   });
 }
 

@@ -12,7 +12,7 @@ export function SectionLabel({
 }) {
   const I = icon ? Icon[icon] : null;
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+    <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: "6px 10px", marginBottom: 14 }}>
       {I && <I size={14} style={{ color: "var(--text-muted)" }} />}
       <span
         style={{

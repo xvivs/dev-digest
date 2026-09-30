@@ -1,6 +1,12 @@
 import type { Container } from '../../platform/container.js';
 import type { Provider, Review, RunTrace, UnifiedDiff } from '@devdigest/shared';
-import { reviewPullRequest, countBlockers, estimateTokens, type SkillInput } from '@devdigest/reviewer-core';
+import {
+  reviewPullRequest,
+  countBlockers,
+  estimateTokens,
+  type IntentInput,
+  type SkillInput,
+} from '@devdigest/reviewer-core';
 import { failureTrace } from './failure-trace.js';
 import { RunLogger } from '../../platform/run-logger.js';
 import * as schema from '../../db/schema.js';
@@ -144,6 +150,29 @@ export class ReviewRunExecutor {
     }
     runLog.info(`Diff ready — ${diff.files.length} changed file(s); starting ${jobs.length} agent run(s)`);
 
+    // Derived intent (ADR 0022): a READ of a row stored for the CURRENT head, no
+    // LLM and no network. Missing or stale -> the review runs without the slot
+    // (byte-identical prompt) and a background derive is requested for next time.
+    // Its own try/catch: an unexpected throw must never escape executeRuns, or
+    // the queued runs stay 'running'.
+    let intent: IntentInput | undefined;
+    try {
+      const fresh: Awaited<ReturnType<Container['prBrief']['readFreshIntent']>> =
+        await this.container.prBrief.readFreshIntent(pull.id, pull.headSha);
+      if (fresh.ok) {
+        intent = fresh.intent;
+        runLog.info(
+          `intent: attached confidence=${fresh.intent.confidence} (derived ${fresh.headSha.slice(0, 7)}, ${fresh.provider ?? '?'}/${fresh.model ?? '?'})`,
+        );
+      } else {
+        runLog.info(`intent: none — ${fresh.reason}`);
+        // The service applies the automatic gate; it never rejects, `.catch` is belt-and-braces.
+        void this.container.prBrief.requestDerive(workspaceId, pull.id, 'review_prework').catch(() => undefined);
+      }
+    } catch (err) {
+      runLog.info(`intent: none — internal: ${(err as Error).message}`);
+    }
+
     for (const { agent, runId } of jobs) {
       const agentStart = Date.now();
       logger?.info(
@@ -160,6 +189,7 @@ export class ReviewRunExecutor {
           runId,
           runLog,
           skillsByAgent.get(agent.id) ?? [],
+          intent,
           logger,
         );
         logger?.info(
@@ -194,6 +224,7 @@ export class ReviewRunExecutor {
     runId: string,
     parentLog: RunLogger,
     resolvedSkills: ResolvedSkill[],
+    intent: IntentInput | undefined,
     logger?: Logger,
   ): Promise<RunOutcome> {
     const start = Date.now();
@@ -262,6 +293,9 @@ export class ReviewRunExecutor {
         // PR author's description/body — untrusted; assemblePrompt wraps +
         // truncates it. Omitted when the PR has no body.
         ...(pull.body ? { prDescription: pull.body } : {}),
+        // Derived PR intent (untrusted, wrapped + capped by assemblePrompt); omitted
+        // when there is no fresh row, so the prompt stays byte-identical.
+        ...(intent ? { intent } : {}),
         // SPEC-02 D1 — effective skills only (resolved in pre-work: link
         // enabled && skill enabled && !needs_vetting), in prompt order.
         ...(resolvedSkills.length > 0

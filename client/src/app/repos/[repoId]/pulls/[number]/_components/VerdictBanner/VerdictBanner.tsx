@@ -16,6 +16,7 @@ export function VerdictBanner({
   findingsCount,
   blockers,
   agentName,
+  aside,
 }: {
   verdict: Verdict;
   summary: string | null;
@@ -23,6 +24,8 @@ export function VerdictBanner({
   findingsCount: number;
   blockers: number;
   agentName?: string | null;
+  /** Optional column between the summary and the score (e.g. run cost / tokens). Independent of `score`. */
+  aside?: React.ReactNode;
 }) {
   const t = useTranslations("prReview");
   const m = VERDICT_META[verdict] ?? VERDICT_META.comment;
@@ -47,6 +50,7 @@ export function VerdictBanner({
         </div>
         {summary && <p style={s.summary}>{summary}</p>}
       </div>
+      {aside && <div style={s.asideCol}>{aside}</div>}
       {score != null && (
         <div style={s.scoreCol}>
           <CircularScore score={score} size={52} stroke={5} />

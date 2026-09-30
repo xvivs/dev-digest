@@ -6,6 +6,7 @@ export const s = {
     display: "flex",
     gap: 18,
     alignItems: "flex-start",
+    flexWrap: "wrap",
     padding: 18,
     borderRadius: 10,
     border: "1px solid var(--border)",
@@ -21,7 +22,7 @@ export const s = {
     color,
     flexShrink: 0,
   }),
-  main: { flex: 1, minWidth: 0 } satisfies CSSProperties,
+  main: { flex: "1 1 240px", minWidth: 0 } satisfies CSSProperties,
   titleRow: {
     display: "flex",
     alignItems: "center",
@@ -34,6 +35,14 @@ export const s = {
     lineHeight: 1.55,
     color: "var(--text-secondary)",
     marginTop: 8,
+  } satisfies CSSProperties,
+  asideCol: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 4,
+    flexShrink: 0,
+    fontSize: 12,
+    color: "var(--text-muted)",
   } satisfies CSSProperties,
   scoreCol: {
     display: "flex",

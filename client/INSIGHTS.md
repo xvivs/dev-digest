@@ -249,6 +249,9 @@ Added `useSkillStats(id, window)` (key `['skill-stats', id, window]`, `keepPrevi
 ### 2026-09-29 — client session (skill Evals tab, Phase 3)
 Built the Evals tab. It shows the latest started suite's verdict and results line, or live progress with Cancel; case rows show both arms with outcome and unexpected badges. The Run modal takes carrier and mode, gives the estimate ($ and call count), then Start, and shows the trust gate as "vet skill first". The case editor accepts a pasted diff or a PR's files, plus must_find / must_not_find rows. The header "Run on evals" button now works. Checked only against a mock API in the browser, because the server eval routes were still being built. Per-case runs are not built: `CreateEvalSuiteBody` has no case subset.
 
+### 2026-09-30 — client session
+Shipped the Overview tab (brief, intent, risks, blast radius, prior PRs), the Settings auto-brief toggle and the mobile nav drawer (ADR 0024). Desktop is the supported target; narrow-width gaps are tracked in #10.
+
 ## Open Questions
 
 - **Conflict: does a `NextIntlClientProvider` missing a namespace throw or only log?** — the Recurring Errors entry dated 2026-09-19 says a single-namespace provider "throws on the first missing message", the Tool & Library entry dated 2026-09-28 observed only a logged `MISSING_MESSAGE` with a passing test (`client/src/test/smoke.test.tsx`). Possibly both true (missing key vs missing namespace, or a custom `onError`); needs a human to reconcile. _(2026-09-28)_

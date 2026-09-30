@@ -180,6 +180,15 @@ export interface CommitFilesPayload {
   files: CommitFile[];
 }
 
+/** One (path, PR) pair from `GitHubClient.listPathHistory`. */
+export interface PathHistoryRow {
+  path: string;
+  number: number;
+  title: string;
+  author: string;
+  mergedAt: string | null;
+}
+
 export interface GitHubClient {
   listPullRequests(repo: RepoRef): Promise<PrMeta[]>;
   getPullRequest(repo: RepoRef, n: number): Promise<PrDetail>;
@@ -202,6 +211,18 @@ export interface GitHubClient {
   /** The open PR whose head is `branch`, if any (so re-publish reuses it). */
   findOpenPr(repo: RepoRef, branch: string): Promise<{ url: string } | null>;
   getIssue(repo: RepoRef, n: number): Promise<IssueMeta>;
+  /**
+   * Merged-or-not PR history of `paths` on `ref` (GraphQL `Commit.history(path:)`
+   * + `associatedPullRequests`): one row per (path, PR). `mergedAt` is null for
+   * a PR that is not merged, so callers filter. `perPath` commits are inspected
+   * per path.
+   */
+  listPathHistory(
+    repo: RepoRef,
+    ref: string,
+    paths: string[],
+    perPath: number,
+  ): Promise<PathHistoryRow[]>;
   /** GET /user — for "posting as @user". */
   currentLogin(): Promise<string>;
 }
@@ -242,9 +263,18 @@ export interface GitCommit {
   date: string;
 }
 
+/** Outcome of `GitClient.readFileAtRef`; it never throws. */
+export type ReadFileAtRefResult =
+  | { status: 'ok'; text: string }
+  | { status: 'missing_commit' | 'not_found' | 'not_a_file' | 'too_large' | 'not_available' };
+
 export interface GitClient {
   clone(repo: RepoRef, url: string, opts?: CloneOptions): Promise<{ path: string }>;
-  fetchPullHead(repo: RepoRef, n: number): Promise<void>;
+  /**
+   * Fetch a PR head (`pull/<n>/head`, forced) into a local ref. Serialised per
+   * repo with `sync`; a queued call whose `signal` is already aborted never runs.
+   */
+  fetchPullHead(repo: RepoRef, n: number, opts?: { signal?: AbortSignal }): Promise<void>;
   /**
    * Resync an already-cloned repo to the tip of `branch`: fetch from origin and
    * advance the local working tree to `origin/<branch>`. Unlike `clone`'s bare
@@ -264,6 +294,18 @@ export interface GitClient {
   blame(repo: RepoRef, path: string): Promise<BlameLine[]>;
   log(repo: RepoRef, path?: string): Promise<GitCommit[]>;
   readFile(repo: RepoRef, path: string): Promise<string>;
+  /**
+   * Read a regular file from the git OBJECT DB at `ref` (a commit sha), not the
+   * working tree: symlinks, submodules and directories are refused, `maxBytes`
+   * bounds the read. Safe for paths taken from PR content. Never throws; a
+   * missing clone or any git error yields `not_available`.
+   */
+  readFileAtRef(
+    repo: RepoRef,
+    ref: string,
+    path: string,
+    maxBytes: number,
+  ): Promise<ReadFileAtRefResult>;
   clonePathFor(repo: RepoRef): string;
 }
 

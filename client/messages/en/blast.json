@@ -13,6 +13,20 @@
   "noDownstream": "{count} changed symbol(s), no downstream callers found.",
   "graph": {
     "empty": "No downstream callers to graph.",
-    "ariaLabel": "Blast radius graph"
-  }
+    "ariaLabel": "Blast radius graph",
+    "more": "+{count} more"
+  },
+  "state": {
+    "degraded": "Partial data.",
+    "unavailable": "Blast radius unavailable",
+    "error": "Could not load the blast radius."
+  },
+  "reason": {
+    "index_partial": "The code index is partial.",
+    "no_index": "The repository is not indexed yet.",
+    "flag_off": "Blast radius is turned off.",
+    "no_changed_files": "This PR has no changed files."
+  },
+  "basedOnIndex": "Based on index {sha}",
+  "truncated": "Some callers were left out to keep the list short."
 }

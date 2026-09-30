@@ -1,0 +1,46 @@
+import type { IntentConfidence, RiskKind, RiskSeverity } from "@devdigest/shared";
+import type { IconName } from "@devdigest/ui";
+
+/** Loading-skeleton heights (px) per card. */
+export const SKELETON_HEIGHT = { intent: 64, brief: 86, blast: 80, list: 40 } as const;
+
+/** Icon sizes (px): section-level notices vs. inline pills. */
+export const ICON_SIZE = { section: 15, inline: 13 } as const;
+
+/** Blast-radius views, in toggle order. */
+export const BLAST_VIEWS = ["tree", "graph"] as const;
+export type BlastView = (typeof BLAST_VIEWS)[number];
+
+/** Callers drawn in the SVG graph; the rest collapse into "+N more". */
+export const GRAPH_MAX_CALLERS = 8;
+
+/** SVG layout in viewBox units. */
+export const GRAPH = { width: 520, rowHeight: 26, pad: 8, symX: 200, callerX: 260, labelGap: 6 } as const;
+
+/** Badge colours for a brief whose intent is out of date. */
+export const STALE_COLOR = { c: "var(--warn)", bg: "var(--warn-bg)" } as const;
+
+export const RISK_ICON: Record<RiskKind, IconName> = {
+  security: "Shield",
+  db_migration: "Database",
+  breaking_api: "AlertTriangle",
+  perf: "Zap",
+  deps: "Boxes",
+};
+
+/** Severity → text / background CSS vars (the label is always rendered too, never colour alone). */
+export const RISK_SEVERITY_COLOR: Record<RiskSeverity, { c: string; bg: string }> = {
+  high: { c: "var(--crit)", bg: "var(--crit-bg)" },
+  medium: { c: "var(--warn)", bg: "var(--warn-bg)" },
+  low: { c: "var(--info)", bg: "var(--info-bg)" },
+};
+
+export const CONFIDENCE_COLOR: Record<IntentConfidence, { c: string; bg: string }> = {
+  high: { c: "var(--ok, var(--info))", bg: "var(--info-bg)" },
+  medium: { c: "var(--warn)", bg: "var(--warn-bg)" },
+  low: { c: "var(--text-muted)", bg: "var(--bg-hover)" },
+};
+
+/** Runs newer than the shown brief that warrant a notice. */
+export const NEWER_RUN_STATUSES = ["running", "failed", "cancelled"] as const;
+export type NewerRunStatus = (typeof NEWER_RUN_STATUSES)[number];

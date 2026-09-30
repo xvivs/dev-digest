@@ -294,12 +294,14 @@ export class RepoIntelService implements RepoIntel {
       }
     }
 
+    const capped = capCallersPerSymbol(callerRows);
     return {
       changedSymbols,
-      callers: callerRows,
+      callers: capped.callers,
       impactedEndpoints: [...endpoints],
       degraded: true,
       reason: 'no_data',
+      ...(capped.truncated ? { truncated: true } : {}),
     };
   }
 
@@ -381,12 +383,14 @@ export class RepoIntelService implements RepoIntel {
       for (const e of f.endpoints) endpoints.add(e);
     }
 
+    const capped = capCallersPerSymbol(callers);
     return {
       changedSymbols,
-      callers: callers.slice(0, MAX_CALLERS_PER_SYMBOL),
+      callers: capped.callers,
       impactedEndpoints: [...endpoints],
       factsByFile,
       degraded: false,
+      ...(capped.truncated ? { truncated: true } : {}),
     };
   }
 
@@ -726,6 +730,27 @@ const JUNK_PATH_PATTERNS = [
   'eslint',
   'prettier',
 ] as const;
+
+/**
+ * Keep the top MAX_CALLERS_PER_SYMBOL callers (by rank, stable) per changed
+ * symbol (`viaSymbol`). `truncated` is set iff any symbol lost callers.
+ */
+function capCallersPerSymbol(rows: BlastCallerRow[]): { callers: BlastCallerRow[]; truncated: boolean } {
+  const sorted = [...rows].sort((a, b) => b.rank - a.rank);
+  const groups = new Map<string, BlastCallerRow[]>();
+  for (const r of sorted) {
+    const g = groups.get(r.viaSymbol);
+    if (g) g.push(r);
+    else groups.set(r.viaSymbol, [r]);
+  }
+  let truncated = false;
+  const callers: BlastCallerRow[] = [];
+  for (const g of groups.values()) {
+    if (g.length > MAX_CALLERS_PER_SYMBOL) truncated = true;
+    callers.push(...g.slice(0, MAX_CALLERS_PER_SYMBOL));
+  }
+  return { callers, truncated };
+}
 
 function isJunkPath(path: string): boolean {
   const lower = path.toLowerCase();
