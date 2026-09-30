@@ -15,13 +15,13 @@ import {
   isEffectiveSkill,
   promptHashInput,
   skillUsageStatus,
+  toLatestVerdict,
   SkillNameTakenError,
   SkillVersionStaleError,
   SkillVetStaleError,
   type NewSkill,
   type Skill,
   type LinkedAgentUsage,
-  type SkillLatestVerdict,
   type SkillListItem,
   type SkillRunAggregate,
   type SkillVersionSnapshot,
@@ -153,12 +153,12 @@ export class SkillsRepository implements SkillStore, SkillStatsReader {
     const latest = this.db
       .selectDistinctOn([t.evalSuites.skillId], {
         skillId: t.evalSuites.skillId,
-        verdict: sql<string>`${t.evalSuites.results}->>'verdict'`.as('verdict'),
-        carrierName: sql<string>`coalesce(${t.agents.name}, ${t.evalSuites.carrierAgentName})`.as('carrier_name'),
-        promptSha256: sql<string>`${t.evalSuites.promptSha256}`.as('suite_prompt_sha256'),
-        carrierMoved: sql<boolean>`(${t.agents.version} IS DISTINCT FROM ${t.evalSuites.carrierAgentVersion})`.as(
-          'carrier_moved',
-        ),
+        verdict: sql<string | null>`${t.evalSuites.results}->>'verdict'`.as('verdict'),
+        carrierName: sql<string | null>`${t.agents.name}`.as('carrier_name'),
+        storedCarrierName: sql<string | null>`${t.evalSuites.carrierAgentName}`.as('stored_carrier_name'),
+        suitePromptSha256: sql<string>`${t.evalSuites.promptSha256}`.as('suite_prompt_sha256'),
+        suiteCarrierVersion: sql<number>`${t.evalSuites.carrierAgentVersion}`.as('suite_carrier_version'),
+        carrierVersion: sql<number | null>`${t.agents.version}`.as('carrier_version'),
       })
       .from(t.evalSuites)
       .leftJoin(t.agents, eq(t.agents.id, t.evalSuites.carrierAgentId))
@@ -181,11 +181,13 @@ export class SkillsRepository implements SkillStore, SkillStatsReader {
         // One row per skill in `runs_30d` / `latest_suite`, so max() / bool_or()
         // just lift the value past GROUP BY.
         runs30d: sql<number>`coalesce(max(${runs30d.runs}), 0)::int`,
-        latestVerdict: sql<SkillLatestVerdict | null>`CASE WHEN max(${latest.verdict}) IS NULL THEN NULL ELSE jsonb_build_object(
-          'verdict', max(${latest.verdict}),
-          'carrierName', max(${latest.carrierName}),
-          'stale', bool_or(${latest.carrierMoved} OR ${latest.promptSha256} <> ${PROMPT_SHA256_SQL})
-        ) END`,
+        suiteVerdict: sql<string | null>`max(${latest.verdict})`,
+        suiteCarrierName: sql<string | null>`max(${latest.carrierName})`,
+        suiteStoredCarrierName: sql<string | null>`max(${latest.storedCarrierName})`,
+        suitePromptSha256: sql<string | null>`max(${latest.suitePromptSha256})`,
+        suiteCarrierVersion: sql<number | null>`max(${latest.suiteCarrierVersion})`,
+        suiteCurrentCarrierVersion: sql<number | null>`max(${latest.carrierVersion})`,
+        currentPromptSha256: sql<string>`max(${PROMPT_SHA256_SQL})`,
       })
       .from(t.skills)
       .leftJoin(t.agentSkills, eq(t.agentSkills.skillId, t.skills.id))
@@ -199,7 +201,15 @@ export class SkillsRepository implements SkillStore, SkillStatsReader {
       ...toSkill(r.skill),
       agentCount: Number(r.agentCount),
       runs30d: Number(r.runs30d),
-      latestVerdict: r.latestVerdict ?? null,
+      latestVerdict: toLatestVerdict({
+        verdict: r.suiteVerdict,
+        carrierName: r.suiteCarrierName,
+        storedCarrierName: r.suiteStoredCarrierName,
+        suitePromptSha256: r.suitePromptSha256,
+        suiteCarrierVersion: r.suiteCarrierVersion === null ? null : Number(r.suiteCarrierVersion),
+        carrierVersion: r.suiteCurrentCarrierVersion === null ? null : Number(r.suiteCurrentCarrierVersion),
+        currentPromptSha256: r.currentPromptSha256,
+      }),
     }));
   }
 

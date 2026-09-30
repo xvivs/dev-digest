@@ -16,7 +16,7 @@ import type {
   SkillType,
 } from '@devdigest/shared';
 import { AppError, ValidationError } from '../../platform/errors.js';
-import { suiteImpactVerdict, type EvalSuiteView } from '../_shared/eval-suite.js';
+import { isSuiteStale, suiteImpactVerdict, type EvalSuiteView } from '../_shared/eval-suite.js';
 import { SKILL_BODY_MAX, SKILL_DESCRIPTION_MAX, SKILL_NAME_PATTERN } from '../_shared/skill-limits.js';
 import { containsInvisibleChars } from '../_shared/text-hygiene.js';
 
@@ -45,6 +45,48 @@ export interface SkillLatestVerdict {
   verdict: ImpactVerdict;
   carrierName: string;
   stale: boolean;
+}
+
+/** Raw columns of the latest done Full suite for one skill, as the list query reads them. */
+export interface LatestSuiteRaw {
+  /** `results->>'verdict'` straight from jsonb: unvalidated text. */
+  verdict: string | null;
+  /** Carrier's current name; null once the agent is deleted. */
+  carrierName: string | null;
+  /** Carrier name stored on the suite (fallback when the agent is gone). */
+  storedCarrierName: string | null;
+  suitePromptSha256: string | null;
+  suiteCarrierVersion: number | null;
+  /** Carrier's current version; null once the agent is deleted. */
+  carrierVersion: number | null;
+  /** The skill's current prompt hash. */
+  currentPromptSha256: string;
+}
+
+const IMPACT_VERDICTS: Record<ImpactVerdict, true> = {
+  helps: true,
+  neutral: true,
+  hurts: true,
+  indicative: true,
+  unknown: true,
+};
+
+function isImpactVerdict(v: string): v is ImpactVerdict {
+  return Object.hasOwn(IMPACT_VERDICTS, v);
+}
+
+/** Null = no suite, or a stored verdict this build does not know (shown as "no evals"). */
+export function toLatestVerdict(raw: LatestSuiteRaw): SkillLatestVerdict | null {
+  if (raw.verdict === null || raw.suitePromptSha256 === null || raw.suiteCarrierVersion === null) return null;
+  if (!isImpactVerdict(raw.verdict)) return null;
+  return {
+    verdict: raw.verdict,
+    carrierName: raw.carrierName ?? raw.storedCarrierName ?? '',
+    stale: isSuiteStale(
+      { promptSha256: raw.suitePromptSha256, carrierAgentVersion: raw.suiteCarrierVersion },
+      { promptSha256: raw.currentPromptSha256, carrierVersion: raw.carrierVersion },
+    ),
+  };
 }
 
 /** A skill plus how many agents link it, its completed runs over the last
