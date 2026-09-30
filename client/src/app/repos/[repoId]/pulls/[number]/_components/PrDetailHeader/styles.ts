@@ -12,10 +12,11 @@ export const s = {
   titleRow: {
     display: "flex",
     alignItems: "flex-start",
+    flexWrap: "wrap",
     gap: 18,
   } satisfies CSSProperties,
   titleCol: {
-    flex: 1,
+    flex: "1 1 240px",
     minWidth: 0,
   } satisfies CSSProperties,
   h1: {
@@ -25,6 +26,7 @@ export const s = {
     display: "flex",
     alignItems: "center",
     gap: 12,
+    overflowWrap: "anywhere",
   } satisfies CSSProperties,
   prNumber: {
     fontSize: 18,
