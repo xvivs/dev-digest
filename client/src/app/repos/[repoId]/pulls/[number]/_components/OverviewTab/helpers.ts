@@ -1,11 +1,11 @@
 import type {
   BlastRadius,
+  DownstreamImpact,
   ReviewRecord,
-  RiskSeverity,
   RunSummary,
   Verdict,
 } from "@devdigest/shared";
-import { NEWER_RUN_STATUSES, RISK_SEVERITY_COLOR, type NewerRunStatus } from "./constants";
+import { GRAPH, GRAPH_MAX_CALLERS, NEWER_RUN_STATUSES, type NewerRunStatus } from "./constants";
 
 export interface LatestBrief {
   run: RunSummary;
@@ -108,6 +108,27 @@ export function splitInlineCode(input: string): TextSegment[] {
   return segments;
 }
 
-export function riskTone(severity: RiskSeverity): { c: string; bg: string } {
-  return RISK_SEVERITY_COLOR[severity];
+export interface BlastGraphLayout {
+  /** viewBox height. */
+  height: number;
+  symbols: { label: string; y: number }[];
+  /** Drawn callers (at most GRAPH_MAX_CALLERS); `fromY` is the y of the symbol that calls it. */
+  callers: { label: string; y: number; fromY: number }[];
+  /** Callers beyond GRAPH_MAX_CALLERS that are not drawn. */
+  hidden: number;
+}
+
+/** Pure layout of the blast graph in viewBox units; null when there is no caller to draw. */
+export function blastGraphLayout(downstream: readonly DownstreamImpact[]): BlastGraphLayout | null {
+  const edges = downstream.flatMap((d, si) => d.callers.map((c) => ({ from: si, label: `${c.name}:${c.line}` })));
+  if (edges.length === 0) return null;
+  const shown = edges.slice(0, GRAPH_MAX_CALLERS);
+  const rows = Math.max(downstream.length, shown.length);
+  const rowY = (i: number) => GRAPH.pad + i * GRAPH.rowHeight + GRAPH.rowHeight / 2;
+  return {
+    height: rows * GRAPH.rowHeight + GRAPH.pad * 2,
+    symbols: downstream.map((d, i) => ({ label: d.symbol, y: rowY(i) })),
+    callers: shown.map((e, i) => ({ label: e.label, y: rowY(i), fromY: rowY(e.from) })),
+    hidden: edges.length - shown.length,
+  };
 }

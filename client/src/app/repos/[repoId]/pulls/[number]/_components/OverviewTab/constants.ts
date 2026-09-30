@@ -11,6 +11,12 @@ export type BlastView = (typeof BLAST_VIEWS)[number];
 /** Callers drawn in the SVG graph; the rest collapse into "+N more". */
 export const GRAPH_MAX_CALLERS = 8;
 
+/** SVG layout in viewBox units. */
+export const GRAPH = { width: 520, rowHeight: 26, pad: 8, symX: 200, callerX: 260, labelGap: 6 } as const;
+
+/** Badge colours for a brief whose intent is out of date. */
+export const STALE_COLOR = { c: "var(--warn)", bg: "var(--warn-bg)" } as const;
+
 export const RISK_ICON: Record<RiskKind, IconName> = {
   security: "Shield",
   db_migration: "Database",

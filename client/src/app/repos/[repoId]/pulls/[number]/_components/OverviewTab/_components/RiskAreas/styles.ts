@@ -1,7 +1,9 @@
 import type { CSSProperties } from "react";
+import { s as shared } from "../../styles";
 
 export const s = {
-  grow: { flex: 1, minWidth: 0 } satisfies CSSProperties,
+  ruleOnly: { ...shared.notice, marginBottom: 12 } satisfies CSSProperties,
+  footer: { ...shared.muted, display: "flex", gap: 14, flexWrap: "wrap", marginTop: 14 } satisfies CSSProperties,
   pills: { display: "flex", flexWrap: "wrap", gap: 8 } satisfies CSSProperties,
   pill: (color: string, bg: string, active: boolean): CSSProperties => ({
     display: "inline-flex",
@@ -40,5 +42,4 @@ export const s = {
     overflowWrap: "anywhere",
   } satisfies CSSProperties,
   refs: { listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 4 } satisfies CSSProperties,
-  footer: { display: "flex", gap: 14, flexWrap: "wrap", marginTop: 14 } satisfies CSSProperties,
 } as const;

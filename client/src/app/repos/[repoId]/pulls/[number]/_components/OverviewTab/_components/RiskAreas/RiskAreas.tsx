@@ -6,9 +6,9 @@ import { Badge, EmptyState, ErrorState, Icon, SectionLabel, Skeleton } from "@de
 import type { Risk } from "@devdigest/shared";
 import { useDeriveBrief, usePrRisks } from "@/lib/hooks";
 import { RunCostValue } from "@/components/run-cost-value";
-import { BriefFailureAction } from "../BriefFailureAction";
-import { RISK_ICON } from "../../constants";
-import { riskTone, splitInlineCode } from "../../helpers";
+import { BriefFailureNotice } from "../BriefFailureNotice";
+import { RISK_ICON, RISK_SEVERITY_COLOR } from "../../constants";
+import { splitInlineCode } from "../../helpers";
 import { s as shared } from "../../styles";
 import { s } from "./styles";
 
@@ -42,28 +42,32 @@ export function RiskAreas({ prId }: { prId: string }) {
   const busy = inFlight || derive.isPending;
 
   if (!record) {
+    let emptyBody: React.ReactNode;
+    if (inFlight) {
+      emptyBody = (
+        <div style={shared.muted} role="status">
+          {t("deriving")}
+        </div>
+      );
+    } else if (failure) {
+      emptyBody = (
+        <BriefFailureNotice
+          prId={prId}
+          reason={failure.reason}
+          deriveLabel={t("derive")}
+          busy={busy}
+          onDerive={() => derive.mutate()}
+        />
+      );
+    } else {
+      emptyBody = (
+        <EmptyState icon="Shield" title={t("unavailable")} body={t("unavailableHint")} cta={t("derive")} onCta={() => derive.mutate()} ctaLoading={busy} />
+      );
+    }
     return (
       <section style={shared.card}>
         {heading}
-        {inFlight ? (
-          <div style={shared.muted} role="status">
-            {t("deriving")}
-          </div>
-        ) : failure ? (
-          <div style={shared.notice} role="status">
-            <Icon.AlertTriangle size={15} aria-hidden="true" />
-            <span style={s.grow}>{t(`failure.${failure.reason}`)}</span>
-            <BriefFailureAction
-              prId={prId}
-              reason={failure.reason}
-              deriveLabel={t("derive")}
-              busy={busy}
-              onDerive={() => derive.mutate()}
-            />
-          </div>
-        ) : (
-          <EmptyState icon="Shield" title={t("unavailable")} body={t("unavailableHint")} cta={t("derive")} onCta={() => derive.mutate()} ctaLoading={busy} />
-        )}
+        {emptyBody}
       </section>
     );
   }
@@ -79,7 +83,7 @@ export function RiskAreas({ prId }: { prId: string }) {
           {t("deriving")}
         </div>
       )}
-      {record.rule_only && <div style={{ ...shared.notice, marginBottom: 12 }}>{t("risks.ruleOnly")}</div>}
+      {record.rule_only && <div style={s.ruleOnly}>{t("risks.ruleOnly")}</div>}
 
       {record.risks.length === 0 ? (
         <div style={shared.muted}>{t("noRisks")}</div>
@@ -88,7 +92,7 @@ export function RiskAreas({ prId }: { prId: string }) {
           <div style={s.pills}>
             {record.risks.map((r, i) => {
               const k = keyOf(r, i);
-              const tone = riskTone(r.severity);
+              const tone = RISK_SEVERITY_COLOR[r.severity];
               const PillIcon = Icon[RISK_ICON[r.kind]];
               return (
                 <button
@@ -135,7 +139,7 @@ export function RiskAreas({ prId }: { prId: string }) {
         </>
       )}
 
-      <div style={{ ...shared.muted, ...s.footer }}>
+      <div style={s.footer}>
         {record.dropped_refs > 0 && <span>{t("risks.droppedRefs", { count: record.dropped_refs })}</span>}
         <span>
           {t("risks.cost")} <RunCostValue usd={record.cost_usd} source={record.cost_source} />

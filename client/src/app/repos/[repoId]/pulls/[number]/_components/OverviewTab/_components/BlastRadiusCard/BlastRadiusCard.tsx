@@ -58,6 +58,15 @@ export function BlastRadiusCard({ prId }: { prId: string }) {
     { key: "crons", value: stats.crons },
   ] as const;
 
+  let graphBody: React.ReactNode;
+  if (blast.downstream.length === 0) {
+    graphBody = <div style={shared.muted}>{t("noDownstream", { count: stats.symbols })}</div>;
+  } else if (view === "tree") {
+    graphBody = <BlastTree downstream={blast.downstream} />;
+  } else {
+    graphBody = <BlastGraph downstream={blast.downstream} />;
+  }
+
   return (
     <section style={shared.card}>
       <SectionLabel
@@ -95,13 +104,7 @@ export function BlastRadiusCard({ prId }: { prId: string }) {
         ))}
       </div>
 
-      {blast.downstream.length === 0 ? (
-        <div style={shared.muted}>{t("noDownstream", { count: stats.symbols })}</div>
-      ) : view === "tree" ? (
-        <BlastTree downstream={blast.downstream} />
-      ) : (
-        <BlastGraph downstream={blast.downstream} />
-      )}
+      {graphBody}
 
       {data.source_sha && (
         <div style={s.basedOn}>

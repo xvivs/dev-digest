@@ -2,7 +2,6 @@ import type { CSSProperties } from "react";
 import { s as shared } from "../../styles";
 
 export const s = {
-  grow: { flex: 1, minWidth: 0 } satisfies CSSProperties,
   /** Low-confidence intent: the card stays, but visually recedes. */
   lowCard: { ...shared.card, opacity: 0.8 } satisfies CSSProperties,
   quote: {
@@ -25,5 +24,5 @@ export const s = {
   } satisfies CSSProperties,
   list: { listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 6 } satisfies CSSProperties,
   item: { fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.5, overflowWrap: "anywhere" } satisfies CSSProperties,
-  cost: { marginTop: 14 } satisfies CSSProperties,
+  costLine: { ...shared.muted, marginTop: 14 } satisfies CSSProperties,
 } as const;

@@ -2,11 +2,11 @@
 
 import React from "react";
 import { useTranslations } from "next-intl";
-import { Badge, Button, EmptyState, ErrorState, Icon, SectionLabel, Skeleton } from "@devdigest/ui";
+import { Badge, Button, EmptyState, ErrorState, SectionLabel, Skeleton } from "@devdigest/ui";
 import { useDeriveBrief, usePrIntent } from "@/lib/hooks";
 import { RunCostValue } from "@/components/run-cost-value";
-import { BriefFailureAction } from "../BriefFailureAction";
-import { CONFIDENCE_COLOR } from "../../constants";
+import { BriefFailureNotice } from "../BriefFailureNotice";
+import { CONFIDENCE_COLOR, STALE_COLOR } from "../../constants";
 import { s as shared } from "../../styles";
 import { s } from "./styles";
 
@@ -41,38 +41,35 @@ export function IntentCard({ prId }: { prId: string }) {
 
   const { intent, stale, in_flight: inFlight, last_failure: failure } = data;
   const busy = inFlight || derive.isPending;
-  const deriveButton = (label: string) => (
-    <Button kind="secondary" size="sm" icon="Sparkles" loading={busy} disabled={busy} onClick={() => derive.mutate()}>
-      {busy ? t("deriving") : label}
-    </Button>
-  );
   const failureNotice = failure && !inFlight && (
-    <div style={shared.notice} role="status">
-      <Icon.AlertTriangle size={15} aria-hidden="true" />
-      <span style={s.grow}>{t(`failure.${failure.reason}`)}</span>
-      <BriefFailureAction
-        prId={prId}
-        reason={failure.reason}
-        deriveLabel={intent ? t("refresh") : t("derive")}
-        busy={busy}
-        onDerive={() => derive.mutate()}
-      />
-    </div>
+    <BriefFailureNotice
+      prId={prId}
+      reason={failure.reason}
+      deriveLabel={intent ? t("refresh") : t("derive")}
+      busy={busy}
+      onDerive={() => derive.mutate()}
+    />
   );
 
   if (!intent) {
+    let emptyBody: React.ReactNode;
+    if (inFlight) {
+      emptyBody = (
+        <div style={shared.muted} role="status">
+          {t("deriving")}
+        </div>
+      );
+    } else if (failureNotice) {
+      emptyBody = failureNotice;
+    } else {
+      emptyBody = (
+        <EmptyState icon="Target" title={t("unavailable")} body={t("unavailableHint")} cta={t("derive")} onCta={() => derive.mutate()} ctaLoading={busy} />
+      );
+    }
     return (
       <section style={shared.card}>
         {heading}
-        {inFlight ? (
-          <div style={shared.muted} role="status">
-            {t("deriving")}
-          </div>
-        ) : failureNotice ? (
-          failureNotice
-        ) : (
-          <EmptyState icon="Target" title={t("unavailable")} body={t("unavailableHint")} cta={t("derive")} onCta={() => derive.mutate()} ctaLoading={busy} />
-        )}
+        {emptyBody}
       </section>
     );
   }
@@ -88,8 +85,8 @@ export function IntentCard({ prId }: { prId: string }) {
             <Badge color={tone.c} bg={tone.bg}>
               {t(`intent.confidence.${intent.confidence}`)}
             </Badge>
-            {stale && <Badge color="var(--warn)" bg="var(--warn-bg)">{t("stale")}</Badge>}
-            {stale && !failure && deriveButton(t("refresh"))}
+            {stale && <Badge color={STALE_COLOR.c} bg={STALE_COLOR.bg}>{t("stale")}</Badge>}
+            {stale && !failure && <DeriveButton busy={busy} label={t("refresh")} onClick={() => derive.mutate()} />}
           </div>
         }
       >
@@ -137,11 +134,20 @@ export function IntentCard({ prId }: { prId: string }) {
         </div>
       )}
 
-      <div style={{ ...shared.muted, ...s.cost }}>
+      <div style={s.costLine}>
         {t("intent.cost")}{" "}
         <RunCostValue usd={intent.cost_usd} source={intent.cost_source} />
       </div>
     </section>
+  );
+}
+
+function DeriveButton({ busy, label, onClick }: { busy: boolean; label: string; onClick: () => void }) {
+  const t = useTranslations("brief");
+  return (
+    <Button kind="secondary" size="sm" icon="Sparkles" loading={busy} disabled={busy} onClick={onClick}>
+      {busy ? t("deriving") : label}
+    </Button>
   );
 }
 

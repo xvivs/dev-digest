@@ -19,10 +19,7 @@ export function BriefSection({ prId }: { prId: string }) {
   const runs = usePrRuns(prId);
   const reviews = usePrReviews(prId);
 
-  const brief = React.useMemo(
-    () => (runs.data && reviews.data ? selectLatestBrief(runs.data, reviews.data) : null),
-    [runs.data, reviews.data],
-  );
+  const brief = runs.data && reviews.data ? selectLatestBrief(runs.data, reviews.data) : null;
 
   const isError = runs.isError || reviews.isError;
   const retry = () => {
