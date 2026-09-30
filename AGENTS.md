@@ -84,6 +84,8 @@ client/src/lib/               api.ts + every data hook in hooks/
 - Read `TESTING.md` before adding a test suite or a CI workflow.
 - Read `e2e/README.md` before running the browser suite — it has a seeded-DB precondition.
 - Read `docs/adr/` before changing anything the ADRs cover.
+- Read `docs/dev-agents.md` before delegating to or changing `.claude/agents/`
+  or `.claude/hooks/agent-guard.mjs`.
 - Read the touched package's `INSIGHTS.md` (or the root one for cross-package
   concerns) before starting work there and note which entries are relevant —
   treat it as high-confidence guidance unless that package's `AGENTS.md` says

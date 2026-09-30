@@ -20,6 +20,8 @@ lives in the engineering-insights skill).
 
 - **Symlinking `node_modules` into a throwaway git worktree fails in three ways; clone it copy-on-write instead (`cp -Rc` on APFS).** (1) `.gitignore`'s `node_modules/` matches directories only, so the symlink is an untracked file and `git add -A` commits it. (2) dependency-cruiser resolves the link to the real checkout's path, so every `.dependency-cruiser-known-violations.json` entry stops matching and `pnpm arch:check` reports 4 false `presentation-no-db` errors. (3) any package-manager auto-install run inside the worktree mutates the real `node_modules`. Clones of all three packages (~930 MB logical) are near-instant and cost almost no disk (`.claude/skills/pr-self-review/evals/_worktree.sh:14`). _(2026-09-28)_
 
+- **Picking the next ADR number from your own branch collides: two parallel branches both took 0019** — `feat/agent-system` added `0019-dev-agent-pipeline.md` while `l02-homework` added `docs/adr/0019-extracted-skill-trust-tier.md`; git merged both without a conflict because the file names differ, so nothing flagged it. The branch merged later renumbers (`docs/adr/0021-dev-agent-pipeline.md:3`). Before numbering an ADR, run `git fetch && git ls-tree --name-only origin/main docs/adr/` and take the next number after both. _(2026-09-30)_
+
 ## Codebase Patterns
 
 - **A cost figure is stored as a pair — value plus `cost_source` ('provider' | 'estimated') — never as a bare number.** Only OpenRouter reports an actual charge (`reviewer-core/src/llm/openrouter.ts`); OpenAI and Anthropic never do, so their figures are always local estimates off `pricing.ts`. One column for both would make `SUM(cost_usd)` silently add invoices to arithmetic. Decision and its constraints: `docs/adr/0002-cost-provenance.md`. _(2026-09-19)_
@@ -38,6 +40,16 @@ lives in the engineering-insights skill).
 - **`pnpm <script>` fails in this environment before the script even starts.** pnpm 11.5.3 via corepack runs a preflight `pnpm install` that exits 1 on `[ERR_PNPM_IGNORED_BUILDS]` (esbuild, sharp) — so `pnpm typecheck` / `pnpm test` look broken while the code is fine. `node_modules` is complete; call the binary directly (`./node_modules/.bin/tsc`, `./node_modules/.bin/vitest`) or run `pnpm approve-builds` once. Affects every package. _(2026-09-19)_
 
 - **`pnpm_config_verify_deps_before_run=false` (the `pnpm_config_` prefix, not `npm_config_`) does skip pnpm 11.5.3's preflight `pnpm install`, so `pnpm typecheck` / `pnpm exec vitest` run even while `allowBuilds` still holds `set this to true or false`** — this is what `.claude/skills/pr-self-review/scripts/self-review.mjs:225` sets for its checks, and it worked here after a merge changed `server/package.json` (every `pnpm <script>` had died with `ERR_PNPM_IGNORED_BUILDS`). It narrows the 2026-09-20 Open Questions conflict: the `npm_config_` spelling is the one that fails. The lasting fix is still `false` for every `allowBuilds` key in the untracked `server/`/`client/pnpm-workspace.yaml` (excluded via `.git/info/exclude`). _(2026-09-30)_
+
+- **Project subagent frontmatter hooks are skipped in `claude -p`, so a headless run cannot test `agent-guard.mjs`** — `claude -p --agent investigator` wrote `server/src/__guard_probe.ts` unblocked, while the same hook passed via `claude -p --agents '<json>' --agent <name>` denied it; definitions from `--agents` skip the workspace-trust requirement. Test guard wiring through `--agents` JSON (see `.claude/hooks/agent-guard.mjs:1`), or interactively after accepting workspace trust. Claude Code 2.1.285. _(2026-09-30)_
+
+- **New files in `.claude/agents/` are not spawnable in the session that created them** — `Agent(subagent_type: "investigator")` returned `Agent type 'investigator' not found` right after `.claude/agents/investigator.md` was written; the roster is read at session start. Restart the session (or use `claude -p --agent <name>` to smoke-test loading). Claude Code 2.1.285. _(2026-09-30)_
+
+- **`Agent(name, …)` in a subagent's `tools` is ignored; `Agent` alone enables spawning any type** — the allowlist form applies only to `claude --agent` main threads (code.claude.com/docs/en/sub-agents, "Restrict which subagents can be spawned"). The allowed children of each dev agent are therefore stated in its prompt body, e.g. `.claude/agents/architecture-reviewer.md:66`. Nesting default is 3 layers since v2.1.219 (was 5 in v2.1.172–216). _(2026-09-30)_
+
+- **Skills are picked up mid-session, agents are not** — `.claude/skills/agent-authoring/SKILL.md` appeared in the Skill tool list right after it was written, while a freshly written `.claude/agents/*.md` stays `not found` until restart. So a new skill can be used to author an agent in the same session, but the agent itself can only be exercised headlessly (`claude -p --agent <name>`, `.claude/skills/agent-authoring/scripts/smoke-guard.mjs`) until the session restarts. Claude Code 2.1.285. _(2026-09-30)_
+
+- **Anthropic's "Claude Code best practices" article no longer lives on anthropic.com — cite `code.claude.com/docs/en/best-practices`** — `curl -sI https://www.anthropic.com/engineering/claude-code-best-practices` returns `308` with `location: https://code.claude.com/docs/en/best-practices`, and the `.md` suffix on the new URL serves greppable markdown. The agent-rule sources in `.claude/agents/README.md:57` use the new address. _(2026-09-30)_
 
 ## Recurring Errors & Fixes
 
@@ -74,6 +86,12 @@ Wrote SPEC-02 and ADR 0012, froze the contracts and the reviewer-core/client-hoo
 
 ### 2026-09-29 — root session
 `scripts/e2e.sh` warms every route the flows open after "web up" (repo id resolved from `/repos`, not hardcoded) and its header no longer claims acme/payments-api is the only seeded repo.
+
+### 2026-09-30 — dev-agents session
+Added 15 Claude Code subagents in `.claude/agents/` with a feature and a refactor chain, nested skeptics (plan-critic, finding-verifier) and a profile-based write guard `.claude/hooks/agent-guard.mjs` with `node --test` coverage. Documented in `docs/dev-agents.md` and ADR 0019. Left: guard hooks unverified in an interactive trusted session, and no orchestrator skill yet to drive the chains.
+
+### 2026-09-30 — .claude/agents session
+Audited the 16 dev agents against a README proposal: roster and chains were already in `docs/dev-agents.md`, but no agent rule cited an external source. Added `.claude/agents/README.md` (map + practice → source → rule → location tables, sources fetched by researcher and spot-checked). Planner now preloads onion-architecture, frontend-architecture and security and loads change-site skills itself before writing a spec; skill table extended for platform, adapters, vendored shared and diagrams. Left: ADR 0019 still says `Status: proposed` and "Fifteen" agents.
 
 ## Open Questions
 

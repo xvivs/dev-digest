@@ -18,6 +18,7 @@ Reusable AI skills that provide specialized knowledge and workflows. Canonical l
 | [typescript-expert](typescript-expert/SKILL.md) | Full-stack | Type-level programming, performance, tooling, migrations |
 | [security](security/SKILL.md) | Full-stack | OWASP Top 10:2025, auth, injection, uploads, secrets |
 | [mermaid-diagram](mermaid-diagram/SKILL.md) | Shared | Mermaid diagrams in markdown (flowcharts, sequence, ERD, …) |
+| [agent-authoring](agent-authoring/SKILL.md) | Workflow | Create/change a dev subagent in `.claude/agents/`: role card, placement and depth, model, tools, guard profile, skills, prompt template, registration, `validate-agents.mjs` + `smoke-guard.mjs` |
 | [pr-self-review](pr-self-review/SKILL.md) | Workflow | Pre-PR gate: reviews the branch diff with the architecture/stack skills + typecheck/tests/arch:check; a hook blocks `git push` / `gh pr create` on any CRITICAL |
 
 ## What Are Skills?
