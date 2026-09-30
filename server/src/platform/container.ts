@@ -35,8 +35,6 @@ import { EvalsRepository } from '../modules/evals/repository.js';
 import type { RepoIntel } from '../modules/repo-intel/types.js';
 import type { PrBriefFacade } from '../modules/brief/types.js';
 import { buildBriefService } from '../modules/brief/wiring.js';
-import { resolveAutomaticBrief } from '../modules/brief/domain.js';
-import { readAutomaticBriefSetting } from '../modules/brief/repository.js';
 import { RepoIntelService } from '../modules/repo-intel/service.js';
 import { type DepGraph, DepCruiseGraph } from '../adapters/depgraph/index.js';
 import { type Tokenizer, TiktokenTokenizer } from '../adapters/tokenizer/index.js';
@@ -168,8 +166,8 @@ export class Container {
    * Effective workspace `automatic_brief` (missing row = ON). Uncached, like
    * `featureModel`: a Settings change applies to the next sync without a restart.
    */
-  async automaticBrief(workspaceId: string): Promise<boolean> {
-    return resolveAutomaticBrief(await readAutomaticBriefSetting(this.db, workspaceId));
+  automaticBrief(workspaceId: string): Promise<boolean> {
+    return this.prBrief.isAutomaticEnabled(workspaceId);
   }
 
   /**

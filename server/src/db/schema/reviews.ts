@@ -34,6 +34,11 @@ type AssertAllBlastReasons = Exclude<BlastReason, (typeof BLAST_REASONS)[number]
 const _allBlastReasons: AssertAllBlastReasons = true;
 void _allBlastReasons;
 
+const inList = (values: readonly string[]) => sql.raw(values.map((v) => `'${v}'`).join(', '));
+const INTENT_CONFIDENCES = ['high', 'medium', 'low'] as const;
+const COST_SOURCES = ['provider', 'estimated'] as const;
+const BLAST_STATUSES = ['ok', 'degraded'] as const;
+
 // ============================================================ Review & findings
 
 export const reviews = pgTable(
@@ -119,7 +124,7 @@ export const prIntent = pgTable('pr_intent', {
   outOfScope: jsonb('out_of_scope').$type<string[]>().notNull().default(sql`'[]'::jsonb`),
   /** The persisted pull_requests.head_sha the intent was derived for (freshness key). */
   headSha: text('head_sha'),
-  confidence: text('confidence', { enum: ['high', 'medium', 'low'] })
+  confidence: text('confidence', { enum: INTENT_CONFIDENCES })
     .notNull()
     .default('low'),
   sources: jsonb('sources').$type<IntentSource[]>().notNull().default(sql`'[]'::jsonb`),
@@ -133,11 +138,16 @@ export const prIntent = pgTable('pr_intent', {
   tokensOut: integer('tokens_out'),
   /** costUsd + costSource are a pair: both null or both set (ADR 0002). */
   costUsd: doublePrecision('cost_usd'),
-  costSource: text('cost_source', { enum: ['provider', 'estimated'] }),
+  costSource: text('cost_source', { enum: COST_SOURCES }),
   derivedAt: timestamp('derived_at', { withTimezone: true }).notNull().defaultNow(),
 },
   (t) => ({
     costPairCheck: check('pr_intent_cost_pair_check', sql`(${t.costUsd} IS NULL) = (${t.costSource} IS NULL)`),
+    costSourceCheck: check(
+      'pr_intent_cost_source_check',
+      sql`${t.costSource} IS NULL OR ${t.costSource} IN (${inList(COST_SOURCES)})`,
+    ),
+    confidenceCheck: check('pr_intent_confidence_check', sql`${t.confidence} IN (${inList(INTENT_CONFIDENCES)})`),
   }),
 );
 
@@ -156,11 +166,15 @@ export const prRisks = pgTable('pr_risks', {
   tokensOut: integer('tokens_out'),
   /** costUsd + costSource are a pair: both null or both set (ADR 0002). */
   costUsd: doublePrecision('cost_usd'),
-  costSource: text('cost_source', { enum: ['provider', 'estimated'] }),
+  costSource: text('cost_source', { enum: COST_SOURCES }),
   derivedAt: timestamp('derived_at', { withTimezone: true }).notNull().defaultNow(),
 },
   (t) => ({
     costPairCheck: check('pr_risks_cost_pair_check', sql`(${t.costUsd} IS NULL) = (${t.costSource} IS NULL)`),
+    costSourceCheck: check(
+      'pr_risks_cost_source_check',
+      sql`${t.costSource} IS NULL OR ${t.costSource} IN (${inList(COST_SOURCES)})`,
+    ),
   }),
 );
 
@@ -174,12 +188,24 @@ export const prBlastCache = pgTable('pr_blast_cache', {
   indexerVersion: integer('indexer_version').notNull(),
   indexStatus: text('index_status', { enum: repoIndexState.status.enumValues }).notNull(),
   repoIntelEnabled: boolean('repo_intel_enabled').notNull(),
-  status: text('status', { enum: ['ok', 'degraded'] }).notNull(),
+  status: text('status', { enum: BLAST_STATUSES }).notNull(),
   reason: text('reason', { enum: BLAST_REASONS }),
   blast: jsonb('blast').$type<BlastRadius>().notNull(),
   truncated: boolean('truncated').notNull().default(false),
   computedAt: timestamp('computed_at', { withTimezone: true }).notNull().defaultNow(),
-});
+},
+  (t) => ({
+    statusCheck: check('pr_blast_cache_status_check', sql`${t.status} IN (${inList(BLAST_STATUSES)})`),
+    reasonCheck: check(
+      'pr_blast_cache_reason_check',
+      sql`${t.reason} IS NULL OR ${t.reason} IN (${inList(BLAST_REASONS)})`,
+    ),
+    indexStatusCheck: check(
+      'pr_blast_cache_index_status_check',
+      sql`${t.indexStatus} IN (${inList(repoIndexState.status.enumValues)})`,
+    ),
+  }),
+);
 
 export const prHistoryCache = pgTable('pr_history_cache', {
   prId: uuid('pr_id')

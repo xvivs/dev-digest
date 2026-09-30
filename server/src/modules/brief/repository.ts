@@ -11,6 +11,7 @@ import type { PrIntentRecord, PrRisksRecord, Provider } from '@devdigest/shared'
 import type { Db } from '../../db/client.js';
 import * as t from '../../db/schema.js';
 import type {
+  BriefSettingsStore,
   BriefStore,
   CostPair,
   IntentWrite,
@@ -77,7 +78,7 @@ function toRisksRecord(r: typeof t.prRisks.$inferSelect): PrRisksRecord {
   };
 }
 
-export class BriefRepository implements BriefStore {
+export class BriefRepository implements BriefStore, BriefSettingsStore {
   constructor(private db: Db) {}
 
   async getIntent(prId: string): Promise<PrIntentRecord | undefined> {
@@ -129,6 +130,10 @@ export class BriefRepository implements BriefStore {
       .insert(t.prRisks)
       .values({ prId, ...values })
       .onConflictDoUpdate({ target: t.prRisks.prId, set: values });
+  }
+
+  readAutomaticSetting(workspaceId: string): Promise<unknown> {
+    return readAutomaticBriefSetting(this.db, workspaceId);
   }
 
   async listScheduleCandidates(workspaceId: string, repoId: string): Promise<ScheduleCandidate[]> {

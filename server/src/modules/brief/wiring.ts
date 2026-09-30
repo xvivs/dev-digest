@@ -7,7 +7,7 @@
  *   GithubSource <- await container.github()
  *   GitSource    <- container.git
  *   ModelsPort   <- container.featureModel + container.llm
- *   SettingsPort <- container.automaticBrief (single owner of the ON default)
+ *   SettingsPort <- BriefRepository.readAutomaticSetting + domain resolveAutomaticBrief (single owner of the ON default)
  *   JobsPort     <- container.briefJobs (concurrency 1, retries 0)
  *   DiffParser   <- container.parseDiff
  *
@@ -18,14 +18,16 @@
 import type { Container } from '../../platform/container.js';
 import { ConfigError } from '../../platform/errors.js';
 import { BRIEF_JOB_KIND } from './constants.js';
+import { resolveAutomaticBrief } from './domain.js';
 import { BriefRepository } from './repository.js';
 import { BriefService } from './service.js';
 import type { DerivePayload } from './types.js';
 
 export function buildBriefService(container: Container): BriefService {
   const review = () => container.reviewRepo;
+  const repo = new BriefRepository(container.db);
   return new BriefService({
-    store: new BriefRepository(container.db),
+    store: repo,
     pulls: {
       getPull: async (workspaceId, prId) => {
         const p = await review().getPull(workspaceId, prId);
@@ -83,7 +85,8 @@ export function buildBriefService(container: Container): BriefService {
         }
       },
     },
-    settings: { autoBrief: (workspaceId) => container.automaticBrief(workspaceId) },
+    // Reads the store directly (NOT container.automaticBrief, which delegates back to this service).
+    settings: { autoBrief: async (workspaceId) => resolveAutomaticBrief(await repo.readAutomaticSetting(workspaceId)) },
     jobs: { enqueue: (workspaceId, payload) => container.briefJobs.enqueue(workspaceId, BRIEF_JOB_KIND, payload) },
     diff: { parse: (raw) => container.parseDiff(raw) },
     // Late-bound: app.ts assigns container.logger after the container is built.

@@ -74,6 +74,8 @@ export interface PrBriefFacade {
   scheduleForPull(workspaceId: string, prId: string, trigger: ImportTrigger): Promise<void>;
   /** Review pre-work: read only, no LLM, no network. */
   readFreshIntent(prId: string, headSha: string): Promise<FreshIntent>;
+  /** Effective workspace `automatic_brief` (missing row = ON). Uncached; does not touch the gate. */
+  isAutomaticEnabled(workspaceId: string): Promise<boolean>;
   /** Job handler entry. Never throws. */
   derive(workspaceId: string, prId: string, payload: DerivePayload): Promise<DeriveOutcome>;
   isInFlight(prId: string): boolean;

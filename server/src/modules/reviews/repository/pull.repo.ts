@@ -1,4 +1,4 @@
-import { and, eq } from 'drizzle-orm';
+import { and, asc, eq } from 'drizzle-orm';
 import type { Db, DbTx } from '../../../db/client.js';
 import * as t from '../../../db/schema.js';
 import type { PullRow } from '../../../db/rows.js';
@@ -36,7 +36,11 @@ export async function getPrCommits(
   db: Db | DbTx,
   prId: string,
 ): Promise<(typeof t.prCommits.$inferSelect)[]> {
-  return db.select().from(t.prCommits).where(eq(t.prCommits.prId, prId));
+  return db
+    .select()
+    .from(t.prCommits)
+    .where(eq(t.prCommits.prId, prId))
+    .orderBy(asc(t.prCommits.committedAt), asc(t.prCommits.sha));
 }
 
 /** Persist the GitHub PR-detail refresh: body, diff stats and the current head SHA. */

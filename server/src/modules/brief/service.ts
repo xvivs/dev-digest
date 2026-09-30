@@ -268,6 +268,10 @@ export class BriefService implements PrBriefFacade {
 
   // ============================================================ gate + bookkeeping
 
+  isAutomaticEnabled(workspaceId: string): Promise<boolean> {
+    return this.deps.settings.autoBrief(workspaceId);
+  }
+
   /** Env kill-switch AND the workspace toggle AND a configured `review_intent` provider. */
   private async automaticGate(workspaceId: string): Promise<boolean> {
     if (!this.deps.autoBriefEnabled) return false;

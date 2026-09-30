@@ -81,6 +81,11 @@ export interface SettingsPort {
   autoBrief(workspaceId: string): Promise<boolean>;
 }
 
+/** Raw `settings.automatic_brief` read; the default is applied by the domain, not here. */
+export interface BriefSettingsStore {
+  readAutomaticSetting(workspaceId: string): Promise<unknown>;
+}
+
 export interface JobsPort {
   enqueue(workspaceId: string, payload: DerivePayload): Promise<{ done: Promise<void> }>;
 }
