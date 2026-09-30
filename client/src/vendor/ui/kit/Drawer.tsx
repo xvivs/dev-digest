@@ -1,6 +1,6 @@
 import React from "react";
 import { IconBtn } from "../primitives";
-import { useDialogFocus } from "../hooks";
+import { useDialogFocus, usePrefersReducedMotion } from "../hooks";
 
 export function Drawer({
   width = 720,
@@ -12,6 +12,10 @@ export function Drawer({
   footer,
   ariaLabel,
   closeLabel = "Close",
+  id,
+  reveal,
+  exiting = false,
+  topInset,
 }: {
   width?: number;
   /** Edge the panel slides in from. Default `"right"`. */
@@ -26,19 +30,52 @@ export function Drawer({
   ariaLabel?: string;
   /** Accessible name of the close button — pass a translated string. */
   closeLabel?: string;
+  /** Id of the dialog element (for a trigger's `aria-controls`). */
+  id?: string;
+  /**
+   * Viewport point (px) the panel grows out of (`clip-path: circle()`), instead
+   * of sliding in. Reduced motion swaps the reveal for a short opacity fade.
+   */
+  reveal?: { x: number; y: number } | null;
+  /**
+   * With `reveal`: play the exit animation and stop trapping focus / handling
+   * Escape (focus returns to the opener at once). The host unmounts afterwards.
+   */
+  exiting?: boolean;
+  /** Minimum header height (px), e.g. to leave room for a trigger layered over the top-left. */
+  topInset?: number;
 }) {
   const titleId = React.useId();
   const subtitleId = React.useId();
-  const dialogRef = useDialogFocus<HTMLDivElement>({ onClose });
+  const revealing = !!reveal;
+  const reduced = usePrefersReducedMotion();
+  const closing = revealing && exiting;
+  const dialogRef = useDialogFocus<HTMLDivElement>({ onClose, open: !closing });
   const left = side === "left";
+  const EASE = "cubic-bezier(.2,.7,.3,1)";
+  const panelAnimation = !revealing
+    ? `${left ? "ddslideinleft" : "ddslidein"} .2s ${EASE}`
+    : reduced
+      ? `${closing ? "ddfadeout" : "ddfadein"} .15s ease both`
+      : `${closing ? "ddrevealout" : "ddrevealin"} .42s ease-out ${closing ? "forwards" : "none"}`;
+  const backdropAnimation = !revealing
+    ? "ddfadein .15s ease"
+    : `${closing ? "ddfadeout" : "ddfadein"} ${reduced ? ".15s" : ".42s"} ease-out both`;
   return (
     <div style={{ position: "fixed", inset: 0, display: "flex", justifyContent: left ? "flex-start" : "flex-end", zIndex: 50 }}>
       <div
         onClick={onClose}
-        style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.45)", animation: "ddfadein .15s ease" }}
+        style={{
+          position: "absolute",
+          inset: 0,
+          background: "rgba(0,0,0,0.45)",
+          animation: backdropAnimation,
+          pointerEvents: closing ? "none" : undefined,
+        }}
       />
       <div
         ref={dialogRef}
+        id={id}
         role="dialog"
         aria-modal="true"
         aria-labelledby={title ? titleId : undefined}
@@ -55,15 +92,21 @@ export function Drawer({
           display: "flex",
           flexDirection: "column",
           outline: "none",
-          animation: `${left ? "ddslideinleft" : "ddslidein"} .2s cubic-bezier(.2,.7,.3,1)`,
+          animation: panelAnimation,
+          ...(reveal
+            ? ({ "--origin-x": `${reveal.x}px`, "--origin-y": `${reveal.y}px` } as React.CSSProperties)
+            : null),
+          ...(closing ? { pointerEvents: "none" } : null),
         }}
       >
         <div
           style={{
             display: "flex",
-            alignItems: "flex-start",
+            alignItems: topInset ? "center" : "flex-start",
             gap: 14,
-            padding: "18px 24px",
+            padding: topInset ? "0 24px" : "18px 24px",
+            minHeight: topInset,
+            boxSizing: "border-box",
             borderBottom: "1px solid var(--border)",
           }}
         >

@@ -32,7 +32,10 @@ import {
   Skeleton,
   Markdown,
   Drawer,
+  Logo,
+  LogoTrigger,
   NAV_DRAWER_WIDTH,
+  TOPBAR_HEIGHT,
   SidebarContent,
   Modal,
   Tabs,
@@ -71,6 +74,7 @@ export function Gallery() {
   const [sel, setSel] = React.useState("gpt-4.1");
   const [drawer, setDrawer] = React.useState(false);
   const [leftDrawer, setLeftDrawer] = React.useState(false);
+  const [revealDrawer, setRevealDrawer] = React.useState(false);
   const [modal, setModal] = React.useState(false);
   const [collapsed, setCollapsed] = React.useState(true);
   const [pressed, setPressed] = React.useState(false);
@@ -295,9 +299,20 @@ export function Gallery() {
         <Button kind="ghost" onClick={() => setLeftDrawer(true)}>
           Open left Drawer
         </Button>
+        <Button kind="ghost" onClick={() => setRevealDrawer(true)}>
+          Open reveal Drawer
+        </Button>
         <Button kind="ghost" onClick={() => setModal(true)}>
           Open Modal
         </Button>
+      </Group>
+
+      <Group title="Logo">
+        <Logo />
+        <Logo size="sm" />
+        {/* The trigger is mobile-only (dd-show-below-md): visible below 768px. */}
+        <LogoTrigger ctx={{ onToggleNav: () => {}, navOpen: false }} />
+        <LogoTrigger ctx={{ onToggleNav: () => {}, navOpen: true }} />
       </Group>
 
       <Group title="Charts (Recharts)">
@@ -352,6 +367,18 @@ export function Gallery() {
       )}
       {leftDrawer && (
         <Drawer side="left" width={NAV_DRAWER_WIDTH} title="Navigation" onClose={() => setLeftDrawer(false)}>
+          <SidebarContent ctx={{}} />
+        </Drawer>
+      )}
+      {revealDrawer && (
+        <Drawer
+          side="left"
+          width={NAV_DRAWER_WIDTH}
+          title="Navigation"
+          reveal={{ x: 35, y: TOPBAR_HEIGHT / 2 }}
+          topInset={TOPBAR_HEIGHT}
+          onClose={() => setRevealDrawer(false)}
+        >
           <SidebarContent ctx={{}} />
         </Drawer>
       )}

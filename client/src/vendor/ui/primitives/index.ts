@@ -20,3 +20,4 @@ export { EmptyState } from "./EmptyState";
 export { Skeleton } from "./Skeleton";
 export { ErrorState } from "./ErrorState";
 export { Markdown } from "./Markdown";
+export { VisuallyHidden } from "./VisuallyHidden";

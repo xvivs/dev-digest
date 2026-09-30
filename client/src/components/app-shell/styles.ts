@@ -1,14 +1,16 @@
 import type { CSSProperties } from "react";
+import { TOPBAR_HEIGHT } from "@devdigest/ui";
 
-/** Screen-reader-only text: keeps the nav dialog's accessible name while the logo is the visible title. */
-export const visuallyHidden: CSSProperties = {
-  position: "absolute",
-  width: 1,
-  height: 1,
-  margin: -1,
-  padding: 0,
-  overflow: "hidden",
-  clip: "rect(0 0 0 0)",
-  whiteSpace: "nowrap",
-  border: 0,
+/** Drawer header keeps the Topbar's height so the layered logo trigger sits over it, not over content. */
+export const DRAWER_TOP_INSET = TOPBAR_HEIGHT;
+
+/** "Home" row at the top of the drawer body: on mobile nothing else links to "/". */
+export const homeRow: CSSProperties = {
+  display: "block",
+  padding: "10px 14px",
+  margin: "0 0 5px",
+  borderRadius: 6,
+  fontSize: 14,
+  fontWeight: 500,
+  color: "var(--text-secondary)",
 };

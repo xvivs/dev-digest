@@ -228,3 +228,21 @@ Human decision (Vlad), mobile widths only (below 768px); desktop unchanged.
 - **Drawer:** the visible "Navigation" title is replaced by the logo in the drawer header. The dialog keeps its accessible name from `shell.navDrawer.title`, rendered as visually hidden text next to the logo inside the `Drawer` title (the `Drawer` API is unchanged: other callers pass both `title` and `ariaLabel`). `SidebarContent` gets `hideLogo` so the logo is not repeated inside the drawer body.
 - **Reuse:** the logo markup moved from `SidebarContent` into `vendor/ui/shell/Logo.tsx` (exported from `@devdigest/ui`), used by the sidebar, Topbar and drawer.
 - **Tests:** `shell/Topbar.test.tsx`, `components/app-shell/AppShell.test.tsx`.
+
+## Amendment 2026-10-01 (b): animated logo trigger
+
+Supersedes amendment (a) (centered logo, logo in the drawer header). Human decision (Vlad), below md (767px) only; desktop unchanged.
+
+1. **Trigger:** the mobile Topbar shows the Logo (mark + wordmark) on the LEFT in place of the hamburger. It is a `<button>` (`aria-label` from `shell.topbar.openNav` / `closeNav`, `aria-expanded`, `aria-controls` = drawer id, min 44x44 hit area, `dd-show-below-md`). Crumbs and the bell stay hidden below md. Width check: logo 12 + ~121 px, right-hand icons ~102 px, so the full wordmark fits at 320px and is not truncated.
+2. **Spin:** on hover, `:focus-visible` and `:active` only the mark rotates 360deg, 600ms, `cubic-bezier(.34,1.56,.64,1)`. Open state: the mark rests at 90deg (hamburger-to-X morph); closing rotates it back.
+3. **Open animation:** the drawer panel reveals with `clip-path: circle()` from the mark's centre (read from `getBoundingClientRect` at click time, passed as `--origin-x` / `--origin-y`), `circle(0)` to `circle(150vmax)`, 420ms ease-out; the backdrop fades in. Closing reverses it. `AppShell` keeps the drawer mounted until the exit finishes (`exiting` prop on `Drawer`); the focus trap is released at once (`useDialogFocus({ open: !exiting })`), which also returns focus to the trigger.
+4. **Same place:** the trigger is layered above the drawer and backdrop (z-index) and stays clickable to close. The logo is removed from the drawer header (no double logo); the header keeps the Topbar height (`topInset`) so nothing sits under the logo; it holds a visible close button. Esc and backdrop tap close. The dialog's accessible name is exactly "Navigation" (visually hidden title via the new `VisuallyHidden` primitive).
+5. **Reduced motion:** no spin, no clip-path; a plain opacity fade (150ms, then collapsed to ~0 by the global reduce rule). The JS branch uses `usePrefersReducedMotion` (`matchMedia`).
+6. **No new dependencies.** CSS keyframes in `styles.css`, minimal React state. No new `!important`.
+
+Architecture follow-ups folded in (AR-1..AR-6):
+- AR-2: `hideLogo` is gone. The `<Link href="/"><Logo/></Link>` row moved from `SidebarContent` to `Sidebar` (desktop). On mobile the way home is a "Home" row at the top of the drawer body (`shell.navDrawer.home`), below the reserved logo area; it closes the nav on click.
+- AR-3: `VisuallyHidden` primitive in `@devdigest/ui`; the `app-shell/styles.ts` copy is deleted. The other copies (SkillsTab, CaseEditorModal, EvidenceBlock) are a follow-up.
+- AR-5: `Logo` renders `<span>`s so it is valid inside a `<button>`.
+- AR-6: Showcase gains the Logo sizes, the logo trigger (closed/open) and the reveal drawer.
+- `ShellContext.onOpenNav` becomes `onToggleNav(origin)` plus `navOpen`, `navDrawerId`, `labels.closeNav`.

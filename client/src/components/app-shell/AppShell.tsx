@@ -10,14 +10,19 @@ import { useTranslations } from "next-intl";
 import {
   AppFrame,
   CommandPalette,
+  DefaultLink,
   Drawer,
-  Logo,
   NAV_DRAWER_WIDTH,
   ShortcutsHelp,
   SidebarContent,
+  VisuallyHidden,
+  usePrefersReducedMotion,
   type Crumb,
+  type NavOrigin,
+  type ShellContext,
 } from "@devdigest/ui";
-import { visuallyHidden } from "./styles";
+import { NAV_EXIT_MS, NAV_EXIT_REDUCED_MS } from "./constants";
+import { DRAWER_TOP_INSET, homeRow } from "./styles";
 import { useGlobalShortcuts, useShellCommands, useShellContext } from "./hooks";
 
 export function AppShell({ children, crumb }: { children: React.ReactNode; crumb?: Crumb[] }) {
@@ -29,44 +34,77 @@ export function AppShell({ children, crumb }: { children: React.ReactNode; crumb
   const closeHelp = React.useCallback(() => setHelpOpen(false), []);
   const t = useTranslations("shell");
   const pathname = usePathname();
-  const [navOpen, setNavOpen] = React.useState(false);
+  // "closing" keeps the drawer mounted while its exit animation plays.
+  const [navStatus, setNavStatus] = React.useState<"closed" | "open" | "closing">("closed");
+  const [navOrigin, setNavOrigin] = React.useState<NavOrigin | null>(null);
   const [prevPathname, setPrevPathname] = React.useState(pathname);
-  const openNav = React.useCallback(() => setNavOpen(true), []);
-  const closeNav = React.useCallback(() => setNavOpen(false), []);
+  const navDrawerId = React.useId();
+  const reducedMotion = usePrefersReducedMotion();
+  const navOpen = navStatus === "open";
+  const closeNav = React.useCallback(() => setNavStatus((s) => (s === "open" ? "closing" : s)), []);
+  const toggleNav = React.useCallback(
+    (origin: NavOrigin) => {
+      if (navOpen) return closeNav();
+      setNavOrigin(origin);
+      setNavStatus("open");
+    },
+    [navOpen, closeNav],
+  );
   // Close the drawer on any route change (repo switch, g-chord, Back): adjust
   // state during render rather than in an effect.
   if (pathname !== prevPathname) {
     setPrevPathname(pathname);
-    setNavOpen(false);
+    setNavStatus("closed");
   }
+  // Unmount once the exit animation is over (timer = external system).
+  React.useEffect(() => {
+    if (navStatus !== "closing") return;
+    const id = setTimeout(() => setNavStatus("closed"), reducedMotion ? NAV_EXIT_REDUCED_MS : NAV_EXIT_MS);
+    return () => clearTimeout(id);
+  }, [navStatus, reducedMotion]);
 
   useGlobalShortcuts({ onOpenPalette: openPalette, onOpenHelp: openHelp });
   const commands = useShellCommands();
-  const ctx = useShellContext({ onOpenCommandPalette: openPalette, onOpenNav: openNav });
+  const ctx = useShellContext({
+    onOpenCommandPalette: openPalette,
+    onToggleNav: toggleNav,
+    navOpen,
+    navDrawerId,
+  });
 
   return (
     <>
       <AppFrame ctx={ctx} crumb={crumb}>
         {children}
       </AppFrame>
-      {navOpen && (
+      {navStatus !== "closed" && (
         <Drawer
+          id={navDrawerId}
           side="left"
           width={NAV_DRAWER_WIDTH}
-          title={
-            <>
-              <Logo />
-              <span style={visuallyHidden}>{t("navDrawer.title")}</span>
-            </>
-          }
+          title={<VisuallyHidden>{t("navDrawer.title")}</VisuallyHidden>}
           closeLabel={t("ui.close")}
           onClose={closeNav}
+          reveal={navOrigin}
+          exiting={navStatus === "closing"}
+          topInset={DRAWER_TOP_INSET}
         >
-          <SidebarContent ctx={ctx} onNavigate={closeNav} hideLogo />
+          <Home ctx={ctx} label={t("navDrawer.home")} onNavigate={closeNav} />
+          <SidebarContent ctx={ctx} onNavigate={closeNav} />
         </Drawer>
       )}
       <CommandPalette open={paletteOpen} commands={commands} onClose={closePalette} />
       <ShortcutsHelp open={helpOpen} onClose={closeHelp} />
     </>
+  );
+}
+
+/** Way home on mobile, where the Topbar logo is the nav trigger rather than a link. */
+function Home({ ctx, label, onNavigate }: { ctx: ShellContext; label: string; onNavigate: () => void }) {
+  const Link = ctx.Link ?? DefaultLink;
+  return (
+    <Link href="/" onClick={onNavigate} style={homeRow}>
+      {label}
+    </Link>
   );
 }

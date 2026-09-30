@@ -2,7 +2,7 @@ import React from "react";
 import { Icon } from "../icons";
 import { IconBtn, Avatar, Kbd } from "../primitives";
 import { DefaultLink } from "./DefaultLink";
-import { Logo } from "./Logo";
+import { LogoTrigger } from "./LogoTrigger";
 import type { ShellContext, Crumb } from "./types";
 
 /** Topbar height (px). Screens that fill the viewport under it subtract this. */
@@ -21,31 +21,9 @@ export function Topbar({ ctx, crumb = [] }: { ctx: ShellContext; crumb?: Crumb[]
         alignItems: "center",
         gap: "var(--dd-topbar-gap)",
         padding: "0 var(--dd-topbar-pad-x)",
-        position: "relative",
       }}
     >
-      {ctx.onOpenNav && (
-        <IconBtn
-          icon="Menu"
-          label={ctx.labels?.openNav ?? "Open navigation"}
-          className="dd-show-below-md"
-          hasPopup="dialog"
-          onClick={ctx.onOpenNav}
-        />
-      )}
-      {/* Below md the logo is centered in the header; crumbs would collide with it, so they hide. */}
-      <div
-        className="dd-show-below-md"
-        style={{
-          position: "absolute",
-          left: "50%",
-          top: "50%",
-          transform: "translate(-50%, -50%)",
-          pointerEvents: "none",
-        }}
-      >
-        <Logo size="sm" />
-      </div>
+      {ctx.onToggleNav && <LogoTrigger ctx={ctx} />}
       <div
         className="dd-hide-below-md"
         style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, flex: "1 1 auto", overflow: "hidden" }}
