@@ -38,8 +38,22 @@ function segments(command) {
     .filter(Boolean);
 }
 
+// Redirects (`2>&1`, `>log`, `> log`, `&>/dev/null`, `<in`) are shell syntax,
+// not arguments: left in, `git push origin HEAD 2>&1` read `2>&1` as a refspec.
+const REDIRECT = /^(\d*|&)(>>?|<)(.*)$/;
+
 function tokens(segment) {
-  return segment.split(/\s+/).filter(Boolean);
+  const out = [];
+  const raw = segment.split(/\s+/).filter(Boolean);
+  for (let i = 0; i < raw.length; i++) {
+    const m = raw[i].match(REDIRECT);
+    if (!m) {
+      out.push(raw[i]);
+      continue;
+    }
+    if (m[3] === '') i++; // operator and target are separate tokens: `> log`
+  }
+  return out;
 }
 
 // Returns { kind: 'git', sub, args, dir } | { kind: 'gh-pr-create', args } | null

@@ -59,6 +59,11 @@ expect 2 "git push origin other:other" "не з поточної гілки"
 expect 2 "git push --all" "--all"
 expect 2 'git add . && git commit -m "wip" && git push' "змінює HEAD"
 expect 2 "gh pr create --head someone:other" "не з поточної гілки"
+# shell redirects are not refspecs: they must reach the stamp check, not the branch check
+expect 2 "git push -u origin HEAD 2>&1 | tail -5" "/pr-self-review"
+expect 2 "git push origin HEAD > /tmp/push.log 2>&1" "/pr-self-review"
+expect 2 "git push 2>/dev/null" "/pr-self-review"
+expect 2 "git push origin other:other 2>&1" "не з поточної гілки"
 
 echo "-- BLOCK stamp"
 stamp BLOCK
@@ -69,6 +74,9 @@ stamp PASS
 expect 0 "git push"
 expect 0 "gh pr create --fill"
 expect 2 'git commit --amend --no-edit && git push' "змінює HEAD"
+expect 0 "git push -u origin HEAD 2>&1 | tail -5"
+expect 0 "git push origin HEAD >/tmp/push.log 2>&1"
+expect 0 "git push &> /dev/null"
 
 echo "-- new commit after PASS"
 echo "export const EVAL_HOOK_2 = 2;" >> "$EVAL_WT/reviewer-core/src/eval-hook.ts"
