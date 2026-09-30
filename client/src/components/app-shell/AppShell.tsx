@@ -10,8 +10,10 @@ import { useTranslations } from "next-intl";
 import {
   AppFrame,
   CommandPalette,
-  DefaultLink,
+  DRAWER_FADE_MS,
+  DRAWER_REVEAL_MS,
   Drawer,
+  HomeNavItem,
   NAV_DRAWER_WIDTH,
   ShortcutsHelp,
   SidebarContent,
@@ -19,10 +21,8 @@ import {
   usePrefersReducedMotion,
   type Crumb,
   type NavOrigin,
-  type ShellContext,
 } from "@devdigest/ui";
-import { NAV_EXIT_MS, NAV_EXIT_REDUCED_MS } from "./constants";
-import { DRAWER_TOP_INSET, homeRow } from "./styles";
+import { DRAWER_TOP_INSET } from "./styles";
 import { useGlobalShortcuts, useShellCommands, useShellContext } from "./hooks";
 
 export function AppShell({ children, crumb }: { children: React.ReactNode; crumb?: Crumb[] }) {
@@ -59,7 +59,7 @@ export function AppShell({ children, crumb }: { children: React.ReactNode; crumb
   // Unmount once the exit animation is over (timer = external system).
   React.useEffect(() => {
     if (navStatus !== "closing") return;
-    const id = setTimeout(() => setNavStatus("closed"), reducedMotion ? NAV_EXIT_REDUCED_MS : NAV_EXIT_MS);
+    const id = setTimeout(() => setNavStatus("closed"), reducedMotion ? DRAWER_FADE_MS : DRAWER_REVEAL_MS);
     return () => clearTimeout(id);
   }, [navStatus, reducedMotion]);
 
@@ -85,26 +85,15 @@ export function AppShell({ children, crumb }: { children: React.ReactNode; crumb
           title={<VisuallyHidden>{t("navDrawer.title")}</VisuallyHidden>}
           closeLabel={t("ui.close")}
           onClose={closeNav}
-          reveal={navOrigin}
-          exiting={navStatus === "closing"}
+          motion={navOrigin ? { kind: "reveal", origin: navOrigin, exiting: navStatus === "closing" } : undefined}
           topInset={DRAWER_TOP_INSET}
         >
-          <Home ctx={ctx} label={t("navDrawer.home")} onNavigate={closeNav} />
+          <HomeNavItem ctx={ctx} label={t("navDrawer.home")} active={pathname === "/"} onNavigate={closeNav} />
           <SidebarContent ctx={ctx} onNavigate={closeNav} />
         </Drawer>
       )}
       <CommandPalette open={paletteOpen} commands={commands} onClose={closePalette} />
       <ShortcutsHelp open={helpOpen} onClose={closeHelp} />
     </>
-  );
-}
-
-/** Way home on mobile, where the Topbar logo is the nav trigger rather than a link. */
-function Home({ ctx, label, onNavigate }: { ctx: ShellContext; label: string; onNavigate: () => void }) {
-  const Link = ctx.Link ?? DefaultLink;
-  return (
-    <Link href="/" onClick={onNavigate} style={homeRow}>
-      {label}
-    </Link>
   );
 }

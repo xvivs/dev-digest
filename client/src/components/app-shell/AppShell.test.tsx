@@ -3,6 +3,7 @@ import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import { screen, cleanup, fireEvent, within, act } from "@testing-library/react";
 import { renderWithProviders } from "@/test/render";
 import shellMessages from "../../../messages/en/shell.json";
+import { DRAWER_FADE_MS, DRAWER_REVEAL_MS } from "@devdigest/ui";
 import { AppShell } from "./AppShell";
 
 vi.mock("next/navigation", () => ({ usePathname: () => "/" }));
@@ -84,7 +85,7 @@ describe("AppShell logo trigger", () => {
     fireEvent.click(trigger());
     expect(trigger()).toHaveAttribute("aria-expanded", "false");
     expect(screen.getByRole("dialog").style.animation).toContain("ddrevealout");
-    settle(420);
+    settle(DRAWER_REVEAL_MS);
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
@@ -95,7 +96,7 @@ describe("AppShell logo trigger", () => {
     expect(trigger()).not.toHaveFocus(); // focus moved into the dialog
     fireEvent.keyDown(document, { key: "Escape" });
     expect(trigger()).toHaveFocus();
-    settle(420);
+    settle(DRAWER_REVEAL_MS);
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
@@ -103,20 +104,20 @@ describe("AppShell logo trigger", () => {
     renderShell();
     fireEvent.click(trigger());
     fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Close" }));
-    settle(420);
+    settle(DRAWER_REVEAL_MS);
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 
     fireEvent.click(trigger());
     const home = within(screen.getByRole("dialog")).getByRole("link", { name: "Home" });
     expect(home).toHaveAttribute("href", "/");
     fireEvent.click(home);
-    settle(420);
+    settle(DRAWER_REVEAL_MS);
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 
     fireEvent.click(trigger());
     const dialog = screen.getByRole("dialog");
     fireEvent.click(dialog.previousElementSibling as HTMLElement);
-    settle(420);
+    settle(DRAWER_REVEAL_MS);
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
@@ -129,7 +130,7 @@ describe("AppShell logo trigger", () => {
     expect(dialog.style.animation).not.toContain("reveal");
     fireEvent.click(trigger());
     expect(screen.getByRole("dialog").style.animation).toContain("ddfadeout");
-    settle(150);
+    settle(DRAWER_FADE_MS);
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 });

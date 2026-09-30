@@ -2,6 +2,10 @@ import React from "react";
 import { IconBtn } from "../primitives";
 import { useDialogFocus, usePrefersReducedMotion } from "../hooks";
 
+/** Reveal (clip-path) and fade durations, ms. Hosts keep the drawer mounted this long while `exiting`. */
+export const DRAWER_REVEAL_MS = 420;
+export const DRAWER_FADE_MS = 150;
+
 export function Drawer({
   width = 720,
   side = "right",
@@ -13,8 +17,7 @@ export function Drawer({
   ariaLabel,
   closeLabel = "Close",
   id,
-  reveal,
-  exiting = false,
+  motion,
   topInset,
 }: {
   width?: number;
@@ -33,34 +36,33 @@ export function Drawer({
   /** Id of the dialog element (for a trigger's `aria-controls`). */
   id?: string;
   /**
-   * Viewport point (px) the panel grows out of (`clip-path: circle()`), instead
-   * of sliding in. Reduced motion swaps the reveal for a short opacity fade.
+   * Default: slide in from `side`. `reveal`: the panel grows out of `origin`
+   * (viewport px, `clip-path: circle()`); reduced motion swaps that for a short
+   * opacity fade. While `exiting` the exit animation plays and focus / Escape
+   * handling stop (focus returns to the opener at once); the host unmounts
+   * after `DRAWER_REVEAL_MS` (`DRAWER_FADE_MS` under reduced motion).
    */
-  reveal?: { x: number; y: number } | null;
-  /**
-   * With `reveal`: play the exit animation and stop trapping focus / handling
-   * Escape (focus returns to the opener at once). The host unmounts afterwards.
-   */
-  exiting?: boolean;
+  motion?: { kind: "reveal"; origin: { x: number; y: number }; exiting: boolean };
   /** Minimum header height (px), e.g. to leave room for a trigger layered over the top-left. */
   topInset?: number;
 }) {
   const titleId = React.useId();
   const subtitleId = React.useId();
-  const revealing = !!reveal;
+  const reveal = motion?.origin;
+  const revealing = !!motion;
   const reduced = usePrefersReducedMotion();
-  const closing = revealing && exiting;
+  const closing = !!motion?.exiting;
   const dialogRef = useDialogFocus<HTMLDivElement>({ onClose, open: !closing });
   const left = side === "left";
   const EASE = "cubic-bezier(.2,.7,.3,1)";
   const panelAnimation = !revealing
     ? `${left ? "ddslideinleft" : "ddslidein"} .2s ${EASE}`
     : reduced
-      ? `${closing ? "ddfadeout" : "ddfadein"} .15s ease both`
-      : `${closing ? "ddrevealout" : "ddrevealin"} .42s ease-out ${closing ? "forwards" : "none"}`;
+      ? `${closing ? "ddfadeout" : "ddfadein"} ${DRAWER_FADE_MS}ms ease both`
+      : `${closing ? "ddrevealout" : "ddrevealin"} ${DRAWER_REVEAL_MS}ms ease-out ${closing ? "forwards" : "none"}`;
   const backdropAnimation = !revealing
     ? "ddfadein .15s ease"
-    : `${closing ? "ddfadeout" : "ddfadein"} ${reduced ? ".15s" : ".42s"} ease-out both`;
+    : `${closing ? "ddfadeout" : "ddfadein"} ${reduced ? DRAWER_FADE_MS : DRAWER_REVEAL_MS}ms ease-out both`;
   return (
     <div style={{ position: "fixed", inset: 0, display: "flex", justifyContent: left ? "flex-start" : "flex-end", zIndex: 50 }}>
       <div

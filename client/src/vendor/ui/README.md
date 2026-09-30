@@ -26,11 +26,11 @@ components live as flat files at the root.
 | Layer | Folder | What's in it |
 |-------|--------|--------------|
 | **Tokens** | `primitives/tokens.ts` | `Severity`/`Category` (typed from `@devdigest/shared`, ADR 0008), the `SEV` & `CAT` maps (color + icon + label), `SEVERITY_ORDER`/`SEVERITY_RANK`/`compareSeverity`, `ButtonProps` |
-| **Primitives** | `primitives/` | `Button`, `IconBtn`, `Badge`/`SeverityBadge`/`CategoryTag`, `Chip`, `Avatar`, `ConfidenceNum`, `MonoLink`, `ProgressBar`/`PercentProgress`, `CircularScore`, `Toggle`, `Kbd`, `SectionLabel`, `Card`, `Collapse`, `Disclosure`/`DisclosureChevron`, `RowAction`, `EmptyState`, `Skeleton`, `ErrorState`, `Markdown` |
+| **Primitives** | `primitives/` | `Button`, `IconBtn`, `Badge`/`SeverityBadge`/`CategoryTag`, `Chip`, `Avatar`, `ConfidenceNum`, `MonoLink`, `ProgressBar`/`PercentProgress`, `CircularScore`, `Toggle`, `Kbd`, `SectionLabel`, `Card`, `Collapse`, `Disclosure`/`DisclosureChevron`, `RowAction`, `EmptyState`, `Skeleton`, `ErrorState`, `Markdown`, `VisuallyHidden` |
 | **Kit** | `kit/` | `Drawer`, `Modal`, `Tabs`, `Dropdown`, `FormField`, `TextInput`, `SelectInput`, `SearchableSelect`, `Textarea`, `Checkbox` |
-| **Hooks** | `hooks/` | `useDialogFocus` (focus in, Tab trap, Escape, focus restore; ADR 0009) |
+| **Hooks** | `hooks/` | `useDialogFocus` (focus in, Tab trap, Escape, focus restore; ADR 0009), `usePrefersReducedMotion` |
 | **Charts** | `charts/` | `Sparkline`, `LineChart`, `Donut`, `BarRow`, `MetricCard` (Recharts + lightweight inline SVG) |
-| **Shell** | `shell/` | `AppFrame`, `Sidebar`, `Topbar`, `NavItem`, `RepoSwitcher`, `SidebarContent` — the app frame |
+| **Shell** | `shell/` | `AppFrame`, `Sidebar`, `Topbar`, `NavItem`, `HomeNavItem`, `Logo`, `LogoTrigger`, `RepoSwitcher`, `SidebarContent` — the app frame |
 | **Command palette** | `command-palette/` | `CommandPalette` (Cmd+K), `ShortcutsHelp` (`?`) |
 | **Icons** | `icons.tsx` | `Icon` registry + `IconName` type (single source; not split) |
 | **Nav** | `nav.ts` | `NAV`, `SETTINGS_SECTIONS`, `SHORTCUTS`, `resolveHref()` — route/shortcut config |

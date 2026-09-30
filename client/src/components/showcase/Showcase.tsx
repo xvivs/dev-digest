@@ -33,6 +33,7 @@ import {
   Markdown,
   Drawer,
   Logo,
+  VisuallyHidden,
   LogoTrigger,
   NAV_DRAWER_WIDTH,
   TOPBAR_HEIGHT,
@@ -315,6 +316,12 @@ export function Gallery() {
         <LogoTrigger ctx={{ onToggleNav: () => {}, navOpen: true }} />
       </Group>
 
+      <Group title="VisuallyHidden">
+        <span>
+          Screen-reader-only text follows this caption: <VisuallyHidden>hidden label</VisuallyHidden>
+        </span>
+      </Group>
+
       <Group title="Charts (Recharts)">
         <Sparkline data={[3, 5, 2, 8, 6, 9, 7]} />
         <div style={s.w360}>
@@ -375,7 +382,7 @@ export function Gallery() {
           side="left"
           width={NAV_DRAWER_WIDTH}
           title="Navigation"
-          reveal={{ x: 35, y: TOPBAR_HEIGHT / 2 }}
+          motion={{ kind: "reveal", origin: { x: 35, y: TOPBAR_HEIGHT / 2 }, exiting: false }}
           topInset={TOPBAR_HEIGHT}
           onClose={() => setRevealDrawer(false)}
         >
