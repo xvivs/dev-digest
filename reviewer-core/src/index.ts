@@ -18,6 +18,7 @@ export {
   neutralizeDelimiters,
   newPromptNonce,
   type PromptParts,
+  type IntentInput,
   type AssembledPrompt,
 } from './prompt.js';
 

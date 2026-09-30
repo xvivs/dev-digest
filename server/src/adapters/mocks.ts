@@ -17,6 +17,8 @@ import type {
   OpenPrPayload,
   CommitFilesPayload,
   IssueMeta,
+  PathHistoryRow,
+  ReadFileAtRefResult,
   GitClient,
   CloneOptions,
   UnifiedDiff,
@@ -128,6 +130,8 @@ export interface MockGitHubOptions {
   login?: string;
   /** Existing inline review comments returned by listReviewComments. */
   comments?: PrReviewComment[];
+  /** path -> rows returned by listPathHistory for that path. */
+  pathHistory?: Record<string, PathHistoryRow[]>;
 }
 
 export class MockGitHubClient implements GitHubClient {
@@ -237,6 +241,16 @@ export class MockGitHubClient implements GitHubClient {
     return { number: n, title: `Issue #${n}`, body: 'mock issue', state: 'open' };
   }
 
+  async listPathHistory(
+    _repo: RepoRef,
+    _ref: string,
+    paths: string[],
+    _perPath: number,
+  ): Promise<PathHistoryRow[]> {
+    const map = this.opts.pathHistory ?? {};
+    return paths.flatMap((path) => map[path] ?? []);
+  }
+
   async currentLogin(): Promise<string> {
     return this.opts.login ?? 'mock-user';
   }
@@ -295,6 +309,16 @@ export class MockGitClient implements GitClient {
   }
   async readFile(_repo: RepoRef, path: string): Promise<string> {
     return this.opts.files?.[path] ?? '';
+  }
+  async readFileAtRef(
+    _repo: RepoRef,
+    _ref: string,
+    path: string,
+    maxBytes: number,
+  ): Promise<ReadFileAtRefResult> {
+    const text = this.opts.files?.[path];
+    if (text === undefined) return { status: 'not_found' };
+    return text.length > maxBytes ? { status: 'too_large' } : { status: 'ok', text };
   }
 }
 

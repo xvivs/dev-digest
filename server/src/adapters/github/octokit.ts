@@ -11,10 +11,44 @@ import type {
   OpenPrPayload,
   CommitFilesPayload,
   IssueMeta,
+  PathHistoryRow,
 } from '@devdigest/shared';
 import { withRetry, withTimeout } from '../../platform/resilience.js';
 
 const TIMEOUT = 30_000;
+
+type HistoryNode = {
+  associatedPullRequests?: {
+    nodes?: ({
+      number: number;
+      title: string;
+      mergedAt: string | null;
+      author: { login: string } | null;
+    } | null)[];
+  };
+};
+type HistoryData = {
+  repository?: {
+    object?: Record<string, { nodes?: (HistoryNode | null)[] } | null> | null;
+  } | null;
+};
+
+/** One aliased `history(path:)` field per path; aliases p0..pN, paths as variables. */
+function buildHistoryQuery(count: number): string {
+  const vars = Array.from({ length: count }, (_, i) => `$p${i}: String!`).join(', ');
+  const fields = Array.from(
+    { length: count },
+    (_, i) =>
+      `p${i}: history(path: $p${i}, first: $perPath) { nodes { associatedPullRequests(first: 1) { nodes { number title mergedAt author { login } } } } }`,
+  ).join('\n');
+  return `query($owner: String!, $name: String!, $ref: String!, $perPath: Int!, ${vars}) {
+  repository(owner: $owner, name: $name) {
+    object(expression: $ref) { ... on Commit {
+${fields}
+    } }
+  }
+}`;
+}
 
 function mapStatus(state: string, merged: boolean | undefined): PrStatus {
   if (merged) return 'merged';
@@ -361,6 +395,63 @@ export class OctokitGitHubClient implements GitHubClient {
       body: res.data.body,
       state: res.data.state,
     };
+  }
+
+  /** Path → PR history via GraphQL: one aliased query, per-path fallback if it errors. */
+  async listPathHistory(
+    repo: RepoRef,
+    ref: string,
+    paths: string[],
+    perPath: number,
+  ): Promise<PathHistoryRow[]> {
+    if (paths.length === 0) return [];
+    const run = (chunk: string[]): Promise<PathHistoryRow[]> =>
+      withRetry(() =>
+        withTimeout(
+          (async () => {
+            const variables: Record<string, string | number> = {
+              owner: repo.owner,
+              name: repo.name,
+              ref,
+              perPath,
+            };
+            chunk.forEach((p, i) => {
+              variables[`p${i}`] = p;
+            });
+            const data = await this.octokit.graphql<HistoryData>(
+              buildHistoryQuery(chunk.length),
+              variables,
+            );
+            const obj = data.repository?.object ?? null;
+            const rows: PathHistoryRow[] = [];
+            chunk.forEach((path, i) => {
+              for (const node of obj?.[`p${i}`]?.nodes ?? []) {
+                for (const pr of node?.associatedPullRequests?.nodes ?? []) {
+                  if (!pr) continue;
+                  rows.push({
+                    path,
+                    number: pr.number,
+                    title: pr.title,
+                    author: pr.author?.login ?? 'unknown',
+                    mergedAt: pr.mergedAt ?? null,
+                  });
+                }
+              }
+            });
+            return rows;
+          })(),
+          TIMEOUT,
+        ),
+      );
+    try {
+      return await run(paths);
+    } catch (err) {
+      if (paths.length === 1) throw err;
+      // Aliased form rejected: fall back to one query per path.
+      const rows: PathHistoryRow[] = [];
+      for (const p of paths) rows.push(...(await run([p])));
+      return rows;
+    }
   }
 
   async currentLogin(): Promise<string> {

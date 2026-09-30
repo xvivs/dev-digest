@@ -9,6 +9,7 @@ import type {
   UnifiedDiff,
   BlameLine,
   GitCommit,
+  ReadFileAtRefResult,
 } from '@devdigest/shared';
 import { parseUnifiedDiff } from './diff-parser.js';
 
@@ -18,6 +19,42 @@ import { parseUnifiedDiff } from './diff-parser.js';
  * when it isn't, the indexer falls back to a full reindex.
  */
 const RESYNC_FETCH_DEPTH = 50;
+
+const SHA_RE = /^[0-9a-f]{7,40}$/;
+const REGULAR_FILE_MODES = new Set(['100644', '100755']);
+
+/**
+ * Per-repo in-process mutex (a keyed promise chain). `fetchPullHead` and `sync`
+ * both rewrite `.git/shallow`, so they must not interleave for one clone.
+ */
+const repoLocks = new Map<string, Promise<unknown>>();
+
+async function withRepoLock<T>(key: string, fn: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+  const prev = repoLocks.get(key) ?? Promise.resolve();
+  const run = prev
+    .catch(() => undefined)
+    .then(() => {
+      // A timed-out waiter must never run late.
+      if (signal?.aborted) throw new Error('aborted before start');
+      return fn();
+    });
+  const tail = run.catch(() => undefined);
+  repoLocks.set(key, tail);
+  try {
+    return await run;
+  } finally {
+    if (repoLocks.get(key) === tail) repoLocks.delete(key);
+  }
+}
+
+/** Lexical guard for a repo-relative path taken from PR content. */
+function isSafeRepoPath(path: string): boolean {
+  if (path.length === 0 || path.includes('\0') || path.startsWith('-') || path.startsWith('/')) {
+    return false;
+  }
+  if (path.endsWith('/')) return false;
+  return !path.split('/').some((seg) => seg === '..' || seg === '');
+}
 
 /**
  * GitClient over simple-git. Repos clone to
@@ -69,9 +106,17 @@ export class SimpleGitClient implements GitClient {
     return { path: dest };
   }
 
-  async fetchPullHead(repo: RepoRef, n: number): Promise<void> {
-    // Fetch the PR head ref into a local ref (GitHub exposes pull/<n>/head).
-    await this.git(repo).fetch(['origin', `pull/${n}/head:pr-${n}`]);
+  async fetchPullHead(repo: RepoRef, n: number, opts?: { signal?: AbortSignal }): Promise<void> {
+    if (!Number.isInteger(n) || n < 0) throw new Error(`invalid PR number: ${n}`);
+    // Fetch the PR head ref into a local ref (GitHub exposes pull/<n>/head). The
+    // leading `+` forces the update, so it still works after a force-push;
+    // `--depth 1` keeps it cheap on a shallow clone.
+    await withRepoLock(
+      this.clonePathFor(repo),
+      () =>
+        this.git(repo).fetch(['origin', `+pull/${n}/head:refs/devdigest/pr-${n}`, '--depth', '1']),
+      opts?.signal,
+    );
   }
 
   async sync(repo: RepoRef, branch: string): Promise<{ head: string }> {
@@ -82,9 +127,11 @@ export class SimpleGitClient implements GitClient {
     // is usually reachable for an incremental diff; the indexer falls back to a
     // full reindex when it isn't.
     const g = this.git(repo);
-    await g.fetch(['origin', branch, '--depth', String(RESYNC_FETCH_DEPTH)]);
-    await g.reset(['--hard', `origin/${branch}`]);
-    return { head: (await g.revparse(['HEAD'])).trim() };
+    return withRepoLock(this.clonePathFor(repo), async () => {
+      await g.fetch(['origin', branch, '--depth', String(RESYNC_FETCH_DEPTH)]);
+      await g.reset(['--hard', `origin/${branch}`]);
+      return { head: (await g.revparse(['HEAD'])).trim() };
+    });
   }
 
   async currentHead(repo: RepoRef): Promise<string> {
@@ -128,6 +175,46 @@ export class SimpleGitClient implements GitClient {
 
   async readFile(repo: RepoRef, path: string): Promise<string> {
     return readFile(join(this.clonePathFor(repo), path), 'utf8');
+  }
+
+  /**
+   * Read `path` at commit `ref` from the object DB (no working tree), so a
+   * symlink in the tree cannot escape the repo. Every argument is an array
+   * element; `ref` is sha-validated and the path is literal (`--literal-pathspecs`).
+   */
+  async readFileAtRef(
+    repo: RepoRef,
+    ref: string,
+    path: string,
+    maxBytes: number,
+  ): Promise<ReadFileAtRefResult> {
+    if (!SHA_RE.test(ref)) return { status: 'missing_commit' };
+    if (!isSafeRepoPath(path)) return { status: 'not_a_file' };
+    try {
+      if (!(await this.exists(join(this.clonePathFor(repo), '.git')))) {
+        return { status: 'not_available' };
+      }
+      const g = this.git(repo);
+      try {
+        await g.raw(['cat-file', '-e', `${ref}^{commit}`]);
+      } catch {
+        return { status: 'missing_commit' };
+      }
+      const tree = await g.raw(['--literal-pathspecs', 'ls-tree', '-z', ref, '--', path]);
+      const entry = tree.split('\0').find((e) => e.length > 0);
+      if (!entry) return { status: 'not_found' };
+      const m = entry.match(/^(\d{6}) (\w+) ([0-9a-f]{40,64})\t/);
+      if (!m) return { status: 'not_available' };
+      const [, mode, type, oid] = m;
+      if (type !== 'blob' || !REGULAR_FILE_MODES.has(mode!)) return { status: 'not_a_file' };
+      const size = Number((await g.raw(['cat-file', '-s', oid!])).trim());
+      if (!Number.isFinite(size)) return { status: 'not_available' };
+      if (size > maxBytes) return { status: 'too_large' };
+      const text = await g.raw(['cat-file', 'blob', oid!]);
+      return { status: 'ok', text };
+    } catch {
+      return { status: 'not_available' };
+    }
   }
 }
 

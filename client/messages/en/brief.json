@@ -15,5 +15,92 @@
     "blame": "blame",
     "noHistory": "No history available for this line.",
     "noCommits": "No commits found for this line."
+  },
+  "section": "Review brief",
+  "noRun": "No completed review yet",
+  "newerRun": {
+    "running": "A newer review is running; this brief may be out of date.",
+    "failed": "A newer review failed; showing the last completed one.",
+    "cancelled": "A newer review was cancelled; showing the last completed one."
+  },
+  "tokens": "{input} in · {output} out",
+  "derive": "Derive",
+  "refresh": "Refresh",
+  "deriving": "Deriving…",
+  "stale": "Out of date",
+  "error": "Could not load this block.",
+  "failure": {
+    "provider_not_configured": "No OpenRouter key; add one under Settings → API Keys.",
+    "timeout": "The model took too long to answer.",
+    "llm_error": "The model call failed.",
+    "parse_error": "The model returned an answer that could not be read.",
+    "no_pull": "The pull request could not be found.",
+    "head_moved": "PR changed on GitHub; refresh the page",
+    "internal": "Something went wrong while deriving.",
+    "refreshPr": "Refresh PR"
+  },
+  "intent": {
+    "inScope": "In scope",
+    "outOfScope": "Out of scope",
+    "empty": "Nothing listed.",
+    "cost": "Derivation cost",
+    "sources": "Sources",
+    "unresolved": "Links not read",
+    "lowHint": "Low confidence: the PR says little about its purpose.",
+    "confidence": {
+      "high": "High confidence",
+      "medium": "Medium confidence",
+      "low": "Low confidence"
+    },
+    "source": {
+      "title": "Title",
+      "description": "Description",
+      "issue": "Issue",
+      "spec": "Spec",
+      "branch": "Branch",
+      "commits": "Commits",
+      "paths": "Paths",
+      "diffstat": "Diff stats"
+    },
+    "unresolvedReason": {
+      "external_host": "External host",
+      "other_repo": "Other repository",
+      "not_a_doc": "Not a document",
+      "not_found": "Not found",
+      "not_available": "Not available",
+      "too_large": "Too large",
+      "unsafe_path": "Unsafe path",
+      "limit_reached": "Link limit reached",
+      "fetch_failed": "Fetch failed"
+    }
+  },
+  "risks": {
+    "empty": "No risks derived yet.",
+    "ruleOnly": "Model unavailable, rule-based only.",
+    "droppedRefs": "{count} unverified file references dropped",
+    "cost": "Derivation cost",
+    "kind": {
+      "security": "Security",
+      "db_migration": "DB migration",
+      "breaking_api": "Breaking API",
+      "perf": "Performance",
+      "deps": "Dependencies"
+    },
+    "severity": {
+      "high": "High",
+      "medium": "Medium",
+      "low": "Low"
+    }
+  },
+  "history": {
+    "title": "Prior PRs",
+    "unavailable": "History unavailable.",
+    "merged": "merged {date}",
+    "cached": "cached",
+    "reason": {
+      "no_github": "No GitHub token is configured.",
+      "fetch_failed": "GitHub could not be reached.",
+      "no_changed_files": "This PR has no changed files."
+    }
   }
 }

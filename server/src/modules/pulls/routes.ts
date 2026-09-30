@@ -77,6 +77,8 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
               },
             });
         }
+        // Fire-and-forget: schedules intent/risk derivation; never awaited, never rejects.
+        void container.prBrief.scheduleForRepo(workspaceId, repo.id, 'list_sync');
       } catch (err) {
         app.log.warn({ err }, 'GitHub PR sync skipped (no token / offline); serving persisted PRs');
       }
@@ -290,6 +292,8 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
           headSha: detail.head_sha,
         })
         .where(eq(t.pullRequests.id, pr.id));
+
+      void container.prBrief.scheduleForPull(workspaceId, pr.id, 'detail');
 
       return { ...detail, id: pr.id };
     } catch (err) {

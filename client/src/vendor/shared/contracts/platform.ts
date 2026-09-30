@@ -54,15 +54,15 @@ export const FEATURE_MODELS: FeatureModelDef[] = [
     id: 'review_intent',
     label: 'PR Review · Intent',
     description: 'Derives a PR’s intent and scope before review.',
-    defaultProvider: 'openai',
-    defaultModel: 'gpt-4.1',
+    defaultProvider: 'openrouter',
+    defaultModel: 'deepseek/deepseek-v4-flash',
   },
   {
     id: 'risk_brief',
     label: 'Risk Brief',
     description: 'Assesses merge risks for a pull request.',
-    defaultProvider: 'openai',
-    defaultModel: 'gpt-4.1',
+    defaultProvider: 'openrouter',
+    defaultModel: 'deepseek/deepseek-v4-flash',
   },
   {
     id: 'conformance',
@@ -92,6 +92,8 @@ export const SettingsKnown = z.object({
   density: z.enum(['regular', 'compact']).default('regular'),
   sync_to_folder: z.boolean().default(true),
   automatic_reviews: z.boolean().default(false),
+  /** Import-time intent/risk derivation; effective value is `!== false` (see container.automaticBrief). */
+  automatic_brief: z.boolean().default(true),
   /** Per-feature model overrides (provider+model), keyed by FeatureModelId. */
   feature_models: z.record(FeatureModelId, FeatureModelChoice).default({}),
 });

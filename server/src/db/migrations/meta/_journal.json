@@ -176,6 +176,13 @@
       "when": 1790768009307,
       "tag": "0024_drop_legacy_convention_columns",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1790790524498,
+      "tag": "0025_adorable_penance",
+      "breakpoints": true
     }
   ]
 }

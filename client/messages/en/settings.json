@@ -31,7 +31,11 @@
     "usingDefault": "default",
     "search": "Search models…",
     "liveNote": "Prices are pulled live from OpenRouter — USD per 1M input/output tokens.",
-    "noKeyNote": "Add an OpenRouter API key under API Keys to load the model list and prices."
+    "noKeyNote": "Add an OpenRouter API key under API Keys to load the model list and prices.",
+    "autoBrief": {
+      "label": "Derive intent and risks automatically",
+      "hint": "When a PR is imported or updated, derive its intent and risk areas in the background. Uses the Review intent model; off means only the Derive button runs it."
+    }
   },
   "workspace": {
     "title": "Workspace",

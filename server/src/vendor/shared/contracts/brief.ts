@@ -13,6 +13,50 @@ export const Intent = z.object({
 });
 export type Intent = z.infer<typeof Intent>;
 
+/** Confidence in a derived intent; capped deterministically in code. */
+export const IntentConfidence = z.enum(['high', 'medium', 'low']);
+export type IntentConfidence = z.infer<typeof IntentConfidence>;
+
+export const IntentSourceKind = z.enum([
+  'title',
+  'description',
+  'issue',
+  'spec',
+  'branch',
+  'commits',
+  'paths',
+  'diffstat',
+]);
+export type IntentSourceKind = z.infer<typeof IntentSourceKind>;
+
+/** One input that fed the intent derivation (`ref` is a path/issue ref, never PR text). */
+export const IntentSource = z.object({
+  kind: IntentSourceKind,
+  ref: z.string().nullable(),
+  chars: z.number().int(),
+});
+export type IntentSource = z.infer<typeof IntentSource>;
+
+export const UnresolvedLinkReason = z.enum([
+  'external_host',
+  'other_repo',
+  'not_a_doc',
+  'not_found',
+  'not_available',
+  'too_large',
+  'unsafe_path',
+  'limit_reached',
+  'fetch_failed',
+]);
+export type UnresolvedLinkReason = z.infer<typeof UnresolvedLinkReason>;
+
+/** A link found in the PR that was recorded but never fetched/read. */
+export const UnresolvedLink = z.object({
+  url: z.string(),
+  reason: UnresolvedLinkReason,
+});
+export type UnresolvedLink = z.infer<typeof UnresolvedLink>;
+
 // ---- Blast radius ----
 export const ChangedSymbol = z.object({
   name: z.string(),
@@ -43,16 +87,41 @@ export const BlastRadius = z.object({
 });
 export type BlastRadius = z.infer<typeof BlastRadius>;
 
+export const BlastStatus = z.enum(['ok', 'degraded', 'unavailable']);
+export type BlastStatus = z.infer<typeof BlastStatus>;
+
+export const BlastReason = z.enum(['index_partial', 'no_index', 'flag_off', 'no_changed_files']);
+export type BlastReason = z.infer<typeof BlastReason>;
+
+/** Response of `GET /pulls/:id/blast`. */
+export const PrBlastResponse = z.object({
+  status: BlastStatus,
+  reason: BlastReason.nullable(),
+  blast: BlastRadius.nullable(),
+  head_sha: z.string(),
+  source_sha: z.string().nullable(),
+  index_status: z.string(),
+  cached: z.boolean(),
+  truncated: z.boolean(),
+  computed_at: z.string().nullable(),
+});
+export type PrBlastResponse = z.infer<typeof PrBlastResponse>;
+
 // ---- Risks ----
 export const RiskSeverity = z.enum(['high', 'medium', 'low']);
 export type RiskSeverity = z.infer<typeof RiskSeverity>;
 
+export const RiskKind = z.enum(['security', 'db_migration', 'breaking_api', 'perf', 'deps']);
+export type RiskKind = z.infer<typeof RiskKind>;
+
 export const Risk = z.object({
-  kind: z.string(),
+  kind: RiskKind,
   title: z.string(),
   explanation: z.string(),
   severity: RiskSeverity,
   file_refs: z.array(z.string()),
+  /** `rule` = deterministic pre-pass; `model` = LLM-derived. */
+  origin: z.enum(['rule', 'model']),
 });
 export type Risk = z.infer<typeof Risk>;
 
@@ -76,6 +145,23 @@ export const PrHistory = z.object({
   history: z.array(PrHistoryItem),
 });
 export type PrHistory = z.infer<typeof PrHistory>;
+
+export const HistoryStatus = z.enum(['ok', 'unavailable']);
+export type HistoryStatus = z.infer<typeof HistoryStatus>;
+
+export const HistoryReason = z.enum(['no_github', 'fetch_failed', 'no_changed_files']);
+export type HistoryReason = z.infer<typeof HistoryReason>;
+
+/** Response of `GET /pulls/:id/history`. */
+export const PrHistoryResponse = z.object({
+  status: HistoryStatus,
+  reason: HistoryReason.nullable(),
+  history: z.array(PrHistoryItem),
+  queried_paths: z.array(z.string()),
+  cached: z.boolean(),
+  computed_at: z.string().nullable(),
+});
+export type PrHistoryResponse = z.infer<typeof PrHistoryResponse>;
 
 // ---- Smart Diff ----
 export const SmartDiffRole = z.enum(['core', 'wiring', 'boilerplate']);

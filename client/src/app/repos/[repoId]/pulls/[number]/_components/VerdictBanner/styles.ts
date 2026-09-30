@@ -35,6 +35,14 @@ export const s = {
     color: "var(--text-secondary)",
     marginTop: 8,
   } satisfies CSSProperties,
+  asideCol: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 4,
+    flexShrink: 0,
+    fontSize: 12,
+    color: "var(--text-muted)",
+  } satisfies CSSProperties,
   scoreCol: {
     display: "flex",
     flexDirection: "column",

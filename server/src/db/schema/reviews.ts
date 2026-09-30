@@ -1,5 +1,22 @@
 import { sql } from 'drizzle-orm';
-import { pgTable, uuid, text, integer, jsonb, timestamp, doublePrecision, index } from 'drizzle-orm/pg-core';
+import {
+  pgTable,
+  uuid,
+  text,
+  integer,
+  jsonb,
+  timestamp,
+  doublePrecision,
+  boolean,
+  index,
+} from 'drizzle-orm/pg-core';
+import type {
+  BlastRadius,
+  IntentSource,
+  PrHistoryItem,
+  Risk,
+  UnresolvedLink,
+} from '@devdigest/shared';
 import { now } from './_shared';
 import { workspaces } from './core';
 import { pullRequests } from './pulls';
@@ -87,6 +104,72 @@ export const prIntent = pgTable('pr_intent', {
   intent: text('intent').notNull(),
   inScope: jsonb('in_scope').$type<string[]>().notNull().default(sql`'[]'::jsonb`),
   outOfScope: jsonb('out_of_scope').$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+  /** The persisted pull_requests.head_sha the intent was derived for (freshness key). */
+  headSha: text('head_sha'),
+  confidence: text('confidence', { enum: ['high', 'medium', 'low'] })
+    .notNull()
+    .default('low'),
+  sources: jsonb('sources').$type<IntentSource[]>().notNull().default(sql`'[]'::jsonb`),
+  unresolvedLinks: jsonb('unresolved_links')
+    .$type<UnresolvedLink[]>()
+    .notNull()
+    .default(sql`'[]'::jsonb`),
+  provider: text('provider'),
+  model: text('model'),
+  tokensIn: integer('tokens_in'),
+  tokensOut: integer('tokens_out'),
+  /** costUsd + costSource are a pair: both null or both set (ADR 0002). */
+  costUsd: doublePrecision('cost_usd'),
+  costSource: text('cost_source', { enum: ['provider', 'estimated'] }),
+  derivedAt: timestamp('derived_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const prRisks = pgTable('pr_risks', {
+  prId: uuid('pr_id')
+    .primaryKey()
+    .references(() => pullRequests.id, { onDelete: 'cascade' }),
+  headSha: text('head_sha').notNull(),
+  risks: jsonb('risks').$type<Risk[]>().notNull(),
+  droppedRefs: integer('dropped_refs').notNull().default(0),
+  /** True when the LLM call failed and only the deterministic rule risks were stored. */
+  ruleOnly: boolean('rule_only').notNull().default(false),
+  provider: text('provider'),
+  model: text('model'),
+  tokensIn: integer('tokens_in'),
+  tokensOut: integer('tokens_out'),
+  /** costUsd + costSource are a pair: both null or both set (ADR 0002). */
+  costUsd: doublePrecision('cost_usd'),
+  costSource: text('cost_source', { enum: ['provider', 'estimated'] }),
+  derivedAt: timestamp('derived_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const prBlastCache = pgTable('pr_blast_cache', {
+  prId: uuid('pr_id')
+    .primaryKey()
+    .references(() => pullRequests.id, { onDelete: 'cascade' }),
+  headSha: text('head_sha').notNull(),
+  /** Index's last_indexed_sha when full/partial; else the clone's current head, or '' with no clone. */
+  sourceSha: text('source_sha').notNull(),
+  indexerVersion: integer('indexer_version').notNull(),
+  indexStatus: text('index_status').notNull(),
+  repoIntelEnabled: boolean('repo_intel_enabled').notNull(),
+  status: text('status', { enum: ['ok', 'degraded'] }).notNull(),
+  reason: text('reason'),
+  blast: jsonb('blast').$type<BlastRadius>().notNull(),
+  truncated: boolean('truncated').notNull().default(false),
+  computedAt: timestamp('computed_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const prHistoryCache = pgTable('pr_history_cache', {
+  prId: uuid('pr_id')
+    .primaryKey()
+    .references(() => pullRequests.id, { onDelete: 'cascade' }),
+  headSha: text('head_sha').notNull(),
+  base: text('base').notNull(),
+  /** sha256 of the sorted queried paths. */
+  pathsHash: text('paths_hash').notNull(),
+  history: jsonb('history').$type<PrHistoryItem[]>().notNull(),
+  computedAt: timestamp('computed_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const prBrief = pgTable('pr_brief', {

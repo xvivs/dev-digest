@@ -26,6 +26,10 @@ const EnvSchema = z.object({
   // Note: even when on, sections only populate once the repo is indexed; an
   // unindexed repo degrades gracefully. Per-agent override: agents.repo_intel.
   REPO_INTEL_ENABLED: z.string().optional(),
+  // Import-time PR intent/risk derivation (hard kill-switch). Default ON except
+  // under NODE_ENV=test; AUTO_BRIEF=true|false overrides. The per-workspace
+  // `automatic_brief` setting is ANDed with it (ADR 0022).
+  AUTO_BRIEF: z.string().optional(),
   // ADR 0018: hard cap on one eval suite's pre-run estimate (USD). A suite
   // whose estimate is above it is refused before anything runs.
   // Empty (`EVAL_MAX_BUDGET_USD=`) falls through to the default, like LOG_LEVEL.
@@ -65,6 +69,12 @@ export type AppConfig = {
   repoIntelEnabled: boolean;
   /** ADR 0018: max estimate (USD) of one eval suite. Default 5. */
   evalMaxBudgetUsd: number;
+  /**
+   * Hard kill-switch for automatic (import-time) PR brief derivation. Defaults
+   * to `NODE_ENV !== 'test'`; set AUTO_BRIEF=true|false to override. The
+   * on-demand Derive button ignores it.
+   */
+  autoBriefEnabled: boolean;
 };
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
@@ -84,5 +94,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     embeddingsEnabled: parsed.EMBEDDINGS_ENABLED === 'true',
     repoIntelEnabled: parsed.REPO_INTEL_ENABLED !== 'false',
     evalMaxBudgetUsd: parsed.EVAL_MAX_BUDGET_USD,
+    autoBriefEnabled:
+      parsed.AUTO_BRIEF === undefined || parsed.AUTO_BRIEF === ''
+        ? parsed.NODE_ENV !== 'test'
+        : parsed.AUTO_BRIEF === 'true',
   };
 }

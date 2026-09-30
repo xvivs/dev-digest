@@ -1,0 +1,146 @@
+"use client";
+
+import React from "react";
+import { useTranslations } from "next-intl";
+import { Badge, EmptyState, ErrorState, Icon, SectionLabel, Skeleton } from "@devdigest/ui";
+import type { Risk } from "@devdigest/shared";
+import { useDeriveBrief, usePrRisks } from "@/lib/hooks";
+import { RunCostValue } from "@/components/run-cost-value";
+import { BriefFailureAction } from "../BriefFailureAction";
+import { RISK_ICON } from "../../constants";
+import { riskTone, splitInlineCode } from "../../helpers";
+import { s as shared } from "../../styles";
+import { s } from "./styles";
+
+/** Risk areas: one pill per risk; clicking a pill toggles its detail. Text only. */
+export function RiskAreas({ prId }: { prId: string }) {
+  const t = useTranslations("brief");
+  const { data, isLoading, isError, refetch } = usePrRisks(prId);
+  const derive = useDeriveBrief(prId);
+  const [openKey, setOpenKey] = React.useState<string | null>(null);
+
+  const heading = <SectionLabel icon="Shield">{t("block.risks")}</SectionLabel>;
+
+  if (isLoading) {
+    return (
+      <section style={shared.card}>
+        {heading}
+        <Skeleton height={40} />
+      </section>
+    );
+  }
+  if (isError || !data) {
+    return (
+      <section style={shared.card}>
+        {heading}
+        <ErrorState title={t("error")} onRetry={() => refetch()} />
+      </section>
+    );
+  }
+
+  const { risks: record, in_flight: inFlight, last_failure: failure } = data;
+  const busy = inFlight || derive.isPending;
+
+  if (!record) {
+    return (
+      <section style={shared.card}>
+        {heading}
+        {inFlight ? (
+          <div style={shared.muted} role="status">
+            {t("deriving")}
+          </div>
+        ) : failure ? (
+          <div style={shared.notice} role="status">
+            <Icon.AlertTriangle size={15} aria-hidden="true" />
+            <span style={s.grow}>{t(`failure.${failure.reason}`)}</span>
+            <BriefFailureAction
+              prId={prId}
+              reason={failure.reason}
+              deriveLabel={t("derive")}
+              busy={busy}
+              onDerive={() => derive.mutate()}
+            />
+          </div>
+        ) : (
+          <EmptyState icon="Shield" title={t("unavailable")} body={t("unavailableHint")} cta={t("derive")} onCta={() => derive.mutate()} ctaLoading={busy} />
+        )}
+      </section>
+    );
+  }
+
+  const keyOf = (r: Risk, i: number) => `${i}:${r.kind}:${r.title}`;
+  const open = record.risks.find((r, i) => keyOf(r, i) === openKey);
+
+  return (
+    <section style={shared.card}>
+      {heading}
+      {inFlight && (
+        <div style={shared.muted} role="status">
+          {t("deriving")}
+        </div>
+      )}
+      {record.rule_only && <div style={{ ...shared.notice, marginBottom: 12 }}>{t("risks.ruleOnly")}</div>}
+
+      {record.risks.length === 0 ? (
+        <div style={shared.muted}>{t("noRisks")}</div>
+      ) : (
+        <>
+          <div style={s.pills}>
+            {record.risks.map((r, i) => {
+              const k = keyOf(r, i);
+              const tone = riskTone(r.severity);
+              const PillIcon = Icon[RISK_ICON[r.kind]];
+              return (
+                <button
+                  key={k}
+                  type="button"
+                  aria-expanded={openKey === k}
+                  onClick={() => setOpenKey(openKey === k ? null : k)}
+                  style={s.pill(tone.c, tone.bg, openKey === k)}
+                >
+                  <PillIcon size={13} aria-hidden="true" />
+                  <span>{r.title}</span>
+                  <span style={s.sev}>{t(`risks.severity.${r.severity}`)}</span>
+                </button>
+              );
+            })}
+          </div>
+          {open && (
+            <div style={s.detail}>
+              <div style={shared.row}>
+                <Badge>{t(`risks.kind.${open.kind}`)}</Badge>
+              </div>
+              <p style={s.explanation}>
+                {splitInlineCode(open.explanation).map((seg, i) =>
+                  seg.code ? (
+                    <code key={i} style={shared.code}>
+                      {seg.text}
+                    </code>
+                  ) : (
+                    <React.Fragment key={i}>{seg.text}</React.Fragment>
+                  ),
+                )}
+              </p>
+              {open.file_refs.length > 0 && (
+                <ul style={s.refs}>
+                  {open.file_refs.map((ref, i) => (
+                    <li key={`${i}-${ref}`} style={shared.mono}>
+                      {ref}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+        </>
+      )}
+
+      <div style={{ ...shared.muted, ...s.footer }}>
+        {record.dropped_refs > 0 && <span>{t("risks.droppedRefs", { count: record.dropped_refs })}</span>}
+        <span>
+          {t("risks.cost")} <RunCostValue usd={record.cost_usd} source={record.cost_source} />
+        </span>
+      </div>
+    </section>
+  );
+}

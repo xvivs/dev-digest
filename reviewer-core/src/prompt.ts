@@ -1,4 +1,4 @@
-import type { ChatMessage, PromptAssembly } from '@devdigest/shared';
+import type { ChatMessage, IntentConfidence, PromptAssembly } from '@devdigest/shared';
 import { estimateTokens, type SkillInput } from './skills.js';
 
 /**
@@ -75,6 +75,9 @@ function resolveNonce(parts: PromptParts): string {
     parts.diff,
     parts.task,
     parts.prDescription,
+    parts.intent?.intent,
+    ...(parts.intent?.inScope ?? []),
+    ...(parts.intent?.outOfScope ?? []),
     parts.repoMap,
     parts.callers,
     ...(parts.memory ?? []),
@@ -155,6 +158,33 @@ export function wrapUntrusted(label: string, content: string, nonce: string): st
 /** Cap the PR description so a huge author body can't blow the token budget. */
 const MAX_PR_DESCRIPTION_CHARS = 4000;
 
+/** Cap on the derived-intent body so a long model output can't blow the budget. */
+const MAX_INTENT_CHARS = 1500;
+
+/** Trusted note appended for a low-confidence intent (code-derived, outside the wrap). */
+const LOW_CONFIDENCE_HINT =
+  'Inferred from indirect signals (branch, commits, paths); weigh accordingly.';
+
+/**
+ * A derived PR intent (untrusted: indirectly author-controlled). `confidence`
+ * is a code-derived enum, so its label is rendered outside the wrap.
+ */
+export interface IntentInput {
+  intent: string;
+  inScope: string[];
+  outOfScope: string[];
+  confidence: IntentConfidence;
+}
+
+function renderIntentBody(intent: IntentInput): string {
+  const lines = [`Intent: ${intent.intent.trim()}`];
+  if (intent.inScope.length > 0) lines.push('In scope:', ...intent.inScope.map((x) => `- ${x}`));
+  if (intent.outOfScope.length > 0) {
+    lines.push('Out of scope:', ...intent.outOfScope.map((x) => `- ${x}`));
+  }
+  return lines.join('\n').slice(0, MAX_INTENT_CHARS);
+}
+
 export interface PromptParts {
   /** Agent's system prompt (trusted). */
   system: string;
@@ -185,6 +215,12 @@ export interface PromptParts {
    * undefined → section omitted.
    */
   prDescription?: string;
+  /**
+   * Derived PR intent (untrusted). Delimiter-wrapped + capped, rendered after the
+   * PR description. Undefined or blank intent → section omitted (prompt is
+   * byte-identical to one built without it).
+   */
+  intent?: IntentInput;
   /** The unified diff / user task (untrusted content). */
   diff: string;
   /** Optional task framing line, e.g. "Review PR #482 '…'". */
@@ -236,6 +272,14 @@ export function assemblePrompt(parts: PromptParts): AssembledPrompt {
   if (prDescription) {
     userSections.push(`## PR description\n${wrap('pr-description', prDescription)}`);
   }
+  let intentSection: string | undefined;
+  if (parts.intent && parts.intent.intent.trim().length > 0) {
+    const hint = parts.intent.confidence === 'low' ? `\n${LOW_CONFIDENCE_HINT}` : '';
+    intentSection =
+      `## Derived intent (confidence: ${parts.intent.confidence})${hint}\n` +
+      wrap('derived-intent', renderIntentBody(parts.intent));
+    userSections.push(intentSection);
+  }
   if (memoryBlock) userSections.push(`## Relevant memory\n${memoryBlock}`);
   if (parts.repoMap && parts.repoMap.trim().length > 0) {
     userSections.push(`## Repo skeleton\n${wrap('repo-map', parts.repoMap)}`);
@@ -264,6 +308,7 @@ export function assemblePrompt(parts: PromptParts): AssembledPrompt {
     callers: parts.callers ?? null,
     repo_map: parts.repoMap ?? null,
     pr_description: prDescription ?? null,
+    intent: intentSection ?? null,
     user,
   };
 
