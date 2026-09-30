@@ -1,5 +1,5 @@
 import { and, desc, eq, sql } from 'drizzle-orm';
-import type { Db } from '../../../db/client.js';
+import type { Db, DbTx } from '../../../db/client.js';
 import * as t from '../../../db/schema.js';
 import type { CostMissingReason, CostSource, RunSummary, RunTrace } from '@devdigest/shared';
 
@@ -20,7 +20,7 @@ function costMissingReason(status: string | null, costUsd: number | null): CostM
 /** In-flight runs for a PR (status='running') — the server-side source of
  *  truth for "which agents are running now". Joined with the agent name. */
 export async function activeRunsForPull(
-  db: Db,
+  db: Db | DbTx,
   workspaceId: string,
   prId: string,
 ): Promise<{ run_id: string; agent_id: string | null; agent_name: string | null; ran_at: string | null }[]> {
@@ -50,7 +50,7 @@ export async function activeRunsForPull(
 
 /** All runs for a PR (any status), newest first — the PR run history. */
 export async function listRunsForPull(
-  db: Db,
+  db: Db | DbTx,
   workspaceId: string,
   prId: string,
 ): Promise<RunSummary[]> {
@@ -90,7 +90,7 @@ export async function listRunsForPull(
  * in the Review Runs list below.
  */
 export async function deleteAgentRun(
-  db: Db,
+  db: Db | DbTx,
   workspaceId: string,
   runId: string,
 ): Promise<boolean> {
@@ -115,7 +115,7 @@ export interface RunCancelContext {
   prNumber: number | null;
 }
 
-export async function getRunCancelContext(db: Db, runId: string): Promise<RunCancelContext | undefined> {
+export async function getRunCancelContext(db: Db | DbTx, runId: string): Promise<RunCancelContext | undefined> {
   const [row] = await db
     .select({
       status: t.agentRuns.status,
@@ -141,7 +141,7 @@ export async function getRunCancelContext(db: Db, runId: string): Promise<RunCan
  * concurrent executor write cannot interleave between the check and the
  * update. An existing trace (the executor got there first) is kept.
  */
-export async function cancelRunWithTrace(db: Db, runId: string, trace: RunTrace): Promise<boolean> {
+export async function cancelRunWithTrace(db: Db | DbTx, runId: string, trace: RunTrace): Promise<boolean> {
   return db.transaction(async (tx) => {
     const [row] = await tx
       .select({ status: t.agentRuns.status })
@@ -158,9 +158,24 @@ export async function cancelRunWithTrace(db: Db, runId: string, trace: RunTrace)
   });
 }
 
+/**
+ * Lock the run row FOR UPDATE and return its current status (undefined when the
+ * row is gone). Only meaningful inside a transaction: it serialises the
+ * executor's terminal write against `cancelRunWithTrace`, which takes the same
+ * lock — whichever commits second sees the other's status.
+ */
+export async function lockRunStatus(db: Db | DbTx, runId: string): Promise<string | null | undefined> {
+  const [row] = await db
+    .select({ status: t.agentRuns.status })
+    .from(t.agentRuns)
+    .where(eq(t.agentRuns.id, runId))
+    .for('update');
+  return row ? row.status : undefined;
+}
+
 /** On boot: any run still 'running' is orphaned (its process died / restarted),
  *  so mark it failed. Prevents permanently stuck "running" runs in the UI. */
-export async function reapStaleRunningRuns(db: Db): Promise<number> {
+export async function reapStaleRunningRuns(db: Db | DbTx): Promise<number> {
   const rows = await db
     .update(t.agentRuns)
     .set({ status: 'failed' })
@@ -173,7 +188,7 @@ export async function reapStaleRunningRuns(db: Db): Promise<number> {
 
 /** Create an agent_runs row in `running` state; returns its id (= the runId). */
 export async function createAgentRun(
-  db: Db,
+  db: Db | DbTx,
   values: {
     workspaceId: string;
     agentId: string | null;
@@ -198,7 +213,7 @@ export async function createAgentRun(
 }
 
 export async function completeAgentRun(
-  db: Db,
+  db: Db | DbTx,
   runId: string,
   values: {
     status: 'done' | 'failed' | 'cancelled';
@@ -246,14 +261,14 @@ export async function completeAgentRun(
 }
 
 /** Persist the WHOLE run log as ONE document. PK = runId → agent_runs. */
-export async function saveRunTrace(db: Db, runId: string, trace: RunTrace): Promise<void> {
+export async function saveRunTrace(db: Db | DbTx, runId: string, trace: RunTrace): Promise<void> {
   await db
     .insert(t.runTraces)
     .values({ runId, trace })
     .onConflictDoUpdate({ target: t.runTraces.runId, set: { trace } });
 }
 
-export async function getRunTrace(db: Db, runId: string): Promise<RunTrace | undefined> {
+export async function getRunTrace(db: Db | DbTx, runId: string): Promise<RunTrace | undefined> {
   const [row] = await db.select().from(t.runTraces).where(eq(t.runTraces.runId, runId));
   return row ? (row.trace as RunTrace) : undefined;
 }

@@ -1,5 +1,5 @@
 import type { Container } from '../../platform/container.js';
-import type { FindingActionKind, RunEventKind, RunTrace } from '@devdigest/shared';
+import type { FindingActionKind, RunTrace } from '@devdigest/shared';
 import { AppError, NotFoundError } from '../../platform/errors.js';
 import type { AgentRow } from '../../db/rows.js';
 import { ReviewRepository } from './repository.js';
@@ -7,7 +7,7 @@ import { type ReviewDto, type ReviewDtoFinding } from './helpers.js';
 import { ReviewRunExecutor, type Logger } from './run-executor.js';
 import { actOnFinding as actOnFindingImpl } from './findings.js';
 import { reviewToDto } from './helpers.js';
-import { failureTrace } from './failure-trace.js';
+import { cancelRun as cancelRunImpl } from './run-cancel.js';
 
 // Re-export DTO types + converters for backward-compatible imports from
 // './service.js' (these previously lived here; logic now in ./helpers.ts).
@@ -77,37 +77,9 @@ export class ReviewService {
     return this.repo.deleteAgentRun(workspaceId, runId);
   }
 
-  /**
-   * Cancel an in-flight run. Signals a live runner to stop at its next
-   * checkpoint AND marks the DB row cancelled + completes the bus immediately —
-   * so cancel also works for ORPHANED runs (whose background process died on a
-   * server restart) where signalling alone would do nothing.
-   */
+  /** Cancel an in-flight run (see run-cancel.ts for the ordering contract). */
   async cancelRun(runId: string): Promise<void> {
-    this.publish(runId, 'info', 'Cancellation requested — stopping…');
-    // Aborts the live executor's in-flight LLM request (closes the socket).
-    this.container.runBus.cancel(runId);
-    // The status flips here, not when the executor notices, so an orphaned or
-    // slow-to-stop run is cancelled at once — but a minimal trace (the log so
-    // far) lands first. The executor's own cancel path later overwrites it
-    // with the fuller one.
-    const ctx = await this.repo.getRunCancelContext(runId);
-    if (ctx?.status === 'running') {
-      const trace = failureTrace({
-        agent: {
-          name: ctx.agentName ?? 'unknown agent',
-          version: ctx.agentVersion,
-          provider: ctx.provider,
-          model: ctx.model,
-          systemPrompt: ctx.systemPrompt,
-        },
-        prNumber: ctx.prNumber,
-        grounding: '0/0 passed',
-        log: this.container.runBus.buffer(runId).map((e) => ({ t: e.t, kind: e.kind, msg: e.msg })),
-      });
-      await this.repo.cancelRunWithTrace(runId, trace);
-    }
-    this.container.runBus.complete(runId);
+    return cancelRunImpl(this.repo, this.container.runBus, runId);
   }
 
   /** Reap runs left 'running' by a previous (now-dead) process. Called on boot. */
@@ -156,10 +128,6 @@ export class ReviewService {
     });
 
     return { runs, reviews: [] };
-  }
-
-  private publish(runId: string, kind: RunEventKind, msg: string, data?: unknown) {
-    return this.container.runBus.publish(runId, kind, msg, data);
   }
 
   // ===========================================================================

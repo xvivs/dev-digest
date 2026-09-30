@@ -168,6 +168,8 @@ lives in the engineering-insights skill).
 
 - **`useRefreshRepo` resolves before the clone finishes, so a one-shot invalidation of `["repos"]` refetches `clone_path: null` and nothing refreshes it again** — the global `QueryClient` has `staleTime` 30 s and no focus refetch, so pages showed "not cloned / not synced" until a hard reload. Poll at the observer instead: `useRepos({ pollUntilCloned })` refetches every 3 s while the clone is pending (`client/src/lib/hooks/core.ts:78`). _(2026-09-30)_
 
+- **Agent Skills tab dropped the first toggle: the response to a debounced PUT overwrote a newer pending edit, and a click before `["agent-skills"]` loaded was wiped by the fetch** — `SkillsTab.tsx` (autosave 400 ms) wrote the PUT response into the query cache and `latestRef` unconditionally, so a click made while the save was in flight vanished and the next debounce saved the stale list. Fix: when the debounce timer is armed, the response restores `latestRef` into the cache instead; rows do not render (`aria-busy`) until links load. Rule: a debounced mutation's response must not clobber a newer unsaved edit. `client/src/app/agents/[id]/_components/AgentEditor/_components/SkillsTab/SkillsTab.tsx`. _(2026-09-30)_
+
 ## Session Notes
 
 - Cost Badge (L01, client half): added `RunCostValue` + `formatCost`/`exactCost`

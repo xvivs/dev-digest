@@ -208,6 +208,70 @@ d('manual run cancel (Testcontainers pg)', () => {
     await app.close();
   });
 
+  it('a cancel that commits between the last cancel check and the terminal write wins: no done-trace, no review', async () => {
+    // The LLM ignores the abort, and the cancel below bypasses the bus flag —
+    // exactly the window after runOneAgent's final throwIfCancelled(): only the
+    // DB knows the run is cancelled. We hold the run row FOR UPDATE (as
+    // cancelRunWithTrace does), write the cancel trace + status, and commit
+    // only once the executor is provably blocked on its terminal write.
+    const gate = gatedLlm(false);
+    const { app, pr, runId } = await startRun(gate.llm);
+    await gate.entered;
+
+    const SENTINEL = 'held-cancel sentinel trace';
+    const heldTrace = { log: [{ t: 0, kind: 'info', msg: SENTINEL }] };
+    let locked!: () => void;
+    let commit!: () => void;
+    const lockTaken = new Promise<void>((r) => (locked = r));
+    const commitNow = new Promise<void>((r) => (commit = r));
+    const holder = pg.handle.sql.begin(async (tx) => {
+      await tx`SELECT id FROM agent_runs WHERE id = ${runId} FOR UPDATE`;
+      await tx`INSERT INTO run_traces (run_id, trace) VALUES (${runId}, ${JSON.stringify(heldTrace)}::jsonb)`;
+      await tx`UPDATE agent_runs SET status = 'cancelled', error = 'Cancelled by user' WHERE id = ${runId}`;
+      locked();
+      await commitNow;
+    });
+    await lockTaken;
+
+    gate.release();
+    // Wait until some backend is waiting on a lock — the executor's terminal
+    // write (old code: the trace upsert; fixed code: SELECT … FOR UPDATE).
+    for (let i = 0; ; i++) {
+      const [row] = await pg.handle.sql<{ n: number }[]>`
+        SELECT count(*)::int AS n FROM pg_stat_activity
+        WHERE datname = current_database() AND wait_event_type = 'Lock'`;
+      if ((row?.n ?? 0) > 0) break;
+      if (i > 400) throw new Error('executor never blocked on the run row');
+      await new Promise((r) => setTimeout(r, 25));
+    }
+    commit();
+    await holder;
+
+    // The executor finishes by overwriting the sentinel trace (with its own
+    // cancel trace when fixed; with a done trace on the old two-write code).
+    let trace: { log: { msg: string }[]; stats?: { cost_missing_reason?: string } } | undefined;
+    for (let i = 0; i < 400; i++) {
+      const [row] = await pg.handle.db.select().from(t.runTraces).where(eq(t.runTraces.runId, runId));
+      const current = row?.trace as typeof trace;
+      if (current && !JSON.stringify(current.log).includes(SENTINEL)) {
+        trace = current;
+        break;
+      }
+      await new Promise((r) => setTimeout(r, 25));
+    }
+    expect(trace, 'executor never replaced the held cancel trace').toBeDefined();
+
+    const [run] = await waitForPrRuns(pg.handle.db, pr.id, { expected: 1 });
+    expect(run?.status).toBe('cancelled');
+    const log = JSON.stringify(trace?.log);
+    expect(log).toContain('Run cancelled by user');
+    expect(log).not.toContain('Persisted review');
+    expect(trace?.stats?.cost_missing_reason).toBe('failed');
+    expect(await pg.handle.db.select().from(t.reviews).where(eq(t.reviews.runId, runId))).toEqual([]);
+    expect(await probesFor(runId)).toEqual([{ status: 'cancelled', trace_present: true }]);
+    await app.close();
+  });
+
   it('cancelling an orphaned running row (no executor) still leaves a readable trace', async () => {
     const app = await buildApp({
       config: config(),

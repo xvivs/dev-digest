@@ -1,4 +1,4 @@
-import type { Db } from '../../db/client.js';
+import type { Db, DbTx } from '../../db/client.js';
 import * as t from '../../db/schema.js';
 import type { CostSource, Finding, Intent, RunSummary, RunTrace } from '@devdigest/shared';
 
@@ -23,7 +23,16 @@ import * as runRepo from './repository/run.repo.js';
 import * as pullRepo from './repository/pull.repo.js';
 
 export class ReviewRepository {
-  constructor(private db: Db) {}
+  constructor(private db: Db | DbTx) {}
+
+  /**
+   * Run `work` in ONE transaction against a repository bound to it (onion #9:
+   * the caller owns the boundary). Nested calls reuse the outer transaction
+   * (Drizzle opens a savepoint).
+   */
+  transaction<T>(work: (repo: ReviewRepository) => Promise<T>): Promise<T> {
+    return this.db.transaction((tx) => work(new ReviewRepository(tx)));
+  }
 
   // ---- PR lookup (workspace-scoped) --------------------------------------
 
@@ -95,6 +104,12 @@ export class ReviewRepository {
   /** Cancel a still-running run: trace first (if absent), then the status. */
   cancelRunWithTrace(runId: string, trace: RunTrace): Promise<boolean> {
     return runRepo.cancelRunWithTrace(this.db, runId, trace);
+  }
+
+  /** Lock the run row FOR UPDATE; returns its status (undefined = no row).
+   *  Call inside `transaction()` — outside one the lock is released at once. */
+  lockRunStatus(runId: string): Promise<string | null | undefined> {
+    return runRepo.lockRunStatus(this.db, runId);
   }
 
   /** On boot: any run still 'running' is orphaned (its process died / restarted),
