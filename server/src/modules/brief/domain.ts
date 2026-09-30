@@ -379,3 +379,14 @@ export function finalizeRisks(
   }
   return { risks: out, droppedRefs };
 }
+
+/** `automatic_brief` is ON unless the workspace explicitly saved `false`. */
+export const AUTOMATIC_BRIEF_DEFAULT = true;
+
+/**
+ * Effective `automatic_brief` from the raw stored value. A missing row
+ * (`undefined`) means ON; only an explicit `false` turns it off.
+ */
+export function resolveAutomaticBrief(raw: unknown): boolean {
+  return raw === undefined ? AUTOMATIC_BRIEF_DEFAULT : raw !== false;
+}

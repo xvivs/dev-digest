@@ -39,6 +39,15 @@ export async function getPrCommits(
   return db.select().from(t.prCommits).where(eq(t.prCommits.prId, prId));
 }
 
+/** Persist the GitHub PR-detail refresh: body, diff stats and the current head SHA. */
+export async function updateDetail(
+  db: Db | DbTx,
+  prId: string,
+  values: { body: string | null; additions: number; deletions: number; filesCount: number; headSha: string },
+): Promise<void> {
+  await db.update(t.pullRequests).set(values).where(eq(t.pullRequests.id, prId));
+}
+
 /**
  * Record the commit a review just ran against, so the PR list can derive
  * `reviewed` vs `needs_review` (head moved since the last review) vs `stale`.

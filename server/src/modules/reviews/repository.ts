@@ -201,6 +201,14 @@ export class ReviewRepository {
     return runRepo.completeAgentRun(this.db, runId, values);
   }
 
+  /** Persist a GitHub PR-detail refresh (body, diff stats, head SHA) onto the PR row. */
+  updatePullDetail(
+    prId: string,
+    values: { body: string | null; additions: number; deletions: number; filesCount: number; headSha: string },
+  ): Promise<void> {
+    return pullRepo.updateDetail(this.db, prId, values);
+  }
+
   /** Record the head SHA a review ran against (PR-list freshness derivation). */
   markReviewed(prId: string, sha: string): Promise<void> {
     return pullRepo.markReviewed(this.db, prId, sha);

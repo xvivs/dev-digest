@@ -55,21 +55,3 @@ export async function resolveFeatureModel(
 ): Promise<FeatureModelChoice> {
   return (await getFeatureModelOverride(container, workspaceId, id)) ?? DEFAULTS[id];
 }
-
-/** `automatic_brief` is ON unless the workspace explicitly saved `false`. */
-export const AUTOMATIC_BRIEF_DEFAULT = true;
-
-/**
- * Effective workspace `automatic_brief`. `SettingsKnown` defaults never apply at
- * runtime (`rowsToSettings` returns the raw bag), so a missing row means ON
- * here, in the one place that owns the default. Read per call, like feature
- * models, so a toggle applies without a restart.
- */
-export async function getAutomaticBrief(container: Container, workspaceId: string): Promise<boolean> {
-  const rows = await container.db
-    .select({ key: t.settings.key, value: t.settings.value })
-    .from(t.settings)
-    .where(eq(t.settings.workspaceId, workspaceId));
-  const raw = (rowsToSettings(rows) as { automatic_brief?: unknown }).automatic_brief;
-  return raw === undefined ? AUTOMATIC_BRIEF_DEFAULT : raw !== false;
-}

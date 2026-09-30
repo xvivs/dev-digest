@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
-import type { PrBlastResponse } from '@devdigest/shared';
+import { PrBlastResponse } from '@devdigest/shared';
 import { getContext } from '../_shared/context.js';
 import { IdParams } from '../_shared/schemas.js';
 import { NotFoundError } from '../../platform/errors.js';
@@ -31,7 +31,7 @@ export default async function blastRoutes(appBase: FastifyInstance) {
   const { container } = app;
   const service = buildBlastService(container);
 
-  app.get('/pulls/:id/blast', { schema: { params: IdParams } }, async (req): Promise<PrBlastResponse> => {
+  app.get('/pulls/:id/blast', { schema: { params: IdParams, response: { 200: PrBlastResponse } } }, async (req): Promise<PrBlastResponse> => {
     const { workspaceId } = await getContext(container, req);
     const view = await service.getForPull(workspaceId, req.params.id);
     if (!view) throw new NotFoundError('Pull request not found');

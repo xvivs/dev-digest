@@ -18,6 +18,19 @@ import type {
   ScheduleCandidate,
 } from './ports.js';
 
+/**
+ * The raw stored `settings.automatic_brief` for a workspace, `undefined` when no
+ * row exists. The default is applied by the domain's `resolveAutomaticBrief`.
+ * Read per call so a Settings toggle applies without a restart.
+ */
+export async function readAutomaticBriefSetting(db: Db, workspaceId: string): Promise<unknown> {
+  const [row] = await db
+    .select({ value: t.settings.value })
+    .from(t.settings)
+    .where(and(eq(t.settings.workspaceId, workspaceId), eq(t.settings.key, 'automatic_brief')));
+  return row?.value;
+}
+
 function costPair(c: CostPair): { costUsd: number | null; costSource: CostPair['costSource'] } {
   return c.costUsd === null || c.costSource === null
     ? { costUsd: null, costSource: null }

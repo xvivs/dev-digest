@@ -9,9 +9,11 @@ import {
   doublePrecision,
   boolean,
   index,
+  check,
 } from 'drizzle-orm/pg-core';
 import type {
   BlastRadius,
+  BlastReason,
   IntentSource,
   PrHistoryItem,
   Risk,
@@ -20,6 +22,17 @@ import type {
 import { now } from './_shared';
 import { workspaces } from './core';
 import { pullRequests } from './pulls';
+import { repoIndexState } from './repo-intel';
+
+/**
+ * Mirrors the shared `BlastReason` enum. drizzle-kit loads this file as CJS and
+ * cannot resolve the shared runtime, so the list is spelled out here; the
+ * checks below fail typecheck if the two ever drift.
+ */
+const BLAST_REASONS = ['index_partial', 'no_index', 'flag_off', 'no_changed_files'] as const satisfies readonly BlastReason[];
+type AssertAllBlastReasons = Exclude<BlastReason, (typeof BLAST_REASONS)[number]> extends never ? true : never;
+const _allBlastReasons: AssertAllBlastReasons = true;
+void _allBlastReasons;
 
 // ============================================================ Review & findings
 
@@ -122,7 +135,11 @@ export const prIntent = pgTable('pr_intent', {
   costUsd: doublePrecision('cost_usd'),
   costSource: text('cost_source', { enum: ['provider', 'estimated'] }),
   derivedAt: timestamp('derived_at', { withTimezone: true }).notNull().defaultNow(),
-});
+},
+  (t) => ({
+    costPairCheck: check('pr_intent_cost_pair_check', sql`(${t.costUsd} IS NULL) = (${t.costSource} IS NULL)`),
+  }),
+);
 
 export const prRisks = pgTable('pr_risks', {
   prId: uuid('pr_id')
@@ -141,7 +158,11 @@ export const prRisks = pgTable('pr_risks', {
   costUsd: doublePrecision('cost_usd'),
   costSource: text('cost_source', { enum: ['provider', 'estimated'] }),
   derivedAt: timestamp('derived_at', { withTimezone: true }).notNull().defaultNow(),
-});
+},
+  (t) => ({
+    costPairCheck: check('pr_risks_cost_pair_check', sql`(${t.costUsd} IS NULL) = (${t.costSource} IS NULL)`),
+  }),
+);
 
 export const prBlastCache = pgTable('pr_blast_cache', {
   prId: uuid('pr_id')
@@ -151,10 +172,10 @@ export const prBlastCache = pgTable('pr_blast_cache', {
   /** Index's last_indexed_sha when full/partial; else the clone's current head, or '' with no clone. */
   sourceSha: text('source_sha').notNull(),
   indexerVersion: integer('indexer_version').notNull(),
-  indexStatus: text('index_status').notNull(),
+  indexStatus: text('index_status', { enum: repoIndexState.status.enumValues }).notNull(),
   repoIntelEnabled: boolean('repo_intel_enabled').notNull(),
   status: text('status', { enum: ['ok', 'degraded'] }).notNull(),
-  reason: text('reason'),
+  reason: text('reason', { enum: BLAST_REASONS }),
   blast: jsonb('blast').$type<BlastRadius>().notNull(),
   truncated: boolean('truncated').notNull().default(false),
   computedAt: timestamp('computed_at', { withTimezone: true }).notNull().defaultNow(),

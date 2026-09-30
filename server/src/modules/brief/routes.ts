@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
-import type {
+import {
   DeriveBriefResponse,
   PrIntentResponse,
   PrRisksResponse,
@@ -26,7 +26,7 @@ export default async function briefRoutes(appBase: FastifyInstance) {
   // The job handler is a driving adapter, registered once at plugin boot.
   registerBriefJobs(container);
 
-  app.get('/pulls/:id/intent', { schema: { params: IdParams } }, async (req): Promise<PrIntentResponse> => {
+  app.get('/pulls/:id/intent', { schema: { params: IdParams, response: { 200: PrIntentResponse } } }, async (req): Promise<PrIntentResponse> => {
     const { workspaceId } = await getContext(container, req);
     const view = await container.prBrief.getIntent(workspaceId, req.params.id);
     if (!view) throw new NotFoundError('Pull request not found');
@@ -38,7 +38,7 @@ export default async function briefRoutes(appBase: FastifyInstance) {
     };
   });
 
-  app.get('/pulls/:id/risks', { schema: { params: IdParams } }, async (req): Promise<PrRisksResponse> => {
+  app.get('/pulls/:id/risks', { schema: { params: IdParams, response: { 200: PrRisksResponse } } }, async (req): Promise<PrRisksResponse> => {
     const { workspaceId } = await getContext(container, req);
     const view = await container.prBrief.getRisks(workspaceId, req.params.id);
     if (!view) throw new NotFoundError('Pull request not found');
@@ -53,7 +53,7 @@ export default async function briefRoutes(appBase: FastifyInstance) {
   // Each call can cost two LLM requests: same tight limit shape as POST /review.
   app.post(
     '/pulls/:id/brief/derive',
-    { schema: { params: IdParams }, config: { rateLimit: { max: 5, timeWindow: '1 minute' } } },
+    { schema: { params: IdParams, response: { 202: DeriveBriefResponse } }, config: { rateLimit: { max: 5, timeWindow: '1 minute' } } },
     async (req, reply): Promise<DeriveBriefResponse> => {
       const { workspaceId } = await getContext(container, req);
       const res = await container.prBrief.requestDerive(workspaceId, req.params.id, 'on_demand');

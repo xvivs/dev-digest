@@ -3,10 +3,11 @@
  * `pr_blast_cache` only. Rows never leave this file.
  */
 import { eq } from 'drizzle-orm';
-import type { BlastReason } from '@devdigest/shared';
 import type { Db } from '../../db/client.js';
 import * as t from '../../db/schema.js';
 import type { BlastCacheEntry, BlastStore } from './ports.js';
+
+type CachedIndexStatus = (typeof t.prBlastCache.$inferInsert)['indexStatus'];
 
 function toEntry(r: typeof t.prBlastCache.$inferSelect): BlastCacheEntry {
   return {
@@ -16,8 +17,7 @@ function toEntry(r: typeof t.prBlastCache.$inferSelect): BlastCacheEntry {
     indexStatus: r.indexStatus,
     repoIntelEnabled: r.repoIntelEnabled,
     status: r.status,
-    // This repository is the only writer; the column holds a BlastReason or null.
-    reason: r.reason as BlastReason | null,
+    reason: r.reason,
     blast: r.blast,
     truncated: r.truncated,
     computedAt: r.computedAt,
@@ -37,7 +37,8 @@ export class BlastRepository implements BlastStore {
       headSha: e.headSha,
       sourceSha: e.sourceSha,
       indexerVersion: e.indexerVersion,
-      indexStatus: e.indexStatus,
+      // The key carries the indexer's status (full/partial/degraded/failed); the column pins that set.
+      indexStatus: e.indexStatus as CachedIndexStatus,
       repoIntelEnabled: e.repoIntelEnabled,
       status: e.status,
       reason: e.reason,

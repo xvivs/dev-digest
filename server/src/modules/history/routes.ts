@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
-import type { PrHistoryResponse } from '@devdigest/shared';
+import { PrHistoryResponse } from '@devdigest/shared';
 import { getContext } from '../_shared/context.js';
 import { IdParams } from '../_shared/schemas.js';
 import { NotFoundError } from '../../platform/errors.js';
@@ -28,7 +28,7 @@ export default async function historyRoutes(appBase: FastifyInstance) {
   const { container } = app;
   const service = buildHistoryService(container);
 
-  app.get('/pulls/:id/history', { schema: { params: IdParams } }, async (req): Promise<PrHistoryResponse> => {
+  app.get('/pulls/:id/history', { schema: { params: IdParams, response: { 200: PrHistoryResponse } } }, async (req): Promise<PrHistoryResponse> => {
     const { workspaceId } = await getContext(container, req);
     const view = await service.getForPull(workspaceId, req.params.id);
     if (!view) throw new NotFoundError('Pull request not found');

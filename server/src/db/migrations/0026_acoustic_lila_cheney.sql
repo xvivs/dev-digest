@@ -1,0 +1,2 @@
+ALTER TABLE "pr_intent" ADD CONSTRAINT "pr_intent_cost_pair_check" CHECK (("pr_intent"."cost_usd" IS NULL) = ("pr_intent"."cost_source" IS NULL));--> statement-breakpoint
+ALTER TABLE "pr_risks" ADD CONSTRAINT "pr_risks_cost_pair_check" CHECK (("pr_risks"."cost_usd" IS NULL) = ("pr_risks"."cost_source" IS NULL));
