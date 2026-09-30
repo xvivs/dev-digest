@@ -7,8 +7,11 @@ import { describe, it, expect } from 'vitest';
 import {
   isEffectiveSkill,
   promptHashInput,
+  resolveVettingOnBodyEdit,
   skillUsageStatus,
   summarizeSkillStats,
+  toLatestVerdict,
+  type LatestSuiteRaw,
   type SkillRunAggregate,
 } from './domain.js';
 
@@ -120,5 +123,69 @@ describe('summarizeSkillStats', () => {
     });
     expect(stats.cost).toEqual({ tokens: 0, costUsd: null, costSource: null });
     expect(stats.byVersion).toEqual([]);
+  });
+});
+
+describe('resolveVettingOnBodyEdit', () => {
+  const vetted = { needsVetting: false, vettedBodyHash: 'h' };
+
+  it('edit of an extracted skill resets vetting', () => {
+    expect(resolveVettingOnBodyEdit({ source: 'extracted', ...vetted }, true)).toEqual({
+      needsVetting: true,
+      vettedBodyHash: null,
+    });
+  });
+  it('edit of an imported skill resets vetting', () => {
+    expect(resolveVettingOnBodyEdit({ source: 'imported', ...vetted }, true)).toEqual({
+      needsVetting: true,
+      vettedBodyHash: null,
+    });
+  });
+  it('manual skill is untouched; unchanged body keeps the vet', () => {
+    expect(resolveVettingOnBodyEdit({ source: 'manual', ...vetted }, true)).toEqual(vetted);
+    expect(resolveVettingOnBodyEdit({ source: 'extracted', ...vetted }, false)).toEqual(vetted);
+  });
+});
+
+describe('toLatestVerdict', () => {
+  const raw: LatestSuiteRaw = {
+    verdict: 'helps',
+    carrierName: 'Reviewer',
+    storedCarrierName: 'Old name',
+    suitePromptSha256: 'p1',
+    suiteCarrierVersion: 2,
+    carrierVersion: 2,
+    currentPromptSha256: 'p1',
+  };
+
+  it('no suite -> null', () => {
+    expect(
+      toLatestVerdict({ ...raw, verdict: null, carrierName: null, storedCarrierName: null, suitePromptSha256: null, suiteCarrierVersion: null, carrierVersion: null }),
+    ).toBeNull();
+  });
+
+  it('fresh suite is not stale and uses the current carrier name', () => {
+    expect(toLatestVerdict(raw)).toEqual({ verdict: 'helps', carrierName: 'Reviewer', stale: false });
+  });
+
+  it('prompt moved -> stale', () => {
+    expect(toLatestVerdict({ ...raw, currentPromptSha256: 'p2' })?.stale).toBe(true);
+  });
+
+  it('carrier version moved -> stale', () => {
+    expect(toLatestVerdict({ ...raw, carrierVersion: 3 })?.stale).toBe(true);
+  });
+
+  it('deleted carrier -> stale, name falls back to the stored one', () => {
+    expect(toLatestVerdict({ ...raw, carrierName: null, carrierVersion: null })).toEqual({
+      verdict: 'helps',
+      carrierName: 'Old name',
+      stale: true,
+    });
+  });
+
+  it('unknown verdict string -> null', () => {
+    expect(toLatestVerdict({ ...raw, verdict: 'bogus' })).toBeNull();
+    expect(toLatestVerdict({ ...raw, verdict: 'toString' })).toBeNull();
   });
 });

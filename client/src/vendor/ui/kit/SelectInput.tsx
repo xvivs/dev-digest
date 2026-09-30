@@ -7,11 +7,19 @@ export function SelectInput({
   onChange,
   options,
   mono = true,
+  id,
+  disabled,
+  "aria-label": ariaLabel,
 }: {
   value: string;
   onChange?: (v: string) => void;
   options: (string | { value: string; label: string })[];
   mono?: boolean;
+  id?: string;
+  /** Read-only display of a fixed value: dimmed, not focusable, not changeable. */
+  disabled?: boolean;
+  /** Accessible name when no `<label htmlFor={id}>` names it. */
+  "aria-label"?: string;
 }) {
   return (
     <div
@@ -24,9 +32,13 @@ export function SelectInput({
         border: "1px solid var(--border-strong)",
         background: "var(--bg-elevated)",
         position: "relative",
+        opacity: disabled ? 0.6 : 1,
       }}
     >
       <select
+        id={id}
+        aria-label={ariaLabel}
+        disabled={disabled}
         className={mono ? "mono" : undefined}
         value={value}
         onChange={(e) => onChange?.(e.target.value)}
@@ -38,7 +50,7 @@ export function SelectInput({
           border: "none",
           outline: "none",
           appearance: "none",
-          cursor: "pointer",
+          cursor: disabled ? "not-allowed" : "pointer",
         }}
       >
         {options.map((o) => {

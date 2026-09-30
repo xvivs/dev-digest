@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { Skill } from "@devdigest/shared";
-import { buildSavePatch, estimateTokens, isSkillDirty } from "./helpers";
+import { buildSavePatch, isSkillDirty } from "./helpers";
 
 const SKILL: Skill = {
   id: "sk1",
@@ -26,15 +26,6 @@ describe("isSkillDirty", () => {
     expect(isSkillDirty(SKILL, { ...base, name: "other-name" })).toBe(true);
     expect(isSkillDirty(SKILL, { ...base, enabled: false })).toBe(true);
     expect(isSkillDirty(SKILL, { ...base, type: "security" })).toBe(true);
-  });
-});
-
-describe("estimateTokens", () => {
-  it("rounds up chars / 4 (SPEC-02 D4)", () => {
-    expect(estimateTokens("")).toBe(0);
-    expect(estimateTokens("abcd")).toBe(1);
-    expect(estimateTokens("abcde")).toBe(2);
-    expect(estimateTokens("a".repeat(100))).toBe(25);
   });
 });
 

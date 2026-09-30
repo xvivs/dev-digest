@@ -7,24 +7,36 @@ export function Tabs({
   value,
   onChange,
   pad = "0 28px",
+  ariaLabel,
 }: {
   tabs: TabDef[];
   value: string;
   onChange: (k: string) => void;
   pad?: string;
+  /** Accessible name of the tablist, when the surrounding heading does not name it. */
+  ariaLabel?: string;
 }) {
   return (
-    <div style={{ display: "flex", gap: 2, padding: pad, borderBottom: "1px solid var(--border)" }}>
+    <div
+      role="tablist"
+      aria-label={ariaLabel}
+      style={{ display: "flex", gap: 2, padding: pad, borderBottom: "1px solid var(--border)" }}
+    >
       {tabs.map((t) => {
         const k = typeof t === "string" ? t : t.key;
         const label = typeof t === "string" ? t : t.label;
         const icon = typeof t === "object" ? t.icon : undefined;
         const on = value === k;
+        const count = typeof t === "object" ? t.count : undefined;
+        const countLabel = typeof t === "object" ? t.countLabel : undefined;
         const I = icon ? Icon[icon] : null;
         return (
           <button
             key={k}
             type="button"
+            role="tab"
+            aria-selected={on}
+            aria-label={count != null ? (countLabel ?? `${label} (${count})`) : undefined}
             onClick={() => onChange(k)}
             style={{
               display: "flex",
@@ -43,9 +55,9 @@ export function Tabs({
           >
             {I && <I size={14} style={{ color: on ? "var(--accent)" : "var(--text-muted)" }} />}
             {label}
-            {typeof t === "object" && t.count != null && (
-              <span className="tnum" style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                {t.count}
+            {count != null && (
+              <span aria-hidden="true" className="tnum" style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                {count}
               </span>
             )}
           </button>

@@ -1,11 +1,12 @@
 import type { Container } from '../../platform/container.js';
 import type { Provider, Review, RunTrace, UnifiedDiff } from '@devdigest/shared';
 import { reviewPullRequest, countBlockers, estimateTokens, type SkillInput } from '@devdigest/reviewer-core';
+import { failureTrace } from './failure-trace.js';
 import { RunLogger } from '../../platform/run-logger.js';
 import * as schema from '../../db/schema.js';
 import type { AgentRow } from '../../db/rows.js';
 import type { ReviewRepository, FindingRow, PullRow, ReviewRow } from './repository.js';
-import { REVIEW_STRATEGY } from './constants.js';
+import { REVIEW_PROVIDER_ROUTING, REVIEW_STRATEGY } from './constants.js';
 import { taskLine } from './helpers.js';
 import { loadDiff } from './diff-loader.js';
 
@@ -94,8 +95,14 @@ export class ReviewRunExecutor {
     // succeeded) so the failure trace still carries `skills_used`.
     const failAll = async (msg: string, skillsByAgent: Map<string, ResolvedSkill[]>) => {
       for (const { runId, agent } of jobs) {
-        await this.repo
-          .completeAgentRun(runId, {
+        await this.saveRunSkills(runId, skillsByAgent.get(agent.id), logger);
+        // Trace + terminal status in ONE locked transaction (see finishRun):
+        // a reader that sees `failed` finds the trace, and a run the user
+        // already cancelled keeps its cancel trace.
+        await this.finishRun(
+          runId,
+          this.traceFromBuffer(runId, pull, agent, '0/0 passed', 0, skillsByAgent.get(agent.id)),
+          {
             status: 'failed',
             durationMs: 0,
             tokensIn: 0,
@@ -103,15 +110,8 @@ export class ReviewRunExecutor {
             findingsCount: 0,
             grounding: '0/0 passed',
             error: msg,
-          })
-          .catch(() => undefined);
-        await this.saveRunSkills(runId, skillsByAgent.get(agent.id), logger);
-        await this.repo
-          .saveRunTrace(
-            runId,
-            this.traceFromBuffer(runId, pull, agent, '0/0 passed', 0, skillsByAgent.get(agent.id)),
-          )
-          .catch(() => undefined);
+          },
+        ).catch(() => undefined);
         this.container.runBus.complete(runId);
       }
     };
@@ -175,7 +175,7 @@ export class ReviewRunExecutor {
       } catch (err) {
         // runOneAgent already persisted the failure/cancel (status + error +
         // trace) and completed the bus; here we only log at the run level.
-        const cancelled = err instanceof RunCancelledError;
+        const cancelled = err instanceof RunCancelledError || this.container.runBus.isCancelled(runId);
         logger?.[cancelled ? 'info' : 'error'](
           { runId, agent: agent.name, err: (err as Error).message, durationMs: Date.now() - agentStart },
           `review: agent "${agent.name}" ${cancelled ? 'cancelled' : 'failed'}`,
@@ -203,8 +203,15 @@ export class ReviewRunExecutor {
     const runLog = parentLog.forRun(runId, { agent: agent.name });
 
     runLog.info(`Starting review with agent "${agent.name}" (${agent.provider}/${agent.model})`);
+    // Aborted by a manual cancel (runBus.cancel): closes the in-flight LLM
+    // request instead of leaving its socket open until the model answers.
+    const cancelSignal = this.container.runBus.signal(runId);
+    const throwIfCancelled = () => {
+      if (cancelSignal.aborted || this.container.runBus.isCancelled(runId)) throw new RunCancelledError();
+    };
 
     try {
+      throwIfCancelled();
       // Resolve the agent's LLM provider. (container.llm throws if the provider
       // key is missing — caught below and persisted as a failed run.)
       const llm = await runLog.step(
@@ -263,38 +270,18 @@ export class ReviewRunExecutor {
         task,
         sessionId: `${repo.owner}/${repo.name}#${pull.number}:${agent.name}`,
         onEvent: (e) => runLog.event(e.kind, e.msg, e.data),
-        checkCancelled: () => {
-          if (this.container.runBus.isCancelled(runId)) throw new RunCancelledError();
-        },
+        checkCancelled: throwIfCancelled,
+        signal: cancelSignal,
+        // OpenRouter-only upstream routing (the other adapters ignore it).
+        // Reasoning is left on — see the note under REVIEW_PROVIDER_ROUTING.
+        ...(agent.provider === 'openrouter' ? { providerRouting: REVIEW_PROVIDER_ROUTING } : {}),
       });
+      // A cancel that landed while the last call was returning: do not persist
+      // a review for a run the user already cancelled.
+      throwIfCancelled();
       const { tokensIn, tokensOut, grounding, costUsd, costSource } = outcome;
 
       const keptFindings = outcome.review.findings;
-
-      // ---- Persist review + findings ----------------------------------------
-      const review = await this.repo.insertReview({
-        workspaceId,
-        prId: pull.id,
-        agentId: agent.id,
-        runId,
-        kind: 'review',
-        verdict: outcome.review.verdict,
-        summary: outcome.review.summary,
-        score: outcome.review.score,
-        model: agent.model,
-      });
-      const findingRows = await this.repo.insertFindings(review.id, keptFindings);
-      runLog.result(`Persisted review ${review.id} with ${findingRows.length} finding(s)`);
-
-      // Mark the commit this review ran against so the PR list can tell
-      // reviewed / needs-review (head moved) / stale apart.
-      await this.repo.markReviewed(pull.id, pull.headSha);
-
-      const durationMs = Date.now() - start;
-
-      // Deterministic blocker count (severity ≥ the agent's gate) — the signal
-      // the timeline colors on, NOT the model's self-reported verdict.
-      const blockers = countBlockers(keptFindings, agent.ciFailOn);
 
       // SPEC-02 AC-27 — snapshot of the skills resolved at run start, for the
       // trace. `skills_tokens` is reviewer-core's job (assemblePrompt sums the
@@ -311,77 +298,129 @@ export class ReviewRunExecutor {
             }))
           : null;
 
-      // ---- Observability: agent_runs + ONE run_traces document --------------
-      await this.repo.completeAgentRun(runId, {
-        status: 'done',
-        durationMs,
-        tokensIn,
-        tokensOut,
-        findingsCount: findingRows.length,
-        grounding,
-        score: outcome.review.score,
-        blockers,
-        error: null,
-        costUsd,
-        costSource,
-      });
+      // Deterministic blocker count (severity ≥ the agent's gate) — the signal
+      // the timeline colors on, NOT the model's self-reported verdict.
+      const blockers = countBlockers(keptFindings, agent.ciFailOn);
 
-      const trace: RunTrace = {
-        config: {
-          agent: agent.name,
-          version: String(agent.version),
-          provider: agent.provider,
-          model: agent.model,
-          pr: pull.number,
-          source: 'local',
-        },
-        stats: {
-          duration_ms: durationMs,
-          tokens_in: tokensIn,
-          tokens_out: tokensOut,
-          findings: findingRows.length,
-          grounding,
-          cost_usd: costUsd,
-          cost_source: costSource,
-          // Done, but no price entry for this model — the only "missing" case
-          // possible on a successful run.
-          cost_missing_reason: costUsd == null ? 'no_price' : undefined,
-        },
-        prompt_assembly: {
-          ...outcome.assembly,
-          skills_used: skillsUsed ?? outcome.assembly.skills_used ?? null,
-          skills_tokens:
-            outcome.assembly.skills_tokens ??
-            (skillsUsed ? skillsUsed.reduce((sum, s) => sum + s.tokens, 0) : null),
-        },
-        tool_calls: outcome.chunks.map((c) => ({
-          tool: 'review_file',
-          args: c.label,
-          meta: outcome.mode,
-          ms: Math.round(durationMs / Math.max(outcome.chunks.length, 1)),
-        })),
-        raw_output: outcome.raw,
-        memory_pulled: [],
-        specs_read: [],
-        // Persisted log = the run's FULL event buffer (incl. shared pre-work:
-        // diff load + intent), not just events recorded inside this method.
-        log: runLog.logFor(runId),
-      };
-      runLog.info('Run complete; trace persisted');
+      // ---- Persist review + findings + trace + status: ONE transaction -------
+      // The run row is locked FOR UPDATE first — the same lock
+      // `cancelRunWithTrace` takes — so a cancel that slipped past the
+      // throwIfCancelled() above is serialised against this write: if it
+      // committed first we see `cancelled` and discard the result (no review,
+      // no done-trace over the cancel trace); if we commit first the cancel
+      // sees `done` and is a no-op. Within the transaction the trace still
+      // lands before the status, and both become visible together.
+      // Best effort and outside the transaction (stats are a read model), but
+      // before it, so a persisted trace implies the rows were attempted.
       await this.saveRunSkills(runId, resolvedSkills, logger);
-      await this.repo.saveRunTrace(runId, trace);
+      const persisted = await this.repo.transaction(async (tx) => {
+        const current = await tx.lockRunStatus(runId);
+        if (current !== 'running') return { committed: false as const, status: current };
+
+        const review = await tx.insertReview({
+          workspaceId,
+          prId: pull.id,
+          agentId: agent.id,
+          runId,
+          kind: 'review',
+          verdict: outcome.review.verdict,
+          summary: outcome.review.summary,
+          score: outcome.review.score,
+          model: agent.model,
+        });
+        const findingRows = await tx.insertFindings(review.id, keptFindings);
+        runLog.result(`Persisted review ${review.id} with ${findingRows.length} finding(s)`);
+
+        // Mark the commit this review ran against so the PR list can tell
+        // reviewed / needs-review (head moved) / stale apart.
+        await tx.markReviewed(pull.id, pull.headSha);
+
+        const durationMs = Date.now() - start;
+        const trace: RunTrace = {
+          config: {
+            agent: agent.name,
+            version: String(agent.version),
+            provider: agent.provider,
+            model: agent.model,
+            pr: pull.number,
+            source: 'local',
+          },
+          stats: {
+            duration_ms: durationMs,
+            tokens_in: tokensIn,
+            tokens_out: tokensOut,
+            findings: findingRows.length,
+            grounding,
+            cost_usd: costUsd,
+            cost_source: costSource,
+            // Done, but no price entry for this model — the only "missing" case
+            // possible on a successful run.
+            cost_missing_reason: costUsd == null ? 'no_price' : undefined,
+          },
+          prompt_assembly: {
+            ...outcome.assembly,
+            skills_used: skillsUsed ?? outcome.assembly.skills_used ?? null,
+            skills_tokens:
+              outcome.assembly.skills_tokens ??
+              (skillsUsed ? skillsUsed.reduce((sum, s) => sum + s.tokens, 0) : null),
+          },
+          tool_calls: outcome.chunks.map((c) => ({
+            tool: 'review_file',
+            args: c.label,
+            meta: outcome.mode,
+            ms: Math.round(durationMs / Math.max(outcome.chunks.length, 1)),
+          })),
+          raw_output: outcome.raw,
+          memory_pulled: [],
+          specs_read: [],
+          // Persisted log = the run's FULL event buffer (incl. shared pre-work:
+          // diff load + intent), not just events recorded inside this method.
+          log: runLog.logFor(runId),
+        };
+        await tx.saveRunTrace(runId, trace);
+        await tx.completeAgentRun(runId, {
+          status: 'done',
+          durationMs,
+          tokensIn,
+          tokensOut,
+          findingsCount: findingRows.length,
+          grounding,
+          score: outcome.review.score,
+          blockers,
+          error: null,
+          costUsd,
+          costSource,
+        });
+        return { committed: true as const, review, findingRows };
+      });
+      if (!persisted.committed) {
+        // A cancel committed between the last check and the lock: the catch
+        // below refines the cancel trace. Any other non-running status (row
+        // gone / reaped) is a plain failure whose write finishRun skips.
+        if (persisted.status === 'cancelled') throw new RunCancelledError();
+        throw new Error(`Run is no longer running (status: ${persisted.status ?? 'missing'}); result discarded`);
+      }
+      const { review, findingRows } = persisted;
+      runLog.info('Run complete; trace persisted');
       this.container.runBus.complete(runId);
 
       return { review, findings: findingRows, grounding, raw: outcome.review };
     } catch (err) {
       // Failure/cancel: persist status + the error text + the log-so-far so the
       // run (and WHY it failed) is visible on the UI after a reload.
-      const cancelled = err instanceof RunCancelledError;
+      // A cancel aborts the LLM request, which rejects with the provider's
+      // AbortError rather than RunCancelledError — the bus flag is the truth.
+      const cancelled = err instanceof RunCancelledError || this.container.runBus.isCancelled(runId);
       const status = cancelled ? 'cancelled' : 'failed';
       const msg = cancelled ? 'Cancelled by user' : (err as Error).message;
       runLog.error(cancelled ? 'Run cancelled by user' : `Run failed: ${msg}`);
-      await this.repo
-        .completeAgentRun(runId, {
+      await this.saveRunSkills(runId, resolvedSkills, logger);
+      // Trace + terminal status in one locked transaction — same invariant as
+      // the success path (see finishRun for which states it may overwrite).
+      await this.finishRun(
+        runId,
+        this.traceFromBuffer(runId, pull, agent, '0/0 passed', Date.now() - start, resolvedSkills),
+        {
           status,
           durationMs: Date.now() - start,
           tokensIn: 0,
@@ -389,15 +428,8 @@ export class ReviewRunExecutor {
           findingsCount: 0,
           grounding: '0/0 passed',
           error: msg,
-        })
-        .catch(() => undefined);
-      await this.saveRunSkills(runId, resolvedSkills, logger);
-      await this.repo
-        .saveRunTrace(
-          runId,
-          this.traceFromBuffer(runId, pull, agent, '0/0 passed', Date.now() - start, resolvedSkills),
-        )
-        .catch(() => undefined);
+        },
+      ).catch(() => undefined);
       this.container.runBus.complete(runId);
       throw err;
     }
@@ -523,10 +555,28 @@ export class ReviewRunExecutor {
   }
 
   /**
-   * A minimal RunTrace whose `log` is the run's full SSE buffer — persisted on
-   * failure/cancel (and pre-work failures) so the events (and WHY it failed)
-   * survive a reload, not just the in-memory stream.
+   * Failure / cancel terminal write: trace THEN status, in ONE transaction with
+   * the run row locked FOR UPDATE (serialised against `cancelRunWithTrace`).
+   * Writes only over a `running` row — or over `cancelled` when this write is
+   * the executor's own, fuller cancel trace. A `failed` write never lands on a
+   * cancelled / done / reaped run. Returns whether it wrote.
    */
+  private finishRun(
+    runId: string,
+    trace: RunTrace,
+    values: Parameters<ReviewRepository['completeAgentRun']>[1],
+  ): Promise<boolean> {
+    return this.repo.transaction(async (tx) => {
+      const current = await tx.lockRunStatus(runId);
+      const writable = current === 'running' || (current === 'cancelled' && values.status === 'cancelled');
+      if (!writable) return false;
+      await tx.saveRunTrace(runId, trace);
+      await tx.completeAgentRun(runId, values);
+      return true;
+    });
+  }
+
+  /** Failure/cancel trace from the run's SSE buffer (see failure-trace.ts). */
   private traceFromBuffer(
     runId: string,
     pull: PullRow,
@@ -535,56 +585,13 @@ export class ReviewRunExecutor {
     durationMs = 0,
     resolvedSkills?: ResolvedSkill[],
   ): RunTrace {
-    // SPEC-02: fill skills_used even on a failure trace WHEN resolution had
-    // already happened (pre-work runs before the diff load / the LLM call, so
-    // a later failure still has it); absent entirely when it hadn't (skill
-    // resolution itself failed, or this is the pre-work failAll path with an
-    // agent that resolution never reached).
-    const skillsUsed =
-      resolvedSkills && resolvedSkills.length > 0
-        ? resolvedSkills.map((s) => ({
-            id: s.id,
-            name: s.name,
-            version: s.version,
-            sha256: s.sha256,
-            tokens: estimateTokens(s.body),
-          }))
-        : null;
-    return {
-      config: {
-        agent: agent.name,
-        version: String(agent.version),
-        provider: agent.provider,
-        model: agent.model,
-        pr: pull.number,
-        source: 'local',
-      },
-      stats: {
-        duration_ms: durationMs,
-        tokens_in: 0,
-        tokens_out: 0,
-        findings: 0,
-        grounding,
-        cost_usd: null,
-        cost_source: null,
-        // traceFromBuffer only ever runs on a pre-work failure / run failure /
-        // cancellation — never on a run that completed with a cost.
-        cost_missing_reason: 'failed',
-      },
-      prompt_assembly: {
-        system: agent.systemPrompt,
-        skills: null,
-        skills_used: skillsUsed,
-        skills_tokens: skillsUsed ? skillsUsed.reduce((sum, s) => sum + s.tokens, 0) : null,
-        memory: null,
-        specs: null,
-        user: '',
-      },
-      tool_calls: [],
-      raw_output: '',
-      memory_pulled: [],
-      specs_read: [],
+    return failureTrace({
+      agent,
+      prNumber: pull.number,
+      grounding,
+      durationMs,
+      ...(resolvedSkills ? { resolvedSkills } : {}),
       log: this.container.runBus.buffer(runId).map((e) => ({ t: e.t, kind: e.kind, msg: e.msg })),
-    };
+    });
   }
 }

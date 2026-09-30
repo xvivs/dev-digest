@@ -68,7 +68,7 @@ describe("A5 Run Trace drawer (smoke)", () => {
 
   it("switches to the live log tab", () => {
     renderWithIntl(<RunTraceDrawer runId="r1" agentName="Security" prNumber={482} onClose={() => {}} />);
-    fireEvent.click(screen.getByRole("button", { name: "log" }));
+    fireEvent.click(screen.getByRole("tab", { name: "log" }));
     // LiveLogStream renders its filter input
     expect(screen.getByPlaceholderText("Filter log…")).toBeInTheDocument();
   });

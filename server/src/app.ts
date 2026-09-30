@@ -17,6 +17,7 @@ import { Container, type ContainerOverrides } from './platform/container.js';
 import { AppError } from './platform/errors.js';
 import { modules } from './modules/index.js';
 import { ReviewService } from './modules/reviews/service.js';
+import { buildConventionsService } from './modules/conventions/wiring.js';
 
 // Attach the DI container to every request/instance.
 declare module 'fastify' {
@@ -29,6 +30,13 @@ export interface BuildAppOptions {
   config?: AppConfig;
   db?: Db;
   overrides?: ContainerOverrides;
+  /**
+   * Reap `running` agent_runs / convention_scans left by a dead process before
+   * listening. Only the real API process (`server.ts`) may opt in: an
+   * in-process app (tests, scripts) shares the DB with a live API and would
+   * flip that API's in-flight runs to `failed`. Default false.
+   */
+  reapOnBoot?: boolean;
 }
 
 /**
@@ -66,6 +74,7 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
 
   const container = new Container(config, db, opts.overrides);
   app.decorate('container', container);
+  container.jobs.logger = app.log;
 
   // Reap runs left 'running' by a previous (now-dead) process — otherwise they
   // show as perpetually "running" in the UI and can't be cancelled (no runner).
@@ -77,11 +86,23 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
   // between listening and an async reaper finishing.
   // NOTE: assumes a SINGLE API instance per DB. With multiple replicas this
   // would need per-instance scoping / heartbeats (not this app's deployment).
-  try {
-    const reaped = await new ReviewService(container).reapStaleRuns();
-    if (reaped > 0) app.log.info({ reaped }, 'reaped stale running agent_runs on boot');
-  } catch (err) {
-    app.log.warn({ err: (err as Error).message }, 'stale-run reaping failed (non-fatal)');
+  // Opt-in (`reapOnBoot`): an in-process app — e.g. a unit test whose config
+  // came from `.env` — is a second instance on the dev DB, and reaping from it
+  // turns the live API's in-flight runs into `failed` with no error.
+  if (opts.reapOnBoot) {
+    try {
+      const reaped = await new ReviewService(container).reapStaleRuns();
+      if (reaped > 0) app.log.info({ reaped }, 'reaped stale running agent_runs on boot');
+    } catch (err) {
+      app.log.warn({ err: (err as Error).message }, 'stale-run reaping failed (non-fatal)');
+    }
+    // Same for conventions scans (AC-18): a scan's job lives in this process only.
+    try {
+      const reaped = await buildConventionsService(container).reapStaleScans();
+      if (reaped > 0) app.log.info({ reaped }, 'reaped stale running convention_scans on boot');
+    } catch (err) {
+      app.log.warn({ err: (err as Error).message }, 'stale-scan reaping failed (non-fatal)');
+    }
   }
 
   // Security headers (X-Content-Type-Options, X-Frame-Options, …). The API

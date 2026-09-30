@@ -161,7 +161,7 @@
       "restore": "Restore as v{next}",
       "restoring": "Restoring…",
       "cancel": "Cancel",
-      "importedWarning": "This skill was imported. A new body resets vetting, so agents stop using it until you review and trust it again.",
+      "importedWarning": "A new body resets vetting for this skill, so agents stop using it until you review and trust it again.",
       "stale": "Skill changed since you opened it. Reload to see the latest version, then try again.",
       "reload": "Reload",
       "failed": "Could not restore: {message}",

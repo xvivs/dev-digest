@@ -3,8 +3,10 @@ import type {
   Finding,
   LLMProvider,
   PromptAssembly,
+  ProviderRouting,
   Review,
   RunEventKind,
+  StructuredResult,
   UnifiedDiff,
 } from '@devdigest/shared';
 import { Review as ReviewSchema } from '@devdigest/shared';
@@ -32,6 +34,35 @@ import { reduceReviews, scoreFromFindings, sliceDiff } from './reduce.js';
 export const DEFAULT_MAP_THRESHOLD_LINES = 400;
 /** Default structured-output reprompt retries (matches REVIEW_MAX_RETRIES). */
 export const DEFAULT_REVIEW_MAX_RETRIES = 2;
+
+/**
+ * Wall-clock deadline for ONE chunk's structured call, repair attempts
+ * included. It is enforced with an AbortSignal, not only the SDK `timeout`:
+ * the OpenAI SDK clears its timeout once response headers arrive, and
+ * OpenRouter sends headers (plus whitespace keep-alives) right away, so a
+ * stalled upstream body hung reviews for 5+ minutes with the socket open.
+ * 120 s is ~2x the slowest healthy single-pass review measured on
+ * deepseek-v4-flash (~50 s when an upstream burned max_tokens on reasoning),
+ * and stays under the UI's patience for a "running" row.
+ */
+export const DEFAULT_REVIEW_CALL_DEADLINE_MS = 120_000;
+/**
+ * Explicit sampling temperature for review calls. Providers used to fall back
+ * to their own defaults (0 / 0.2 / SDK-side), which the review experiment
+ * logged as an uncontrolled variable; pin it here.
+ */
+export const DEFAULT_REVIEW_TEMPERATURE = 0;
+
+/** A chunk's LLM call ran past `callDeadlineMs` and was aborted. */
+export class ReviewDeadlineError extends Error {
+  constructor(
+    readonly chunk: string,
+    readonly deadlineMs: number,
+  ) {
+    super(`Review LLM call for "${chunk}" exceeded the ${Math.round(deadlineMs / 1000)} s deadline and was aborted`);
+    this.name = 'ReviewDeadlineError';
+  }
+}
 
 export type ReviewStrategy = 'auto' | 'single-pass' | 'map-reduce';
 export type ReviewMode = 'single-pass' | 'map-reduce';
@@ -92,6 +123,22 @@ export interface ReviewInput {
    * type, e.g. the server's RunCancelledError); the engine stays agnostic.
    */
   checkCancelled?: () => void;
+  /**
+   * Caller-owned cancellation (e.g. a user cancelling the run). Combined with
+   * the per-call deadline and forwarded to every LLM call, so aborting it
+   * closes the in-flight request instead of waiting for it to return. The
+   * rejection is the provider's AbortError; the caller maps it to its own
+   * "cancelled" state.
+   */
+  signal?: AbortSignal;
+  /** Per-chunk LLM deadline (ms). Default DEFAULT_REVIEW_CALL_DEADLINE_MS. */
+  callDeadlineMs?: number;
+  /** Sampling temperature. Default DEFAULT_REVIEW_TEMPERATURE (0). */
+  temperature?: number;
+  /** Forwarded as `StructuredRequest.disableReasoning` (OpenRouter only). */
+  disableReasoning?: boolean;
+  /** Forwarded as `StructuredRequest.providerRouting` (OpenRouter only). */
+  providerRouting?: ProviderRouting;
 }
 
 export interface ReviewOutcome {
@@ -144,6 +191,7 @@ function selectMode(strategy: ReviewStrategy, diff: UnifiedDiff, threshold: numb
 export async function reviewPullRequest(input: ReviewInput): Promise<ReviewOutcome> {
   const threshold = input.mapThresholdLines ?? DEFAULT_MAP_THRESHOLD_LINES;
   const maxRetries = input.maxRetries ?? DEFAULT_REVIEW_MAX_RETRIES;
+  const callDeadlineMs = input.callDeadlineMs ?? DEFAULT_REVIEW_CALL_DEADLINE_MS;
   const mode = selectMode(input.strategy ?? 'auto', input.diff, threshold);
   const emit = (kind: RunEventKind, msg: string, data?: unknown) =>
     input.onEvent?.({ kind, msg, data });
@@ -195,14 +243,30 @@ export async function reviewPullRequest(input: ReviewInput): Promise<ReviewOutco
     );
     const a = assemblePrompt({ ...promptParts, diff: chunk.diffText });
     if (mode === 'single-pass') assembly = a.assembly;
-    const res = await input.llm.completeStructured<Review>({
-      model: input.model,
-      schema: ReviewSchema,
-      schemaName: 'Review',
-      messages: a.messages,
-      maxRetries,
-      ...(input.sessionId ? { sessionId: input.sessionId } : {}),
-    });
+    // One deadline per chunk, shared by its repair attempts; either it or the
+    // caller's signal aborts the request (and closes the socket).
+    const deadline = AbortSignal.timeout(callDeadlineMs);
+    const signal = input.signal ? AbortSignal.any([input.signal, deadline]) : deadline;
+    let res: StructuredResult<Review>;
+    try {
+      res = await input.llm.completeStructured<Review>({
+        model: input.model,
+        schema: ReviewSchema,
+        schemaName: 'Review',
+        messages: a.messages,
+        maxRetries,
+        temperature: input.temperature ?? DEFAULT_REVIEW_TEMPERATURE,
+        timeoutMs: callDeadlineMs,
+        signal,
+        ...(input.disableReasoning ? { disableReasoning: true } : {}),
+        ...(input.providerRouting ? { providerRouting: input.providerRouting } : {}),
+        ...(input.sessionId ? { sessionId: input.sessionId } : {}),
+      });
+    } catch (err) {
+      // The SDK reports both aborts as a generic AbortError; name the deadline.
+      if (deadline.aborted && !input.signal?.aborted) throw new ReviewDeadlineError(chunk.label, callDeadlineMs);
+      throw err;
+    }
     tokensIn += res.tokensIn;
     tokensOut += res.tokensOut;
     costUsd = costUsd == null || res.costUsd == null ? null : costUsd + res.costUsd;

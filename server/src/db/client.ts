@@ -4,6 +4,9 @@ import { schema } from './schema.js';
 
 export type Db = PostgresJsDatabase<typeof schema>;
 
+/** A Drizzle transaction handle — structurally a `Db` for queries. */
+export type DbTx = Parameters<Parameters<Db['transaction']>[0]>[0];
+
 export interface DbHandle {
   db: Db;
   sql: postgres.Sql;

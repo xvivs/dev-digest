@@ -1,5 +1,5 @@
-import { and, desc, eq } from 'drizzle-orm';
-import type { Db } from '../../../db/client.js';
+import { and, desc, eq, sql } from 'drizzle-orm';
+import type { Db, DbTx } from '../../../db/client.js';
 import * as t from '../../../db/schema.js';
 import type { CostMissingReason, CostSource, RunSummary, RunTrace } from '@devdigest/shared';
 
@@ -20,7 +20,7 @@ function costMissingReason(status: string | null, costUsd: number | null): CostM
 /** In-flight runs for a PR (status='running') — the server-side source of
  *  truth for "which agents are running now". Joined with the agent name. */
 export async function activeRunsForPull(
-  db: Db,
+  db: Db | DbTx,
   workspaceId: string,
   prId: string,
 ): Promise<{ run_id: string; agent_id: string | null; agent_name: string | null; ran_at: string | null }[]> {
@@ -50,7 +50,7 @@ export async function activeRunsForPull(
 
 /** All runs for a PR (any status), newest first — the PR run history. */
 export async function listRunsForPull(
-  db: Db,
+  db: Db | DbTx,
   workspaceId: string,
   prId: string,
 ): Promise<RunSummary[]> {
@@ -90,7 +90,7 @@ export async function listRunsForPull(
  * in the Review Runs list below.
  */
 export async function deleteAgentRun(
-  db: Db,
+  db: Db | DbTx,
   workspaceId: string,
   runId: string,
 ): Promise<boolean> {
@@ -104,19 +104,67 @@ export async function deleteAgentRun(
   return rows.length > 0;
 }
 
-/** Mark a still-running run as cancelled (no-op if it already finished). */
-export async function cancelRunIfRunning(db: Db, runId: string): Promise<boolean> {
-  const rows = await db
-    .update(t.agentRuns)
-    .set({ status: 'cancelled' })
-    .where(and(eq(t.agentRuns.id, runId), eq(t.agentRuns.status, 'running')))
-    .returning({ id: t.agentRuns.id });
-  return rows.length > 0;
+/** What a manual cancel needs to build the run's minimal trace. */
+export interface RunCancelContext {
+  status: string | null;
+  provider: string | null;
+  model: string | null;
+  agentName: string | null;
+  agentVersion: number | null;
+  systemPrompt: string | null;
+  prNumber: number | null;
+}
+
+export async function getRunCancelContext(db: Db | DbTx, runId: string): Promise<RunCancelContext | undefined> {
+  const [row] = await db
+    .select({
+      status: t.agentRuns.status,
+      provider: t.agentRuns.provider,
+      model: t.agentRuns.model,
+      agentName: t.agents.name,
+      agentVersion: t.agents.version,
+      systemPrompt: t.agents.systemPrompt,
+      prNumber: t.pullRequests.number,
+    })
+    .from(t.agentRuns)
+    .leftJoin(t.agents, eq(t.agents.id, t.agentRuns.agentId))
+    .leftJoin(t.pullRequests, eq(t.pullRequests.id, t.agentRuns.prId))
+    .where(eq(t.agentRuns.id, runId));
+  return row;
+}
+
+/**
+ * Write `trace` for a run that has none yet; an existing trace (the executor
+ * got there first) is kept. Atomic — the caller owns the transaction and the
+ * business rule (see `cancelRun`).
+ */
+export async function insertRunTraceIfAbsent(db: Db | DbTx, runId: string, trace: RunTrace): Promise<void> {
+  await db.insert(t.runTraces).values({ runId, trace }).onConflictDoNothing({ target: t.runTraces.runId });
+}
+
+/** Flip a run to `cancelled` (manual cancel). Atomic; no status check. */
+export async function markRunCancelled(db: Db | DbTx, runId: string): Promise<void> {
+  await db.update(t.agentRuns).set({ status: 'cancelled', error: 'Cancelled by user' }).where(eq(t.agentRuns.id, runId));
+}
+
+/**
+ * Lock the run row FOR UPDATE and return its current status (undefined when the
+ * row is gone). Only meaningful inside a transaction: it serialises the
+ * executor's terminal write against the manual cancel (`cancelRun`), which takes the same
+ * lock — whichever commits second sees the other's status.
+ */
+export async function lockRunStatus(db: Db | DbTx, runId: string): Promise<string | null | undefined> {
+  const [row] = await db
+    .select({ status: t.agentRuns.status })
+    .from(t.agentRuns)
+    .where(eq(t.agentRuns.id, runId))
+    .for('update');
+  return row ? row.status : undefined;
 }
 
 /** On boot: any run still 'running' is orphaned (its process died / restarted),
  *  so mark it failed. Prevents permanently stuck "running" runs in the UI. */
-export async function reapStaleRunningRuns(db: Db): Promise<number> {
+export async function reapStaleRunningRuns(db: Db | DbTx): Promise<number> {
   const rows = await db
     .update(t.agentRuns)
     .set({ status: 'failed' })
@@ -129,7 +177,7 @@ export async function reapStaleRunningRuns(db: Db): Promise<number> {
 
 /** Create an agent_runs row in `running` state; returns its id (= the runId). */
 export async function createAgentRun(
-  db: Db,
+  db: Db | DbTx,
   values: {
     workspaceId: string;
     agentId: string | null;
@@ -154,7 +202,7 @@ export async function createAgentRun(
 }
 
 export async function completeAgentRun(
-  db: Db,
+  db: Db | DbTx,
   runId: string,
   values: {
     status: 'done' | 'failed' | 'cancelled';
@@ -190,11 +238,19 @@ export async function completeAgentRun(
       costUsd: values.costUsd ?? null,
       costSource: values.costSource ?? null,
     })
-    .where(eq(t.agentRuns.id, runId));
+    // A manual cancel is final: the executor may still finish (its last LLM
+    // call returned just before the abort) and must not flip `cancelled` back
+    // to done/failed. Writing `cancelled` again only refines the counters.
+    .where(
+      and(
+        eq(t.agentRuns.id, runId),
+        values.status === 'cancelled' ? undefined : sql`${t.agentRuns.status} IS DISTINCT FROM 'cancelled'`,
+      ),
+    );
 }
 
 /** Persist the WHOLE run log as ONE document. PK = runId → agent_runs. */
-export async function saveRunTrace(db: Db, runId: string, trace: RunTrace): Promise<void> {
+export async function saveRunTrace(db: Db | DbTx, runId: string, trace: RunTrace): Promise<void> {
   await db
     .insert(t.runTraces)
     .values({ runId, trace })
@@ -214,7 +270,7 @@ export interface RunSkillRow {
  * Relational copy of the run's `skills_used` (plan Phase 2). Idempotent: a
  * second write for the same (run, skill) keeps the first row.
  */
-export async function saveRunSkills(db: Db, runId: string, rows: RunSkillRow[]): Promise<void> {
+export async function saveRunSkills(db: Db | DbTx, runId: string, rows: RunSkillRow[]): Promise<void> {
   if (rows.length === 0) return;
   await db
     .insert(t.runSkills)
@@ -222,7 +278,7 @@ export async function saveRunSkills(db: Db, runId: string, rows: RunSkillRow[]):
     .onConflictDoNothing({ target: [t.runSkills.runId, t.runSkills.skillId] });
 }
 
-export async function getRunTrace(db: Db, runId: string): Promise<RunTrace | undefined> {
+export async function getRunTrace(db: Db | DbTx, runId: string): Promise<RunTrace | undefined> {
   const [row] = await db.select().from(t.runTraces).where(eq(t.runTraces.runId, runId));
   return row ? (row.trace as RunTrace) : undefined;
 }

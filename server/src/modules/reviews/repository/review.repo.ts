@@ -1,5 +1,5 @@
-import { and, desc, eq, inArray } from 'drizzle-orm';
-import type { Db } from '../../../db/client.js';
+import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import type { Db, DbTx } from '../../../db/client.js';
 import * as t from '../../../db/schema.js';
 import type { Finding } from '@devdigest/shared';
 import type { FindingRow, PullRow } from '../../../db/rows.js';
@@ -9,7 +9,7 @@ export type ReviewRow = typeof t.reviews.$inferSelect;
 // ---- reviews + findings ---------------------------------------------------
 
 export async function insertReview(
-  db: Db,
+  db: Db | DbTx,
   values: {
     workspaceId: string;
     prId: string;
@@ -27,7 +27,7 @@ export async function insertReview(
 }
 
 export async function insertFindings(
-  db: Db,
+  db: Db | DbTx,
   reviewId: string,
   findings: Finding[],
 ): Promise<FindingRow[]> {
@@ -56,7 +56,7 @@ export async function insertFindings(
 
 /** Reviews for a PR (newest first), each with its findings. */
 export async function reviewsForPull(
-  db: Db,
+  db: Db | DbTx,
   prId: string,
 ): Promise<{ review: ReviewRow; findings: FindingRow[] }[]> {
   const reviews = await db
@@ -73,7 +73,7 @@ export async function reviewsForPull(
   }));
 }
 
-export async function getReview(db: Db, reviewId: string): Promise<ReviewRow | undefined> {
+export async function getReview(db: Db | DbTx, reviewId: string): Promise<ReviewRow | undefined> {
   const [row] = await db.select().from(t.reviews).where(eq(t.reviews.id, reviewId));
   return row;
 }
@@ -81,7 +81,7 @@ export async function getReview(db: Db, reviewId: string): Promise<ReviewRow | u
 /** Delete a whole review (one agent's run) + its findings (cascade), scoped
  *  to the workspace. Returns false if not found in the workspace. */
 export async function deleteReview(
-  db: Db,
+  db: Db | DbTx,
   workspaceId: string,
   reviewId: string,
 ): Promise<boolean> {
@@ -94,14 +94,14 @@ export async function deleteReview(
 
 // ---- finding actions ------------------------------------------------------
 
-export async function getFinding(db: Db, findingId: string): Promise<FindingRow | undefined> {
+export async function getFinding(db: Db | DbTx, findingId: string): Promise<FindingRow | undefined> {
   const [row] = await db.select().from(t.findings).where(eq(t.findings.id, findingId));
   return row;
 }
 
 /** Resolve workspace_id + pr_id for a finding (via review → pr). */
 export async function findingContext(
-  db: Db,
+  db: Db | DbTx,
   findingId: string,
 ): Promise<{ finding: FindingRow; review: ReviewRow; pull: PullRow } | undefined> {
   const finding = await getFinding(db, findingId);
@@ -117,7 +117,7 @@ export async function findingContext(
 }
 
 export async function setFindingAccepted(
-  db: Db,
+  db: Db | DbTx,
   findingId: string,
   at: Date | null,
 ): Promise<FindingRow | undefined> {
@@ -130,7 +130,7 @@ export async function setFindingAccepted(
 }
 
 export async function setFindingDismissed(
-  db: Db,
+  db: Db | DbTx,
   findingId: string,
   at: Date | null,
 ): Promise<FindingRow | undefined> {
@@ -140,4 +140,56 @@ export async function setFindingDismissed(
     .where(eq(t.findings.id, findingId))
     .returning();
   return row;
+}
+
+// ---- recurring findings (conventions evidence) ----------------------------
+
+export interface RecurringFinding {
+  category: string;
+  title: string;
+  prCount: number;
+  files: string[];
+}
+
+/**
+ * Findings of one repo that recur across `minPrs`+ distinct PRs, grouped by
+ * `(category, lower(trim(title)))`. Dismissed findings (`dismissed_at` set) are
+ * excluded — the reviewer rejected them. Top `limit` by PR count.
+ */
+export async function recurringFindings(
+  db: Db | DbTx,
+  workspaceId: string,
+  repoId: string,
+  minPrs: number,
+  limit: number,
+): Promise<RecurringFinding[]> {
+  const normTitle = sql<string>`lower(trim(${t.findings.title}))`;
+  const prCount = sql<number>`count(distinct ${t.pullRequests.id})`;
+  const rows = await db
+    .select({
+      category: t.findings.category,
+      title: sql<string>`min(${t.findings.title})`,
+      prCount,
+      files: sql<string[]>`array_agg(distinct ${t.findings.file})`,
+    })
+    .from(t.findings)
+    .innerJoin(t.reviews, eq(t.findings.reviewId, t.reviews.id))
+    .innerJoin(t.pullRequests, eq(t.reviews.prId, t.pullRequests.id))
+    .where(
+      and(
+        eq(t.pullRequests.workspaceId, workspaceId),
+        eq(t.pullRequests.repoId, repoId),
+        isNull(t.findings.dismissedAt),
+      ),
+    )
+    .groupBy(t.findings.category, normTitle)
+    .having(sql`${prCount} >= ${minPrs}`)
+    .orderBy(desc(prCount), t.findings.category, normTitle)
+    .limit(limit);
+  return rows.map((r) => ({
+    category: r.category,
+    title: r.title,
+    prCount: Number(r.prCount),
+    files: r.files,
+  }));
 }

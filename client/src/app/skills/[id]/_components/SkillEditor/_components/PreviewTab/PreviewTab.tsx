@@ -6,7 +6,7 @@
 "use client";
 
 import { useTranslations } from "next-intl";
-import { SkillBodyPreview } from "@/app/skills/_components/SkillBodyPreview";
+import { SkillBodyPreview } from "@/components/skill-body-preview";
 import { s } from "./styles";
 
 export function PreviewTab({ body }: { body: string }) {

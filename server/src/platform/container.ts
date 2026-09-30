@@ -6,10 +6,12 @@ import type {
   CodeIndex,
   Embedder,
   LLMProvider,
+  FeatureModelChoice,
+  FeatureModelId,
   UnifiedDiff,
 } from '@devdigest/shared';
 import type { AppConfig } from './config.js';
-import type { Db } from '../db/client.js';
+import type { Db, DbTx } from '../db/client.js';
 import { JobRunner } from './jobs.js';
 import { runBus, type RunBus } from './sse.js';
 import { LocalSecretsProvider } from '../adapters/secrets/local.js';
@@ -28,6 +30,7 @@ import { ConfigError } from './errors.js';
 import { AgentsRepository } from '../modules/agents/repository.js';
 import { ReviewRepository } from '../modules/reviews/repository.js';
 import { SkillsRepository } from '../modules/skills/repository.js';
+import { resolveFeatureModel } from '../modules/settings/feature-models.js';
 import { EvalsRepository } from '../modules/evals/repository.js';
 import type { RepoIntel } from '../modules/repo-intel/types.js';
 import { RepoIntelService } from '../modules/repo-intel/service.js';
@@ -116,6 +119,24 @@ export class Container {
 
   get skillsRepo(): SkillsRepository {
     return (this._skillsRepo ??= new SkillsRepository(this.db));
+  }
+
+  /**
+   * Fresh, UNCACHED repositories bound to a transaction handle. Use inside
+   * `db.transaction(tx => ...)` — the memoized getters above are bound to the
+   * root `db` and would silently escape the transaction.
+   */
+  skillsRepoOn(tx: DbTx): SkillsRepository {
+    return new SkillsRepository(tx);
+  }
+
+  agentsRepoOn(tx: DbTx): AgentsRepository {
+    return new AgentsRepository(tx);
+  }
+
+  /** Resolve a feature id to provider+model (workspace override, else default). */
+  featureModel(workspaceId: string, id: FeatureModelId): Promise<FeatureModelChoice> {
+    return resolveFeatureModel(this, workspaceId, id);
   }
 
   /** Eval suites read model; the skills Stats tab reads `impact` through it. */

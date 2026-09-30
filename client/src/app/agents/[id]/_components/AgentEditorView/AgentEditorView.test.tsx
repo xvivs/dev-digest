@@ -96,7 +96,7 @@ describe("AgentEditorView", () => {
   it("writes a tab change to the URL and keeps the other params", () => {
     h.search = "from=pr&tab=config";
     renderView();
-    fireEvent.click(screen.getByRole("button", { name: "Config" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Config" }));
     expect(h.replace).toHaveBeenCalledWith("/agents/ag1?from=pr&tab=config");
   });
 

@@ -86,3 +86,16 @@ export function toEvalSuiteDto(s: EvalSuiteView): EvalSuiteDto {
     finished_at: s.finishedAt?.toISOString() ?? null,
   };
 }
+
+/**
+ * ADR 0017 §7: a suite is stale once the skill's prompt hash or the carrier
+ * agent's version moved since it ran. The one rule behind both the suite
+ * routes and the skill card's latest verdict. A deleted carrier has no
+ * current version (null), so it never matches the stored one: stale.
+ */
+export function isSuiteStale(
+  suite: { promptSha256: string; carrierAgentVersion: number },
+  current: { promptSha256: string | null; carrierVersion: number | null },
+): boolean {
+  return suite.promptSha256 !== current.promptSha256 || suite.carrierAgentVersion !== current.carrierVersion;
+}

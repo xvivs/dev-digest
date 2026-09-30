@@ -34,3 +34,15 @@ export type {
 export type { Review, Finding, Severity, Verdict } from "@devdigest/shared";
 export type { PrBrief, SmartDiff } from "@devdigest/shared";
 
+
+/**
+ * A failed request in plain data, so pure `helpers.ts` can branch on it without
+ * importing `api.ts`. `status` is absent for an error that is not an `ApiError`
+ * (a thrown `Error`, or nothing usable). Built by `errorInfo` in `hooks/conventions.ts`.
+ */
+export interface ErrorInfo {
+  message: string;
+  status?: number;
+  code?: string;
+  details?: unknown;
+}

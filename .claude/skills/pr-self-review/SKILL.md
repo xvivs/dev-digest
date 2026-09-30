@@ -128,12 +128,39 @@ Subagent prompts: [references/lens-prompts.md](references/lens-prompts.md).
 - Never cap coverage silently. If a lens or check did not run, the report's
   "Пропущено" line or "Що блокує" section must say so.
 
+## What the hook recognises
+
+`shell.mjs` splits the command into simple commands; `2>&1`, `>f`, `| tail`,
+`&&`, `;` never reach `git push`'s argument list. The stamp and branch are read
+from the repo the command **acts on**, not from `$CLAUDE_PROJECT_DIR`:
+
+- `git -C <path> push`, `--work-tree`, `--git-dir` (must match the toplevel of
+  the resolved path) and a preceding `cd <path> &&` / `(cd <path>; ...)`: the
+  toplevel comes from `git rev-parse --show-toplevel` in that path, the stamp
+  from its own `.devdigest/self-review/`, `diffHash` from the same `branchDiff`.
+- Path not statically known (`$VAR`, `cd -`) or not a repo: **block** with an
+  explanation. Never allow.
+- `git -c k=v push`, `--no-pager`, `env`/`command`/`bash -c` wrappers are seen through.
+- `gh -R/--repo` only picks the target repo of the PR; the local branch and
+  stamp are the cwd's. `gh pr create --head <other>` still blocks.
+- `eval`, `xargs`, `find -exec/-execdir/-ok`, `source`/`.` and `bash|sh -c` with a
+  dynamic argument (`"$CMD"`, `$(...)`): if `git … push` or `gh … pr … create`
+  appears in the text, **block** with "динамічний виклик push/pr create не
+  перевіряється; запусти команду напряму". Static `bash -c 'git push'` is still
+  parsed and stamp-checked. `git ls-files | xargs wc -l` stays allowed.
+- **Known limitation:** shell aliases and functions (`alias gp='git push'`,
+  `gp() { git push; }`), a variable as the command name (`$G push`) and scripts
+  that push internally cannot be resolved statically and are not covered. The
+  gate is a guard against an accidental push, not a defence against deliberate
+  bypass; no relaxations are added for that reason.
+
 ## What is where
 
 | Path | Role |
 |---|---|
 | `scripts/lib.mjs` | diff + `diffHash`, dirty-tree check, routing, severity caps, cache key |
 | `scripts/self-review.mjs` | `collect` / `check` / `merge` / `finalize` |
+| `scripts/shell.mjs` | shell tokenizer for the hook: quotes, redirects, pipes, `&& ; ( )`, `cd`, `git -C/-c/--git-dir`, `gh -R` |
 | `scripts/gate-hook.mjs` | `PreToolUse` hook: allows `git push` with a PASS stamp of level `checks` or `full`; `gh pr create` only with level `full` (a stamp with no `level` field is legacy and counts as `full`) |
 | `references/routing.md` | file → lens → skills, severity mapping, deterministic checks |
 | `references/lens-prompts.md` | lens and skeptic contracts, `core-purity` checklist |

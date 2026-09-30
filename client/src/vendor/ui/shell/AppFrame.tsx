@@ -26,7 +26,11 @@ export function AppFrame({
       <Sidebar ctx={ctx} />
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
         <Topbar ctx={ctx} crumb={crumb} />
-        <main style={{ flex: 1, minHeight: 0, overflow: "auto" }}>{children}</main>
+        {/* position: relative makes <main> the containing block for absolutely
+            positioned descendants (sr-only live regions, etc.). Without it they
+            anchor to the viewport, escape this scroll container and stretch the
+            document, so the window scrolls the whole frame off-screen. */}
+        <main style={{ flex: 1, minHeight: 0, overflow: "auto", position: "relative" }}>{children}</main>
       </div>
     </div>
   );

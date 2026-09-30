@@ -50,7 +50,7 @@ export function SkillsTab({ agent }: { agent: Agent }) {
   const t = useTranslations("agents");
   const qc = useQueryClient();
   const { data: skills = EMPTY_SKILLS } = useSkills();
-  const { data: links = EMPTY_LINKS } = useAgentSkills(agent.id);
+  const { data: links = EMPTY_LINKS, isPending: linksPending } = useAgentSkills(agent.id);
   const setAgentSkills = useSetAgentSkills(LOCAL_ERROR);
 
   const [filter, setFilter] = React.useState("");
@@ -95,6 +95,13 @@ export function SkillsTab({ agent }: { agent: Agent }) {
       {
         onSuccess: (data) => {
           confirmedRef.current = data;
+          // A change made while this save was in flight has its own timer armed: the response
+          // (already written to the cache by the hook) must not wipe it, or that click is lost
+          // and the debounce then saves the stale list.
+          if (debounceRef.current) {
+            qc.setQueryData(["agent-skills", agent.id], latestRef.current);
+            return;
+          }
           latestRef.current = data;
           qc.setQueryData(["agent-skills", agent.id], data);
         },
@@ -160,8 +167,10 @@ export function SkillsTab({ agent }: { agent: Agent }) {
         </div>
       )}
 
-      <div style={s.list}>
-        {visibleRows.length === 0 ? (
+      <div style={s.list} aria-busy={linksPending}>
+        {/* Rows stay out until the agent's links arrive: a tick before that would be built on an
+            empty list and overwritten by the response. */}
+        {linksPending ? null : visibleRows.length === 0 ? (
           <div style={s.empty}>{t("skills.noMatches")}</div>
         ) : (
           visibleRows.map((row) => (

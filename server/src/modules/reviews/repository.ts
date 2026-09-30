@@ -1,4 +1,4 @@
-import type { Db } from '../../db/client.js';
+import type { Db, DbTx } from '../../db/client.js';
 import * as t from '../../db/schema.js';
 import type { CostSource, Finding, Intent, RunSummary, RunTrace } from '@devdigest/shared';
 
@@ -23,7 +23,16 @@ import * as runRepo from './repository/run.repo.js';
 import * as pullRepo from './repository/pull.repo.js';
 
 export class ReviewRepository {
-  constructor(private db: Db) {}
+  constructor(private db: Db | DbTx) {}
+
+  /**
+   * Run `work` in ONE transaction against a repository bound to it (onion #9:
+   * the caller owns the boundary). Nested calls reuse the outer transaction
+   * (Drizzle opens a savepoint).
+   */
+  transaction<T>(work: (repo: ReviewRepository) => Promise<T>): Promise<T> {
+    return this.db.transaction((tx) => work(new ReviewRepository(tx)));
+  }
 
   // ---- PR lookup (workspace-scoped) --------------------------------------
 
@@ -87,9 +96,25 @@ export class ReviewRepository {
     return runRepo.deleteAgentRun(this.db, workspaceId, runId);
   }
 
-  /** Mark a still-running run as cancelled (no-op if it already finished). */
-  cancelRunIfRunning(runId: string): Promise<boolean> {
-    return runRepo.cancelRunIfRunning(this.db, runId);
+  /** Run fields a manual cancel needs to build its minimal trace. */
+  getRunCancelContext(runId: string): Promise<runRepo.RunCancelContext | undefined> {
+    return runRepo.getRunCancelContext(this.db, runId);
+  }
+
+  /** Write the trace only if the run has none yet (keeps the executor's). */
+  insertRunTraceIfAbsent(runId: string, trace: RunTrace): Promise<void> {
+    return runRepo.insertRunTraceIfAbsent(this.db, runId, trace);
+  }
+
+  /** Flip a run to `cancelled` (manual cancel). Call inside `transaction()`. */
+  markRunCancelled(runId: string): Promise<void> {
+    return runRepo.markRunCancelled(this.db, runId);
+  }
+
+  /** Lock the run row FOR UPDATE; returns its status (undefined = no row).
+   *  Call inside `transaction()` — outside one the lock is released at once. */
+  lockRunStatus(runId: string): Promise<string | null | undefined> {
+    return runRepo.lockRunStatus(this.db, runId);
   }
 
   /** On boot: any run still 'running' is orphaned (its process died / restarted),
@@ -123,6 +148,16 @@ export class ReviewRepository {
 
   setFindingDismissed(findingId: string, at: Date | null): Promise<FindingRow | undefined> {
     return reviewRepo.setFindingDismissed(this.db, findingId, at);
+  }
+
+  /** Findings recurring across `minPrs`+ PRs of a repo (non-dismissed), top `limit`. */
+  recurringFindings(
+    workspaceId: string,
+    repoId: string,
+    minPrs: number,
+    limit: number,
+  ): Promise<reviewRepo.RecurringFinding[]> {
+    return reviewRepo.recurringFindings(this.db, workspaceId, repoId, minPrs, limit);
   }
 
   // ---- intent -------------------------------------------------------------

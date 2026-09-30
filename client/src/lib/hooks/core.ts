@@ -66,10 +66,24 @@ export function useSecretsStatus() {
 }
 
 // ---- Repos (F1: GET/POST /repos, refresh, delete) ----
-export function useRepos() {
+/** Poll cadence while a clone is pending: clone + index finish in the background. */
+const CLONE_POLL_MS = 3000;
+
+/**
+ * GET /repos. `pollUntilCloned` names a repo whose clone is awaited: while its
+ * `clone_path` is null the list refetches on an interval and on window focus,
+ * so a clone finished elsewhere (Refresh on the PR list) shows up without a
+ * hard reload. The cache is shared, so the sidebar updates from the same read.
+ */
+export function useRepos(options?: { pollUntilCloned?: string | null }) {
+  const awaited = options?.pollUntilCloned;
+  const waiting = (repos: Repo[] | undefined) =>
+    !!awaited && !!repos?.some((r) => r.id === awaited && r.clone_path === null);
   return useQuery({
     queryKey: ["repos"],
     queryFn: () => api.get<Repo[]>("/repos"),
+    refetchInterval: (query) => (waiting(query.state.data) ? CLONE_POLL_MS : false),
+    refetchOnWindowFocus: (query) => waiting(query.state.data),
   });
 }
 
@@ -82,13 +96,15 @@ export function useAddRepo(options?: MutationHookOptions) {
   });
 }
 
-export function useRefreshRepo() {
+export function useRefreshRepo(options?: MutationHookOptions) {
   const qc = useQueryClient();
   return useMutation({
+    meta: options?.meta,
     mutationFn: (repoId: string) => api.post<Repo>(`/repos/${repoId}/refresh`),
     onSuccess: (_d, repoId) => {
       qc.invalidateQueries({ queryKey: ["repos"] });
       qc.invalidateQueries({ queryKey: ["pulls", repoId] });
+      qc.invalidateQueries({ queryKey: ["repo-intel-state", repoId] });
     },
   });
 }

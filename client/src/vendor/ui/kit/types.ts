@@ -1,6 +1,15 @@
 import { type IconName } from "../icons";
 
-export type TabDef = string | { key: string; label: string; icon?: IconName; count?: number };
+export type TabDef =
+  | string
+  | {
+      key: string;
+      label: string;
+      icon?: IconName;
+      count?: number;
+      /** Accessible name for a tab with a count; defaults to `label (count)`. */
+      countLabel?: string;
+    };
 
 export interface DropdownItemDef {
   label?: string;

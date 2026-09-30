@@ -1,5 +1,5 @@
-import { and, asc, count, desc, eq, inArray } from 'drizzle-orm';
-import type { Db } from '../../db/client.js';
+import { and, asc, count, desc, eq, inArray, max } from 'drizzle-orm';
+import type { Db, DbTx } from '../../db/client.js';
 import * as t from '../../db/schema.js';
 import { DEFAULT_AGENT_DESCRIPTION, INITIAL_AGENT_VERSION } from './constants.js';
 import type { LinkableSkill, SkillLinkInput } from './domain.js';
@@ -17,9 +17,6 @@ import type { AgentRow, AgentVersionRow } from '../../db/rows.js';
 export type { AgentRow, AgentVersionRow };
 export type { InsertAgent, UpdateAgent };
 
-/** A Drizzle transaction handle — structurally a `Db` for queries. */
-type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
-
 /** A skill linked to an agent (with its order), joined from agent_skills. */
 export interface LinkedSkillRow {
   skill: typeof t.skills.$inferSelect;
@@ -28,7 +25,7 @@ export interface LinkedSkillRow {
 }
 
 export class AgentsRepository implements AgentStore {
-  constructor(private db: Db | Tx) {}
+  constructor(private db: Db | DbTx) {}
 
   /** One aggregate query (LEFT JOIN + GROUP BY) — no N+1 for `skill_count`. */
   async list(workspaceId: string): Promise<(AgentRow & { skillCount: number })[]> {
@@ -221,6 +218,31 @@ export class AgentsRepository implements AgentStore {
         .insert(t.agentSkills)
         .values(links.map((l, i) => ({ agentId, skillId: l.skillId, order: i, enabled: l.enabled })));
     }
+  }
+
+  /** Lock the agents of `workspaceId` among `agentIds` FOR UPDATE (id order, so two
+   *  writers cannot deadlock); returns the ids found. Call inside a transaction. */
+  async lockForSkillLink(workspaceId: string, agentIds: string[]): Promise<string[]> {
+    if (agentIds.length === 0) return [];
+    const rows = await this.db
+      .select({ id: t.agents.id })
+      .from(t.agents)
+      .where(and(eq(t.agents.workspaceId, workspaceId), inArray(t.agents.id, agentIds)))
+      .orderBy(t.agents.id)
+      .for('update');
+    return rows.map((r) => r.id);
+  }
+
+  /** Append a link after the agent's last one (order = max + 1). Lock the agent first
+   *  (`lockForSkillLink`) so concurrent appends cannot pick the same order. */
+  async appendSkillLink(agentId: string, skillId: string, enabled: boolean): Promise<void> {
+    const [row] = await this.db
+      .select({ last: max(t.agentSkills.order) })
+      .from(t.agentSkills)
+      .where(eq(t.agentSkills.agentId, agentId));
+    await this.db
+      .insert(t.agentSkills)
+      .values({ agentId, skillId, order: (row?.last ?? -1) + 1, enabled });
   }
 
   /**
