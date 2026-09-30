@@ -1,5 +1,6 @@
 import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
 import { screen, cleanup, fireEvent, act } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import type { Agent, AgentSkillLink, SkillListItem } from "@devdigest/shared";
 import { renderWithProviders, createTestQueryClient } from "@/test/render";
 import messages from "../../../../../../../../messages/en/agents.json";
@@ -119,7 +120,7 @@ async function settleDeep() {
 }
 
 beforeEach(() => {
-  vi.useFakeTimers();
+  vi.useFakeTimers({ shouldAdvanceTime: true }); // RTL asyncWrapper (userEvent) awaits a real setTimeout(0)
 });
 
 afterEach(() => {
@@ -278,16 +279,17 @@ describe("C2 SkillsTab — a click is never lost (QA: first click did nothing)",
   const yankeeBox = () => screen.getByRole("checkbox", { name: "Enable yankee-skill for this agent" });
 
   it("keeps a click made while the previous save is in flight, and saves it", async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
     const { putCalls } = setup();
     await settle();
 
-    fireEvent.click(zuluBox());
+    await user.click(zuluBox());
     await act(async () => {
       await vi.advanceTimersByTimeAsync(400);
     });
     expect(putCalls).toHaveLength(1); // first save is now in flight
 
-    fireEvent.click(yankeeBox()); // click inside the in-flight window, debounce armed again
+    await user.click(yankeeBox()); // click inside the in-flight window, debounce armed again
     expect(yankeeBox()).toHaveAttribute("aria-checked", "true");
 
     putCalls[0]!.deferred.resolve([...LINKS, { agent_id: AGENT.id, skill_id: "zulu", order: 2, enabled: true }]);
@@ -312,6 +314,7 @@ describe("C2 SkillsTab — a click is never lost (QA: first click did nothing)",
   });
 
   it("offers no checkbox before the agent's links load, then the first click sticks", async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
     const queryClient = createTestQueryClient();
     const links = deferred<AgentSkillLink[]>();
     vi.mocked(api.get).mockImplementation((path: string) => {
@@ -332,7 +335,7 @@ describe("C2 SkillsTab — a click is never lost (QA: first click did nothing)",
     links.resolve(LINKS);
     await settleDeep();
 
-    fireEvent.click(zuluBox());
+    await user.click(zuluBox());
 
     expect(zuluBox()).toHaveAttribute("aria-checked", "true");
     await act(async () => {

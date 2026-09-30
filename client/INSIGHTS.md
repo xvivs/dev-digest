@@ -127,6 +127,8 @@ lives in the engineering-insights skill).
 
 - **next-intl `format.relativeTime(date)` without an explicit `now` logs `ENVIRONMENT_FALLBACK` in tests and client renders** — pass `format.relativeTime(date, new Date())` (or a `now` from `useNow`). Hit in the Conventions `ScanHeader` ("last scan X ago"), `client/src/app/repos/[repoId]/conventions/_components/ScanHeader/`. _(2026-09-29)_
 
+- **`@testing-library/user-event` 14.6.7 is now a client devDependency: `userEvent.setup()` replaces `fireEvent` for hover, keyboard activation and clicks** — added in `client/package.json` (commit `20ae36e`); with fake timers use `userEvent.setup({ advanceTimers: vi.advanceTimersByTime })`, and `setup()` also installs a working `navigator.clipboard`. This supersedes the "user-event is not a dependency" workarounds in the `fireEvent.mouseEnter` and `fireEvent.keyDown` entries. _(2026-09-30)_
+
 ## Recurring Errors & Fixes
 
 - Every RTL test that renders a component tree containing a cross-route leaf
@@ -221,3 +223,5 @@ Shipped `/skills` (list, Config/Preview, placeholder tabs, trust modal), the age
 ## Open Questions
 
 - **Conflict: does a `NextIntlClientProvider` missing a namespace throw or only log?** — the Recurring Errors entry dated 2026-09-19 says a single-namespace provider "throws on the first missing message", the Tool & Library entry dated 2026-09-28 observed only a logged `MISSING_MESSAGE` with a passing test (`client/src/test/smoke.test.tsx`). Possibly both true (missing key vs missing namespace, or a custom `onError`); needs a human to reconcile. _(2026-09-28)_
+
+- **Conflict: the `fireEvent.mouseEnter` (2026-09-20) and `fireEvent.keyDown` Recurring Errors entries say `@testing-library/user-event` is not a dependency; it now is (`client/package.json`, 2026-09-30 Tool & Library entry).** Their jsdom explanations still hold, but the "use fireEvent/relatedTarget instead" advice is stale; reconcile during cleanup. _(2026-09-30)_
