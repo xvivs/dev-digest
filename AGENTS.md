@@ -60,7 +60,7 @@ client/src/lib/               api.ts + every data hook in hooks/
 - Without `pnpm db:seed` the API cannot serve a single request — `LocalNoAuthProvider`
   resolves the seeded system user and default workspace by name.
 - `runBus` is a module-level singleton; every app instance in a process shares it.
-- Boot-time run reaping assumes a single API instance per database.
+- Boot-time run reaping assumes a single API instance per database (only `server.ts` reaps; `buildApp` does not — ADR 0017).
 
 ## Do not touch
 

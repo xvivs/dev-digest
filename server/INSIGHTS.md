@@ -67,6 +67,8 @@ lives in the engineering-insights skill).
 
 - **API process exits with `GitError: ... Repository not found` from `simple-git` after a repo refresh: `EnqueuedJob.done` rejected with no handler** — `JobRunner.enqueue` (`server/src/platform/jobs.ts:59`) returns a `done` promise that rejects when the job fails; fire-and-forget callers (`repos/service.ts` add/refresh, repo-intel resync) never read it, so on Node 22 a failed clone (e.g. the seeded `acme/payments-api`, absent on GitHub) was an unhandled rejection that killed the server. JobRunner now observes `done` itself and logs with credentials redacted; `done` still rejects for callers that await it. _(2026-09-30)_
 
+- **A live review run flips to `failed` with `error: null` and `duration_ms: null`, then to `done` ~30 s later: another `buildApp()` ran the boot reaper against the same database** — `test/routes-smoke.test.ts` is a "no DB" unit test, but `config.ts` loads `.env` via `dotenv/config`, so it connects to the dev DB and each `buildApp` used to run `reapStaleRunningRuns`; any `vitest --exclude it` (e.g. a self-review gate run) reaped live runs. Diagnosed with `log_statement='mod'` (four `update "agent_runs" set "status"` from separate backends). Reaping is now opt-in, `reapOnBoot`, enabled only by `server.ts` (`server/src/app.ts:39`). _(2026-09-30)_
+
 ## Session Notes
 
 ### 2026-09-19 — Cost Badge (server) session
