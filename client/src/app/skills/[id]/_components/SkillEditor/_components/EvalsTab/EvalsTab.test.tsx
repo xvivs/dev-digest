@@ -5,7 +5,8 @@
  */
 import React from "react";
 import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
-import { screen, cleanup, fireEvent, within, waitFor, act } from "@testing-library/react";
+import { screen, cleanup, within, waitFor, act } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import type {
   Agent,
   EvalCarrier,
@@ -289,7 +290,9 @@ function renderTab(skill: Skill = SKILL, opts: { initialCase?: string | null; in
   return { ...view, ...spies };
 }
 
+let user: ReturnType<typeof userEvent.setup>;
 beforeEach(() => {
+  user = userEvent.setup();
   world = { carriers: CARRIERS, cases: [CASE_DEFECT, CASE_CLEAN], suites: [SUITE], detail: DETAIL };
   h.get.mockReset().mockImplementation(routeGet);
   h.post.mockReset();
@@ -375,7 +378,7 @@ describe("EvalsTab — results", () => {
       path === "/eval-suites/su1/cancel" ? answer({ ...SUITE, status: "cancelled", results: null }, schema) : Promise.reject(new Error(path)),
     );
     renderTab();
-    fireEvent.click(await screen.findByRole("button", { name: "Cancel" }));
+    await user.click(await screen.findByRole("button", { name: "Cancel" }));
     await waitFor(() => expect(h.post).toHaveBeenCalledWith("/eval-suites/su1/cancel", undefined, expect.anything()));
   });
 });
@@ -386,7 +389,7 @@ describe("EvalsTab — Run modal", () => {
   async function openModal() {
     const view = renderTab();
     await screen.findByText("stripe-key-leak");
-    fireEvent.click(screen.getByRole("button", { name: "Run all evals" }));
+    await user.click(screen.getByRole("button", { name: "Run all evals" }));
     const dialog = await screen.findByRole("dialog", { name: "Run on evals" });
     // Preselected: the server's `is_default` carrier (decision 5).
     await waitFor(() => expect(within(dialog).getByLabelText("Carrier agent")).toHaveValue("a1"));
@@ -405,7 +408,7 @@ describe("EvalsTab — Run modal", () => {
     world.carriers = [];
     const view = renderTab();
     await screen.findByText("stripe-key-leak");
-    fireEvent.click(screen.getByRole("button", { name: "Run all evals" }));
+    await user.click(screen.getByRole("button", { name: "Run all evals" }));
     const dialog = await screen.findByRole("dialog", { name: "Run on evals" });
     expect(await within(dialog).findByText("Link this skill to an agent (enabled) to run evals")).toBeInTheDocument();
     expect(within(dialog).getByRole("link", { name: "Open Agents" })).toHaveAttribute("href", "/agents");
@@ -417,7 +420,7 @@ describe("EvalsTab — Run modal", () => {
   it("a carrier that lost its link between load and Estimate reads as 'link the skill'", async () => {
     h.post.mockRejectedValue(new ApiError("not linked", 422, "eval_carrier_not_linked"));
     const { dialog } = await openModal();
-    fireEvent.click(within(dialog).getByRole("button", { name: "Estimate" }));
+    await user.click(within(dialog).getByRole("button", { name: "Estimate" }));
     expect(await within(dialog).findByRole("alert")).toHaveTextContent(/enabled link/);
   });
 
@@ -429,10 +432,10 @@ describe("EvalsTab — Run modal", () => {
     });
     const { dialog } = await openModal();
     expect(within(dialog).getByRole("radio", { name: /Full/ })).toBeChecked();
-    fireEvent.click(within(dialog).getByRole("radio", { name: /Quick/ }));
-    fireEvent.click(within(dialog).getByRole("radio", { name: /Full/ }));
+    await user.click(within(dialog).getByRole("radio", { name: /Quick/ }));
+    await user.click(within(dialog).getByRole("radio", { name: /Full/ }));
 
-    fireEvent.click(within(dialog).getByRole("button", { name: "Estimate" }));
+    await user.click(within(dialog).getByRole("button", { name: "Estimate" }));
     await waitFor(() =>
       expect(h.post).toHaveBeenCalledWith("/skills/sk1/eval-suites", { carrier_agent_id: "a1", mode: "full" }, expect.anything()),
     );
@@ -440,7 +443,7 @@ describe("EvalsTab — Run modal", () => {
     expect(within(dialog).getByText("12 model calls · 2 cases × 2 arms × 3 repeats")).toBeInTheDocument();
     expect(within(dialog).getByText("Model: claude-sonnet")).toBeInTheDocument();
 
-    fireEvent.click(within(dialog).getByRole("button", { name: "Start" }));
+    await user.click(within(dialog).getByRole("button", { name: "Start" }));
     await waitFor(() => expect(h.post).toHaveBeenCalledWith("/eval-suites/su2/start", undefined, expect.anything()));
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
   });
@@ -448,9 +451,9 @@ describe("EvalsTab — Run modal", () => {
   it("changing the mode after an estimate drops it, so Start never runs an unpriced suite", async () => {
     h.post.mockImplementation((_p: string, _b: unknown, schema?: Schema) => answer(estimated, schema));
     const { dialog } = await openModal();
-    fireEvent.click(within(dialog).getByRole("button", { name: "Estimate" }));
+    await user.click(within(dialog).getByRole("button", { name: "Estimate" }));
     expect(await within(dialog).findByRole("button", { name: "Start" })).toBeInTheDocument();
-    fireEvent.click(within(dialog).getByRole("radio", { name: /Quick/ }));
+    await user.click(within(dialog).getByRole("radio", { name: /Quick/ }));
     expect(within(dialog).queryByRole("button", { name: "Start" })).not.toBeInTheDocument();
     expect(within(dialog).getByRole("button", { name: "Estimate" })).toBeInTheDocument();
   });
@@ -458,13 +461,13 @@ describe("EvalsTab — Run modal", () => {
   it("shows the trust gate as 'vet skill first' with a way to Config", async () => {
     h.post.mockRejectedValue(new ApiError("Skill is not vetted", 409, "eval_skill_not_vetted"));
     const { dialog, onOpenConfig } = await openModal();
-    fireEvent.change(within(dialog).getByLabelText("Carrier agent"), { target: { value: "a0" } });
-    fireEvent.click(within(dialog).getByRole("button", { name: "Estimate" }));
+    await user.selectOptions(within(dialog).getByLabelText("Carrier agent"), "a0");
+    await user.click(within(dialog).getByRole("button", { name: "Estimate" }));
     await waitFor(() =>
       expect(h.post).toHaveBeenCalledWith("/skills/sk1/eval-suites", { carrier_agent_id: "a0", mode: "full" }, expect.anything()),
     );
     expect(await within(dialog).findByRole("alert")).toHaveTextContent(/^Vet skill first/);
-    fireEvent.click(within(dialog).getByRole("button", { name: "Open Config" }));
+    await user.click(within(dialog).getByRole("button", { name: "Open Config" }));
     expect(onOpenConfig).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
@@ -476,8 +479,8 @@ describe("EvalsTab — Run modal", () => {
         : Promise.reject(new ApiError("stale", 409, "eval_suite_stale")),
     );
     const { dialog } = await openModal();
-    fireEvent.click(within(dialog).getByRole("button", { name: "Estimate" }));
-    fireEvent.click(await within(dialog).findByRole("button", { name: "Start" }));
+    await user.click(within(dialog).getByRole("button", { name: "Estimate" }));
+    await user.click(await within(dialog).findByRole("button", { name: "Start" }));
     expect(await within(dialog).findByRole("alert")).toHaveTextContent("changed since the estimate");
     expect(within(dialog).getByRole("button", { name: "Estimate" })).toBeInTheDocument();
   });
@@ -491,25 +494,30 @@ describe("EvalsTab — case editor", () => {
       answer({ ...created(body), expectation: (body as { expectation: unknown }).expectation, input_source: { kind: "paste" } }, schema),
     );
     renderTab();
-    fireEvent.click(await screen.findByRole("button", { name: "New eval case" }));
+    await user.click(await screen.findByRole("button", { name: "New eval case" }));
     const dialog = await screen.findByRole("dialog", { name: "New eval case" });
 
     // Saving an empty form names what is missing instead of calling the API.
-    fireEvent.click(within(dialog).getByRole("button", { name: "Save case" }));
+    await user.click(within(dialog).getByRole("button", { name: "Save case" }));
     expect(within(dialog).getByRole("alert")).toHaveTextContent("Give the case a name.");
 
-    fireEvent.change(within(dialog).getByLabelText("Name"), { target: { value: "leak" } });
-    fireEvent.change(within(dialog).getByLabelText("Unified diff"), { target: { value: "+key" } });
+    await user.clear(within(dialog).getByLabelText("Name"));
+    await user.type(within(dialog).getByLabelText("Name"), "leak");
+    await user.clear(within(dialog).getByLabelText("Unified diff"));
+    await user.type(within(dialog).getByLabelText("Unified diff"), "+key");
     const row = within(dialog).getByRole("listitem", { name: "Expectation 1" });
-    fireEvent.click(within(dialog).getByRole("button", { name: "Save case" }));
+    await user.click(within(dialog).getByRole("button", { name: "Save case" }));
     expect(within(dialog).getByRole("alert")).toHaveTextContent("Row 1: the file path is required.");
 
-    fireEvent.change(within(row).getByLabelText("File"), { target: { value: "src/config.ts" } });
-    fireEvent.change(within(row).getByLabelText("From line"), { target: { value: "10" } });
-    fireEvent.change(within(row).getByLabelText("Min severity"), { target: { value: "CRITICAL" } });
-    fireEvent.change(within(row).getByLabelText("Category"), { target: { value: "security" } });
-    fireEvent.change(within(row).getByLabelText("Contains"), { target: { value: "sk_live" } });
-    fireEvent.click(within(dialog).getByRole("button", { name: "Save case" }));
+    await user.clear(within(row).getByLabelText("File"));
+    await user.type(within(row).getByLabelText("File"), "src/config.ts");
+    await user.clear(within(row).getByLabelText("From line"));
+    await user.type(within(row).getByLabelText("From line"), "10");
+    await user.selectOptions(within(row).getByLabelText("Min severity"), "CRITICAL");
+    await user.selectOptions(within(row).getByLabelText("Category"), "security");
+    await user.clear(within(row).getByLabelText("Contains"));
+    await user.type(within(row).getByLabelText("Contains"), "sk_live");
+    await user.click(within(dialog).getByRole("button", { name: "Save case" }));
 
     await waitFor(() => expect(h.post).toHaveBeenCalledTimes(1));
     expect(h.post).toHaveBeenCalledWith(
@@ -533,30 +541,33 @@ describe("EvalsTab — case editor", () => {
       answer({ ...created(body), expectation: (body as { expectation: unknown }).expectation }, schema),
     );
     renderTab();
-    fireEvent.click(await screen.findByRole("button", { name: "New eval case" }));
+    await user.click(await screen.findByRole("button", { name: "New eval case" }));
     const dialog = await screen.findByRole("dialog", { name: "New eval case" });
-    fireEvent.change(within(dialog).getByLabelText("Name"), { target: { value: "clean-pr" } });
+    await user.clear(within(dialog).getByLabelText("Name"));
+    await user.type(within(dialog).getByLabelText("Name"), "clean-pr");
 
-    fireEvent.change(within(dialog).getByLabelText("Unified diff"), { target: { value: "+kept" } });
-    fireEvent.click(within(dialog).getByRole("tab", { name: "From PR" }));
+    await user.clear(within(dialog).getByLabelText("Unified diff"));
+    await user.type(within(dialog).getByLabelText("Unified diff"), "+kept");
+    await user.click(within(dialog).getByRole("tab", { name: "From PR" }));
     await waitFor(() => expect(within(dialog).getByRole("option", { name: "acme/api" })).toBeInTheDocument());
-    fireEvent.change(within(dialog).getByLabelText("Repository"), { target: { value: "r1" } });
+    await user.selectOptions(within(dialog).getByLabelText("Repository"), "r1");
     await waitFor(() => expect(within(dialog).getByRole("option", { name: "#42 Add Stripe" })).toBeInTheDocument());
-    fireEvent.change(within(dialog).getByLabelText("Pull request"), { target: { value: PR_ID } });
-    fireEvent.click(await within(dialog).findByRole("checkbox", { name: /src\/config\.ts/ }));
+    await user.selectOptions(within(dialog).getByLabelText("Pull request"), PR_ID);
+    await user.click(await within(dialog).findByRole("checkbox", { name: /src\/config\.ts/ }));
 
     // The pasted diff survives a trip to the other tab and back.
-    fireEvent.click(within(dialog).getByRole("tab", { name: "Paste diff" }));
+    await user.click(within(dialog).getByRole("tab", { name: "Paste diff" }));
     expect(within(dialog).getByLabelText("Unified diff")).toHaveValue("+kept");
-    fireEvent.click(within(dialog).getByRole("tab", { name: "From PR" }));
+    await user.click(within(dialog).getByRole("tab", { name: "From PR" }));
     expect(within(dialog).getByRole("checkbox", { name: /src\/config\.ts/ })).toBeChecked();
 
-    fireEvent.click(within(dialog).getByRole("radio", { name: /Clean case/ }));
+    await user.click(within(dialog).getByRole("radio", { name: /Clean case/ }));
     const row = within(dialog).getByRole("listitem", { name: "Expectation 1" });
-    fireEvent.change(within(row).getByLabelText("File"), { target: { value: "src/config.ts" } });
-    fireEvent.change(within(row).getByLabelText("Min severity"), { target: { value: "" } });
-    fireEvent.change(within(row).getByLabelText("Category"), { target: { value: "" } });
-    fireEvent.click(within(dialog).getByRole("button", { name: "Save case" }));
+    await user.clear(within(row).getByLabelText("File"));
+    await user.type(within(row).getByLabelText("File"), "src/config.ts");
+    await user.selectOptions(within(row).getByLabelText("Min severity"), "");
+    await user.selectOptions(within(row).getByLabelText("Category"), "");
+    await user.click(within(dialog).getByRole("button", { name: "Save case" }));
 
     await waitFor(() =>
       expect(h.post).toHaveBeenCalledWith(
@@ -574,12 +585,13 @@ describe("EvalsTab — case editor", () => {
   it("edits a case without re-sending its diff, and surfaces a server error inline", async () => {
     h.put.mockRejectedValueOnce(new ApiError("File is no longer in the PR", 422, "eval_case_file_not_in_pr"));
     renderTab();
-    fireEvent.click(await screen.findByRole("button", { name: "Edit stripe-key-leak" }));
+    await user.click(await screen.findByRole("button", { name: "Edit stripe-key-leak" }));
     const dialog = await screen.findByRole("dialog", { name: "Edit case · stripe-key-leak" });
     expect(within(dialog).getByText("Current diff: PR #42, 2 lines")).toBeInTheDocument();
     expect(within(dialog).getByLabelText("File")).toHaveValue("src/config.ts");
-    fireEvent.change(within(dialog).getByLabelText("Name"), { target: { value: "stripe-key" } });
-    fireEvent.click(within(dialog).getByRole("button", { name: "Save case" }));
+    await user.clear(within(dialog).getByLabelText("Name"));
+    await user.type(within(dialog).getByLabelText("Name"), "stripe-key");
+    await user.click(within(dialog).getByRole("button", { name: "Save case" }));
     await waitFor(() =>
       expect(h.put).toHaveBeenCalledWith(
         "/eval-cases/c1",
@@ -593,10 +605,10 @@ describe("EvalsTab — case editor", () => {
   it("deletes a case only after confirming", async () => {
     h.del.mockResolvedValue({ ok: true });
     renderTab();
-    fireEvent.click(await screen.findByRole("button", { name: "Delete clean-refactor" }));
+    await user.click(await screen.findByRole("button", { name: "Delete clean-refactor" }));
     const dialog = await screen.findByRole("dialog", { name: "Delete case?" });
     expect(h.del).not.toHaveBeenCalled();
-    fireEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
+    await user.click(within(dialog).getByRole("button", { name: "Delete" }));
     await waitFor(() => expect(h.del).toHaveBeenCalledWith("/eval-cases/c2"));
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
   });
@@ -699,39 +711,32 @@ describe("EvalsTab — errored cases", () => {
 describe("EvalsTab — card actions and summary line", () => {
   const actionsOf = (name: string) => screen.getByRole("button", { name }).parentElement as HTMLElement;
 
-  it("icons rest faded and neutral; the card's hover or focus reveals them; delete is red only on its own hover or focus", async () => {
+  it("each card's Run / Edit / Delete actions are reachable by name, stay available through card and button hover, and Delete keeps its name", async () => {
     renderTab();
     await screen.findByText("stripe-key-leak");
-    const del = screen.getByRole("button", { name: "Delete stripe-key-leak" });
-    const actions = actionsOf("Delete stripe-key-leak");
-    expect(actions.style.opacity).toBe("0.4");
-    expect(screen.getByRole("button", { name: "Edit stripe-key-leak" }).style.color).toBe("var(--text-secondary)");
-    expect(del.style.color).toBe("var(--text-secondary)");
+    const card = screen.getByRole("button", { name: /stripe-key-leak: passes/ }).closest("li")!;
+    const names = ["Run stripe-key-leak", "Edit stripe-key-leak", "Delete stripe-key-leak"];
+    for (const name of names) expect(within(card).getByRole("button", { name })).toBeEnabled();
 
-    fireEvent.mouseEnter(del.closest("li")!);
-    expect(actions.style.opacity).toBe("1");
-    expect(del.style.color).toBe("var(--text-secondary)");
-    fireEvent.mouseEnter(del);
-    expect(del.style.color).toBe("var(--crit)");
-    fireEvent.mouseLeave(del);
-    expect(del.style.color).toBe("var(--text-secondary)");
-    fireEvent.focus(del);
-    expect(del.style.color).toBe("var(--crit)");
-    fireEvent.blur(del);
-    expect(del.style.color).toBe("var(--text-secondary)");
-    fireEvent.mouseLeave(del.closest("li")!);
-    expect(actions.style.opacity).toBe("0.4");
+    await user.hover(card);
+    for (const name of names) expect(within(card).getByRole("button", { name })).toBeVisible();
+    const del = within(card).getByRole("button", { name: "Delete stripe-key-leak" });
+    await user.hover(del);
+    expect(del).toBeEnabled();
+    await user.unhover(del);
+    await user.unhover(card);
+    for (const name of names) expect(within(card).getByRole("button", { name })).toBeInTheDocument();
+    expect(h.del).not.toHaveBeenCalled();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
-  it("the summary line never breaks inside a segment (cost keeps its separator)", async () => {
+  it("the summary line keeps each segment's separator with its value (the cost keeps its dot)", async () => {
     renderTab();
     const summary = await screen.findByRole("region", { name: "Latest suite" });
-    expect(summary.style.flexWrap).toBe("wrap");
-    const cost = within(summary).getByText("$0.420");
-    expect(cost.closest("[data-segment]")).not.toBeNull();
-    for (const seg of summary.querySelectorAll<HTMLElement>("[data-segment]")) expect(seg.style.whiteSpace).toBe("nowrap");
-    const segs = [...summary.querySelectorAll("[data-segment]")].map((el) => el.textContent);
-    expect(segs.some((t) => t?.includes("·") && t.includes("$0.420"))).toBe(true);
+    for (const text of ["+3 caught", "0 regressed", "2 flaky", "Δunexpected +0.4", "$0.420"]) {
+      expect(within(summary).getByText(text)).toBeInTheDocument();
+    }
+    expect(summary).toHaveTextContent(/·\s*\$0\.420/);
   });
 });
 
@@ -846,18 +851,23 @@ describe("EvalsTab — lean case cards", () => {
   it("clicking the card, and Enter or Space on it, open the drawer; the action icons do not", async () => {
     const { onOpenCase } = renderTab();
     const card = await screen.findByRole("button", { name: /stripe-key-leak: passes/ });
-    fireEvent.click(card);
+    await user.click(card);
     expect(onOpenCase).toHaveBeenCalledWith("c1");
     expect(await screen.findByRole("dialog", { name: "stripe-key-leak" })).toBeInTheDocument();
     cleanup();
 
     const again = renderTab();
     const cardAgain = await screen.findByRole("button", { name: /stripe-key-leak: passes/ });
-    fireEvent.keyDown(cardAgain, { key: "Enter" });
-    fireEvent.keyDown(cardAgain, { key: " " });
+    cardAgain.focus();
+    await user.keyboard("{Enter}");
+    expect(again.onOpenCase).toHaveBeenCalledTimes(1);
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    screen.getByRole("button", { name: /stripe-key-leak: passes/ }).focus();
+    await user.keyboard(" ");
     expect(again.onOpenCase).toHaveBeenCalledTimes(2);
 
-    fireEvent.click(screen.getByRole("button", { name: "Edit stripe-key-leak" }));
+    await user.click(screen.getByRole("button", { name: "Edit stripe-key-leak" }));
     expect(again.onOpenCase).toHaveBeenCalledTimes(2);
     expect(await screen.findByRole("dialog", { name: "Edit case · stripe-key-leak" })).toBeInTheDocument();
   });
@@ -875,9 +885,9 @@ describe("EvalsTab — case drawer", () => {
     const { onCloseCase } = renderTab();
     const card = await screen.findByRole("button", { name: /stripe-key-leak: passes/ });
     card.focus();
-    fireEvent.click(card);
+    await user.click(card);
     const dialog = await screen.findByRole("dialog", { name: "stripe-key-leak" });
-    fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+    await user.click(within(dialog).getByRole("button", { name: "Close" }));
     expect(onCloseCase).toHaveBeenCalled();
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     expect(screen.getByRole("button", { name: /stripe-key-leak: passes/ })).toHaveFocus();
@@ -886,7 +896,7 @@ describe("EvalsTab — case drawer", () => {
   it("a deep-linked drawer, when closed, focuses the card too", async () => {
     renderTab(SKILL, { initialCase: "c1" });
     const dialog = await screen.findByRole("dialog", { name: "stripe-key-leak" });
-    fireEvent.keyDown(dialog, { key: "Escape" });
+    await user.keyboard("{Escape}");
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     expect(screen.getByRole("button", { name: /stripe-key-leak: passes/ })).toHaveFocus();
   });
@@ -900,7 +910,7 @@ describe("EvalsTab — case drawer", () => {
     renderTab(SKILL, { initialCase: "c1" });
     const dialog = await screen.findByRole("dialog", { name: "stripe-key-leak" });
     await within(dialog).findByText("Summary");
-    fireEvent.click(within(dialog).getByRole("button", { name: "Edit" }));
+    await user.click(within(dialog).getByRole("button", { name: "Edit" }));
     expect(await screen.findByRole("dialog", { name: "Edit case · stripe-key-leak" })).toBeInTheDocument();
   });
 });
@@ -919,16 +929,16 @@ describe("EvalsTab — per-case run", () => {
   it("the card's Run opens the Run modal for that one case and estimates with case_ids", async () => {
     wirePost();
     renderTab();
-    fireEvent.click(await screen.findByRole("button", { name: "Run stripe-key-leak" }));
+    await user.click(await screen.findByRole("button", { name: "Run stripe-key-leak" }));
     const dialog = await screen.findByRole("dialog", { name: "Run case" });
     expect(within(dialog).getByText(/Runs “stripe-key-leak”/)).toBeInTheDocument();
     await waitFor(() => expect(within(dialog).getByLabelText("Carrier agent")).toHaveValue("a1"));
-    fireEvent.click(within(dialog).getByRole("button", { name: "Estimate" }));
+    await user.click(within(dialog).getByRole("button", { name: "Estimate" }));
     await waitFor(() =>
       expect(h.post).toHaveBeenCalledWith("/skills/sk1/eval-suites", { carrier_agent_id: "a1", mode: "full", case_ids: ["c1"] }, expect.anything()),
     );
     expect(await within(dialog).findByText("1 case × 2 arms × 3 repeats", { exact: false })).toBeInTheDocument();
-    fireEvent.click(within(dialog).getByRole("button", { name: "Start" }));
+    await user.click(within(dialog).getByRole("button", { name: "Start" }));
     await waitFor(() => expect(h.post).toHaveBeenCalledWith("/eval-suites/su9/start", undefined, expect.anything()));
   });
 
@@ -936,10 +946,10 @@ describe("EvalsTab — per-case run", () => {
     wirePost();
     renderTab();
     await screen.findByText("stripe-key-leak");
-    fireEvent.click(screen.getByRole("button", { name: "Run all evals" }));
+    await user.click(screen.getByRole("button", { name: "Run all evals" }));
     const dialog = await screen.findByRole("dialog", { name: "Run on evals" });
     await waitFor(() => expect(within(dialog).getByLabelText("Carrier agent")).toHaveValue("a1"));
-    fireEvent.click(within(dialog).getByRole("button", { name: "Estimate" }));
+    await user.click(within(dialog).getByRole("button", { name: "Estimate" }));
     await waitFor(() => expect(h.post).toHaveBeenCalledWith("/skills/sk1/eval-suites", { carrier_agent_id: "a1", mode: "full" }, expect.anything()));
   });
 
@@ -947,7 +957,7 @@ describe("EvalsTab — per-case run", () => {
     renderTab(SKILL, { initialCase: "c1" });
     const drawer = await screen.findByRole("dialog", { name: "stripe-key-leak" });
     await within(drawer).findByText("Summary");
-    fireEvent.click(within(drawer).getByRole("button", { name: "Run this case" }));
+    await user.click(within(drawer).getByRole("button", { name: "Run this case" }));
     expect(await screen.findByRole("dialog", { name: "Run case" })).toBeInTheDocument();
   });
 

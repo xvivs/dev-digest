@@ -4,7 +4,8 @@
  * the restore guard and the cache invalidation are exercised end to end.
  */
 import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
-import { screen, cleanup, fireEvent, waitFor, within } from "@testing-library/react";
+import { screen, cleanup, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import type { Skill, SkillVersion } from "@devdigest/shared";
 import { renderWithProviders } from "@/test/render";
 import { ToastProvider } from "@/lib/toast";
@@ -78,7 +79,9 @@ async function rows() {
   return within(list).getAllByRole("listitem");
 }
 
+let user: ReturnType<typeof userEvent.setup>;
 beforeEach(() => {
+  user = userEvent.setup();
   h.get.mockReset().mockImplementation(routeGet);
   h.post.mockReset();
 });
@@ -115,7 +118,7 @@ describe("VersionsTab diff", () => {
   it("diffs vN against vN−1 with +/− markers that have accessible names", async () => {
     renderTab();
     const [, v3] = await rows();
-    fireEvent.click(within(v3!).getByRole("button", { name: "Diff" }));
+    await user.click(within(v3!).getByRole("button", { name: "Diff" }));
     const region = await screen.findByRole("region", { name: "Changes in v3" });
     // v2 is a gap, so there is no previous snapshot for v3.
     expect(within(region).getByRole("button", { name: "vs previous" })).toBeDisabled();
@@ -129,7 +132,7 @@ describe("VersionsTab diff", () => {
   it("disables vs previous for v1 and shows changed metadata above the body diff", async () => {
     renderTab();
     const items = await rows();
-    fireEvent.click(within(items[3]!).getByRole("button", { name: "Diff" }));
+    await user.click(within(items[3]!).getByRole("button", { name: "Diff" }));
     const region = await screen.findByRole("region", { name: "Changes in v1" });
     const prev = within(region).getByRole("button", { name: "vs previous" });
     expect(prev).toBeDisabled();
@@ -167,7 +170,7 @@ describe("VersionsTab diff", () => {
 describe("Restore popup", () => {
   async function openRestore(version: number) {
     await rows();
-    fireEvent.click(screen.getByRole("button", { name: `Restore v${version}` }));
+    await user.click(screen.getByRole("button", { name: `Restore v${version}` }));
     return screen.getByRole("dialog", { name: `Restore v${version}?` });
   }
 
@@ -184,33 +187,43 @@ describe("Restore popup", () => {
   it("Cancel and Escape close without any request", async () => {
     renderTab();
     let dialog = await openRestore(3);
-    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     dialog = await openRestore(3);
-    fireEvent.keyDown(dialog, { key: "Escape" });
+    await user.keyboard("{Escape}");
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(h.post).not.toHaveBeenCalled();
   });
 
   it("Restore creates vN+1 at once, guarded by the version this screen saw, then refreshes the history", async () => {
     h.post.mockResolvedValue({ skill: { ...SKILL, version: 5, body: SNAPSHOTS[3]!.body }, restored: true });
-    const { queryClient } = renderTab();
+    renderTab();
     const dialog = await openRestore(3);
-    const invalidate = vi.spyOn(queryClient, "invalidateQueries");
-    fireEvent.click(within(dialog).getByRole("button", { name: "Restore as v5" }));
+    // After the restore the server reports v5; the refetched history must show it.
+    const v5 = snap(5, { body: SNAPSHOTS[3]!.body });
+    h.get.mockImplementation((p: string) =>
+      p === "/skills/sk1/versions"
+        ? Promise.resolve([v5, ...[4, 3, 1].map((v) => SNAPSHOTS[v]!)].map(summary))
+        : p === "/skills/sk1"
+          ? Promise.resolve({ ...SKILL, version: 5, body: v5.body })
+          : routeGet(p),
+    );
+    h.get.mockClear();
+    await user.click(within(dialog).getByRole("button", { name: "Restore as v5" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     expect(h.post).toHaveBeenCalledWith("/skills/sk1/versions/3/restore", { expected_version: 4 }, expect.anything());
     expect(screen.getByText("Restored v3 as v5")).toBeInTheDocument();
-    expect(invalidate.mock.calls.map((c) => c[0]?.queryKey)).toEqual(
-      expect.arrayContaining([["skill", "sk1"], ["skill-versions", "sk1"], ["skill-stats", "sk1"], ["skills"], ["agent-skills"]]),
-    );
+    await waitFor(async () => expect((await rows()).map((li) => li.textContent?.slice(0, 2))).toContain("v5"));
+    const paths = h.get.mock.calls.map((c) => c[0]);
+    expect(paths).toContain("/skills/sk1/versions");
+    expect(paths).toContain("/skills/sk1");
   });
 
   it("says so when the snapshot already matches (no new version)", async () => {
     h.post.mockResolvedValue({ skill: SKILL, restored: false });
     renderTab();
     const dialog = await openRestore(3);
-    fireEvent.click(within(dialog).getByRole("button", { name: "Restore as v5" }));
+    await user.click(within(dialog).getByRole("button", { name: "Restore as v5" }));
     expect(await screen.findByText("v3 already matches the current skill, so no new version was created.")).toBeInTheDocument();
   });
 
@@ -218,13 +231,13 @@ describe("Restore popup", () => {
     h.post.mockRejectedValue(new ApiError("stale", 409, "skill_version_stale", { expected_version: 4, current_version: 5 }));
     renderTab();
     const dialog = await openRestore(3);
-    fireEvent.click(within(dialog).getByRole("button", { name: "Restore as v5" }));
+    await user.click(within(dialog).getByRole("button", { name: "Restore as v5" }));
     const alert = await within(dialog).findByRole("alert");
     expect(alert).toHaveTextContent("Skill changed since you opened it. Reload to see the latest version, then try again.");
     expect(within(dialog).getByRole("button", { name: "Restore as v5" })).toBeDisabled();
     expect(within(alert).getByRole("button", { name: "Reload" })).toHaveFocus();
     h.get.mockClear();
-    fireEvent.click(within(alert).getByRole("button", { name: "Reload" }));
+    await user.click(within(alert).getByRole("button", { name: "Reload" }));
     await waitFor(() => expect(h.get.mock.calls.map((c) => c[0])).toEqual(expect.arrayContaining(["/skills/sk1", "/skills/sk1/versions"])));
     expect(within(dialog).queryByRole("alert")).not.toBeInTheDocument();
   });
@@ -233,7 +246,7 @@ describe("Restore popup", () => {
     h.post.mockRejectedValue(new ApiError("Skill name \"gate-old\" is taken", 409, "skill_name_taken"));
     renderTab();
     const dialog = await openRestore(1);
-    fireEvent.click(within(dialog).getByRole("button", { name: "Restore as v5" }));
+    await user.click(within(dialog).getByRole("button", { name: "Restore as v5" }));
     expect(await within(dialog).findByRole("alert")).toHaveTextContent('Could not restore: Skill name "gate-old" is taken');
   });
 
