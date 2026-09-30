@@ -15,6 +15,7 @@ import type {
   RunEvent,
   RunSummary,
 } from "@devdigest/shared";
+import { SmartDiffResponse } from "@devdigest/shared/contracts/review-api";
 
 /** Poll interval while a PR has a run in flight (active runs + run history). */
 const RUN_POLL_INTERVAL_MS = 4000;
@@ -67,6 +68,20 @@ export function usePrReviews(
     // needed. The key is unchanged on purpose: hovering a row in the PR list
     // warms the very cache the PR detail page then reads.
     enabled: !!prId && (opts?.enabled ?? true),
+  });
+}
+
+// ---- Smart Diff: files grouped by role (persisted data, no model call) ----
+/** Role per path for the Files changed tab. The key carries `headSha` so a head
+   move re-groups; the placeholder keeps the previous grouping of the SAME PR
+   (no flat-list flash) and never another PR's roles. Findings are not read
+   from here — they come from `usePrReviews`. */
+export function usePrSmartDiff(prId: string | null | undefined, headSha: string | null | undefined) {
+  return useQuery({
+    queryKey: ["smart-diff", prId, headSha],
+    queryFn: () => api.get<SmartDiffResponse>(`/pulls/${prId}/smart-diff`, SmartDiffResponse),
+    enabled: !!prId,
+    placeholderData: (prev, prevQuery) => (prevQuery?.queryKey[1] === prId ? prev : undefined),
   });
 }
 

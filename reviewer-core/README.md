@@ -82,7 +82,8 @@ user:    task · ## PR description · ## Relevant memory · ## Repo skeleton ·
 Exported from `src/index.ts`: `assemblePrompt` / `wrapUntrusted` (prompt),
 `groundFindings` / `groundingSummary` (grounding), `toJsonSchema` / `extractJson`
 / `parseWithRepair` (structured output), plus the `run` entrypoint and
-`reduce`. Contracts (`Review`, `Finding`, `Verdict`, …) come from
+`reduce`, and the pure Smart Diff classifier (`classifyFile`, `ROLE_ORDER`,
+`CLASSIFY_ORDER`, `ROLE_PATTERNS`). Contracts (`Review`, `Finding`, `Verdict`, …) come from
 `@devdigest/shared`.
 
 ## Testing

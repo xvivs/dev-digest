@@ -21,6 +21,7 @@ import { PrDetailSkeleton } from "../PrDetailSkeleton";
 import { RUNS_TAB, type PrTab } from "../../constants";
 import { parseSeverity, parseTab, prDetailHref } from "../../helpers";
 import { s } from "../../styles";
+import { useStickyOffset } from "./hooks";
 
 export interface PrDetailContentProps {
   repoId: string;
@@ -41,6 +42,7 @@ export function PrDetailContent({ repoId, number, repoFullName }: PrDetailConten
   const { data: pr, isLoading: detailLoading, isError, error, refetch } = usePullDetail(prId);
   const isLoading = pullsLoading || (prId != null && detailLoading);
   const { data: reviews } = usePrReviews(prId);
+  const { setSource: setHeaderRef, setTarget: setBodyRef } = useStickyOffset();
 
   // Live run tracking is SERVER-SOURCED (agent_runs status='running'): survives
   // navigation AND reload, and self-clears via polling when runs finish.
@@ -94,6 +96,7 @@ export function PrDetailContent({ repoId, number, repoFullName }: PrDetailConten
   return (
     <>
       <PrDetailHeader
+        ref={setHeaderRef}
         pr={pr}
         prId={prId}
         tab={tab}
@@ -103,7 +106,7 @@ export function PrDetailContent({ repoId, number, repoFullName }: PrDetailConten
         onRunStart={openRunsTab}
       />
 
-      <div style={s.body}>
+      <div ref={setBodyRef} style={s.body}>
         {tab === "overview" && prId && <OverviewTab prId={prId} pr={pr} />}
 
         {tab === "findings" && (
@@ -124,7 +127,7 @@ export function PrDetailContent({ repoId, number, repoFullName }: PrDetailConten
         )}
 
         {tab === "diff" && (
-          <DiffTab prId={prId} filesCount={pr.files_count} files={pr.files} canComment={pr.status === "open"} />
+          <DiffTab prId={prId} headSha={pr.head_sha} files={pr.files} canComment={pr.status === "open"} />
         )}
       </div>
 

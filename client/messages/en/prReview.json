@@ -69,14 +69,29 @@
     "blockers": " · {count, plural, one {# blocker} other {# blockers}}"
   },
   "smartDiff": {
-    "coreLabel": "Core",
+    "coreLabel": "Core logic",
+    "testsLabel": "Tests",
     "wiringLabel": "Wiring",
+    "docsLabel": "Docs",
     "boilerplateLabel": "Boilerplate",
+    "coreDescription": "The substance of the change — review closely",
+    "testsDescription": "Proves the change works — check what it covers",
+    "wiringDescription": "Hooks the core into the app",
+    "docsDescription": "Explains the change — read for intent",
+    "boilerplateDescription": "Generated / mechanical — skim",
     "largeTitle": "This PR is large ({lines} changed lines)",
     "largeBody": "Consider splitting it into smaller, focused PRs for easier review:",
-    "filesCount": "{count} files",
+    "filesCount": "{count, plural, one {# file} other {# files}}",
     "findingLines": "{count} finding-lines",
-    "groupedByRole": "Smart Diff · grouped by role"
+    "groupedByRole": "Reviewer-ordered diff",
+    "summaryFiles": "{count, plural, one {# file} other {# files}} ·",
+    "smartOrder": "Smart order",
+    "originalOrder": "Original order",
+    "orderLabel": "File order",
+    "filesWithFindings": "{count, plural, one {# file} other {# files}} with findings",
+    "reviewNotRun": "Review not run yet — findings will appear here",
+    "groupingFailed": "Couldn’t group files by role; showing the original order.",
+    "unmatchedFilesTitle": "{count, plural, one {# finding} other {# findings}} on files not in this diff"
   },
   "list": {
     "breadcrumb": "Pull Requests",
@@ -179,6 +194,9 @@
     "showComments": "Show comments ({count})",
     "hideComments": "Hide comments ({count})",
     "commentFailed": "Couldn’t post the comment to GitHub.",
-    "commentFailedReason": "Couldn’t post the comment to GitHub: {reason}"
+    "commentFailedReason": "Couldn’t post the comment to GitHub: {reason}",
+    "showAll": "Show all ({count})",
+    "showCommentsAndFindings": "Show comments & findings ({count})",
+    "hideCommentsAndFindings": "Hide comments & findings ({count})"
   }
 }

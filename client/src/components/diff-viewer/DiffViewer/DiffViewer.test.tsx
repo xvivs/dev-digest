@@ -1,9 +1,12 @@
-import { describe, expect, it } from "vitest";
-import { fireEvent, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+import { fireEvent, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import type { FindingRecord } from "@devdigest/shared";
 import { renderWithProviders } from "@/test/render";
 import type { PrFile, PrReviewComment } from "@/lib/types";
 import diffViewerMessages from "../../../../messages/en/diffViewer.json";
 import type { DiffCommentApi } from "../comments";
+import type { DiffFindingApi, DiffFindingCardProps } from "../findings";
 import { DiffViewer } from "./DiffViewer";
 
 const FILE: PrFile = {
@@ -83,5 +86,97 @@ describe("DiffViewer", () => {
     );
     expect(screen.getByText("looks good")).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "View on GitHub" })).not.toBeInTheDocument();
+  });
+
+  describe("with agent findings", () => {
+    function finding(over: Partial<FindingRecord>): FindingRecord {
+      return {
+        id: "f1",
+        severity: "CRITICAL",
+        category: "bug",
+        title: "Boundary untested",
+        file: FILE.path,
+        start_line: 3,
+        end_line: 3,
+        rationale: "r",
+        suggestion: null,
+        confidence: 0.9,
+        kind: "finding",
+        trifecta_components: null,
+        evidence: null,
+        review_id: "rv",
+        accepted_at: null,
+        dismissed_at: null,
+        ...over,
+      } as FindingRecord;
+    }
+
+    function StubCard({ finding: f, onAction }: DiffFindingCardProps) {
+      return (
+        <div data-testid={`card-${f.id}`}>
+          <span>{f.title}</span>
+          <button type="button" onClick={() => onAction("accept")}>
+            Accept
+          </button>
+        </div>
+      );
+    }
+
+    function api(findings: FindingRecord[], over: Partial<DiffFindingApi> = {}): DiffFindingApi {
+      return { findings, show: true, Card: StubCard, onAction: vi.fn(), pendingId: null, ...over };
+    }
+
+    it("renders the card right after the row of its start line, with a severity label", () => {
+      renderViewer(<DiffViewer files={[FILE]} findings={api([finding({})])} />);
+      const card = screen.getByTestId("card-f1");
+      const row = screen.getByText("const c = 4;").closest("div")!.parentElement!;
+      expect(row).toContainElement(card);
+      expect(within(row).getByText("blocker")).toBeInTheDocument();
+    });
+
+    it("marks the file header with a finding dot next to the unchanged comment counter", () => {
+      renderViewer(
+        <DiffViewer
+          files={[FILE]}
+          commenting={commenting([comment({ id: 1 })])}
+          findings={api([finding({})])}
+        />,
+      );
+      expect(screen.getByRole("img", { name: "1 finding" })).toBeInTheDocument();
+      expect(screen.getByTitle("1 comment")).toBeInTheDocument();
+    });
+
+    it("puts a finding on a line that is not rendered into the end-of-file block", () => {
+      renderViewer(<DiffViewer files={[FILE]} findings={api([finding({ start_line: 99, end_line: 99 })])} />);
+      expect(screen.getByText("1 finding outside the shown lines")).toBeInTheDocument();
+      expect(screen.getByTestId("card-f1")).toBeInTheDocument();
+    });
+
+    it("still shows the block when the file has no patch", () => {
+      renderViewer(<DiffViewer files={[{ ...FILE, patch: null }]} findings={api([finding({})])} />);
+      expect(screen.getByText(/No diff text available/)).toBeInTheDocument();
+      expect(screen.getByText("1 finding outside the shown lines")).toBeInTheDocument();
+    });
+
+    it("hides cards when show is false but keeps the dot and the label", () => {
+      renderViewer(<DiffViewer files={[FILE]} findings={api([finding({})], { show: false })} />);
+      expect(screen.queryByTestId("card-f1")).not.toBeInTheDocument();
+      expect(screen.getByRole("img", { name: "1 finding" })).toBeInTheDocument();
+      expect(screen.getByText("blocker")).toBeInTheDocument();
+    });
+
+    it("collapses a file when defaultOpenFor returns false", () => {
+      renderViewer(<DiffViewer files={[FILE]} findings={api([finding({})])} defaultOpenFor={() => false} />);
+      expect(screen.getByRole("button", { name: /src\/config\.ts/ })).toHaveAttribute("aria-expanded", "false");
+    });
+
+    it("reports Accept with the finding", async () => {
+      const user = userEvent.setup();
+      const onAction = vi.fn();
+      const f = finding({});
+      renderViewer(<DiffViewer files={[FILE]} findings={api([f], { onAction })} />);
+      await user.click(screen.getByRole("button", { name: "Accept" }));
+      expect(onAction).toHaveBeenCalledWith(f, "accept");
+    });
   });
 });

@@ -9,5 +9,12 @@
   "viewOnGitHub": "View on GitHub",
   "postedToGitHub": "Posts to GitHub immediately",
   "outdatedTitle": "{count, plural, one {# comment} other {# comments}} on older revisions",
-  "commentCount": "{count, plural, one {# comment} other {# comments}}"
+  "commentCount": "{count, plural, one {# comment} other {# comments}}",
+  "finding": {
+    "blocker": "blocker",
+    "warning": "warning",
+    "suggestion": "suggestion"
+  },
+  "findingsDot": "{count, plural, one {# finding} other {# findings}}",
+  "unmatchedFindingsTitle": "{count, plural, one {# finding} other {# findings}} outside the shown lines"
 }

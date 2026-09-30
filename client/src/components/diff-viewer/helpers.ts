@@ -56,3 +56,28 @@ export function safeExternalHref(url: string | null | undefined): string | null 
     return null;
   }
 }
+
+/**
+ * Split `items` into those whose key is rendered (grouped by key, input order
+ * kept) and the rest (`null` key or a key with no rendered line). Nothing is
+ * dropped.
+ */
+export function partitionByKey<T>(
+  items: readonly T[],
+  keyOf: (item: T) => string | null,
+  renderedKeys: ReadonlySet<string>,
+): { matched: Map<string, T[]>; unmatched: T[] } {
+  const matched = new Map<string, T[]>();
+  const unmatched: T[] = [];
+  for (const item of items) {
+    const key = keyOf(item);
+    if (key !== null && renderedKeys.has(key)) {
+      const list = matched.get(key) ?? [];
+      list.push(item);
+      matched.set(key, list);
+    } else {
+      unmatched.push(item);
+    }
+  }
+  return { matched, unmatched };
+}

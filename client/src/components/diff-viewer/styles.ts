@@ -3,7 +3,7 @@ import type { Line } from "./helpers";
 
 /** Co-located styles for the DiffViewer (extracted from inline styles). */
 export const s = {
-  list: { display: "flex", flexDirection: "column", gap: 10 } satisfies CSSProperties,
+  list: { display: "flex", flexDirection: "column", gap: 8 } satisfies CSSProperties,
   empty: { padding: "24px", fontSize: 14, color: "var(--text-muted)", textAlign: "center" } satisfies CSSProperties,
   fileCard: {
     border: "1px solid var(--border)",
@@ -17,20 +17,36 @@ export const s = {
     minWidth: 0,
     display: "flex",
     alignItems: "center",
-    gap: 10,
-    padding: "10px 12px",
+    gap: 8,
+    padding: "8px 11px",
   } satisfies CSSProperties,
   fileIcon: { color: "var(--text-muted)" } satisfies CSSProperties,
   filePath: {
-    fontSize: 13,
+    fontSize: 12.5,
     fontWeight: 500,
-    flex: 1,
+    flex: "0 1 auto",
     minWidth: 0,
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
   } satisfies CSSProperties,
-  fileStat: { fontSize: 12 } satisfies CSSProperties,
+  fileStat: { fontSize: 11.5 } satisfies CSSProperties,
+  /** Right cluster of the file header: comment counter, then +N −M. */
+  statCluster: {
+    marginLeft: "auto",
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    flexShrink: 0,
+  } satisfies CSSProperties,
+  /** Agent-finding marker right after the path (severity lives on the lines). */
+  findingDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 99,
+    background: "var(--crit)",
+    flexShrink: 0,
+  } satisfies CSSProperties,
   commentCount: {
     display: "inline-flex",
     alignItems: "center",
@@ -42,12 +58,12 @@ export const s = {
   delText: { color: "var(--code-del-text)" } satisfies CSSProperties,
   fileBody: {
     borderTop: "1px solid var(--border)",
-    padding: "8px 0",
+    padding: "6px 0",
     background: "var(--bg-surface)",
   } satisfies CSSProperties,
   noDiff: {
-    padding: "14px 18px",
-    fontSize: 13,
+    padding: "14px 16px",
+    fontSize: 12,
     color: "var(--text-muted)",
     textAlign: "center",
   } satisfies CSSProperties,
@@ -62,7 +78,7 @@ export const s = {
     position: "relative",
     width: 44,
     textAlign: "right",
-    padding: "0 10px 0 0",
+    padding: "0 8px 0 0",
     color: "var(--text-muted)",
     userSelect: "none",
     flexShrink: 0,
@@ -72,7 +88,7 @@ export const s = {
     whiteSpace: "pre-wrap",
     wordBreak: "break-word",
     color: "var(--text-primary)",
-    paddingRight: 12,
+    paddingRight: 10,
   } satisfies CSSProperties,
 } as const;
 
@@ -160,7 +176,33 @@ export function chevronFor(open: boolean): CSSProperties {
 /** Row background per line kind (add/del tinted, others transparent). */
 export function lineRowFor(kind: Line["kind"]): CSSProperties {
   const background = kind === "add" ? "var(--code-add)" : kind === "del" ? "var(--code-del)" : "transparent";
-  return { display: "flex", alignItems: "stretch", fontSize: 13, lineHeight: "20px", background };
+  return {
+    position: "relative",
+    display: "flex",
+    alignItems: "stretch",
+    fontSize: 12,
+    lineHeight: "20px",
+    background,
+  };
+}
+
+/** 3px severity stripe on a line covered by an active finding; the row keeps its add/del background. */
+export function lineStripeFor(color: string): CSSProperties {
+  return { position: "absolute", left: 0, top: 0, bottom: 0, width: 3, background: color };
+}
+
+/** Right-aligned lowercase severity word on a finding's start line. */
+export function lineLabelFor(color: string): CSSProperties {
+  return {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 4,
+    paddingRight: 10,
+    fontSize: 10.5,
+    fontWeight: 600,
+    color,
+    flexShrink: 0,
+  };
 }
 
 /** Gutter sign colour per line kind. */
@@ -168,7 +210,7 @@ export function lineSignFor(kind: Line["kind"]): CSSProperties {
   return {
     width: 14,
     textAlign: "center",
-    color: kind === "add" ? "var(--code-add-text)" : kind === "del" ? "var(--code-del-text)" : "var(--text-muted)",
+    color: kind === "add" ? "var(--code-add-text)" : "var(--text-muted)",
     flexShrink: 0,
   };
 }

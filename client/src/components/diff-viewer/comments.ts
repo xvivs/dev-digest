@@ -4,7 +4,7 @@
    CommentCard, InlineComposer and OutdatedComments, and their styles live in
    styles.ts. Comments are GitHub PR review comments, proxied live. */
 import type { PrReviewComment } from "@/lib/types";
-import type { Line } from "./helpers";
+import { partitionByKey, type Line } from "./helpers";
 
 /** What the viewer needs to read + write inline comments. */
 export interface DiffCommentApi {
@@ -91,17 +91,10 @@ export function partitionThreads(
   threads: CommentThread[],
   renderedKeys: Set<string>,
 ): { matched: Map<string, CommentThread[]>; outdated: CommentThread[] } {
-  const matched = new Map<string, CommentThread[]>();
-  const outdated: CommentThread[] = [];
-  for (const th of threads) {
-    const key = th.line != null ? `${th.side}:${th.line}` : null;
-    if (key && renderedKeys.has(key)) {
-      const list = matched.get(key) ?? [];
-      list.push(th);
-      matched.set(key, list);
-    } else {
-      outdated.push(th);
-    }
-  }
-  return { matched, outdated };
+  const { matched, unmatched } = partitionByKey(
+    threads,
+    (th) => lineKey(th.side, th.line),
+    renderedKeys,
+  );
+  return { matched, outdated: unmatched };
 }

@@ -11,6 +11,8 @@ import { isSettledPr } from "./helpers";
 import { s } from "./styles";
 
 export interface PrDetailHeaderProps {
+  /** Root element ref (React 19 ref-as-prop); PrDetailContent measures it for sticky offsets. */
+  ref?: React.Ref<HTMLDivElement>;
   pr: PrDetail;
   prId: string | null;
   tab: PrTab;
@@ -22,13 +24,13 @@ export interface PrDetailHeaderProps {
   onRunStart: () => void;
 }
 
-export function PrDetailHeader({ pr, prId, tab, findingsCount, githubUrl, onSetTab, onRunStart }: PrDetailHeaderProps) {
+export function PrDetailHeader({ ref, pr, prId, tab, findingsCount, githubUrl, onSetTab, onRunStart }: PrDetailHeaderProps) {
   const t = useTranslations("prReview");
   const status = STATUS_META[pr.status];
   const settled = isSettledPr(pr.status);
 
   return (
-    <div style={s.root}>
+    <div ref={ref} style={s.root}>
       <div style={s.titleRow}>
         <div style={s.titleCol}>
           <h1 style={s.h1}>

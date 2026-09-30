@@ -17,6 +17,7 @@ import type { FindingRow, PullRow } from '../../db/rows.js';
 export type { FindingRow, PullRow };
 
 export type ReviewRow = typeof t.reviews.$inferSelect;
+export type PrFileRow = typeof t.prFiles.$inferSelect;
 
 import * as reviewRepo from './repository/review.repo.js';
 import * as runRepo from './repository/run.repo.js';
@@ -44,7 +45,7 @@ export class ReviewRepository {
     return pullRepo.getRepo(this.db, repoId);
   }
 
-  getPrFiles(prId: string): Promise<(typeof t.prFiles.$inferSelect)[]> {
+  getPrFiles(prId: string): Promise<PrFileRow[]> {
     return pullRepo.getPrFiles(this.db, prId);
   }
 
