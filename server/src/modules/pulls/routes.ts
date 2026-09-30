@@ -286,6 +286,8 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
           additions: detail.additions,
           deletions: detail.deletions,
           filesCount: detail.files_count,
+          // Keep head_sha fresh so status derivation and review targets see a pushed head.
+          headSha: detail.head_sha,
         })
         .where(eq(t.pullRequests.id, pr.id));
 
