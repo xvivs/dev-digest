@@ -39,6 +39,7 @@ export function AppShell({ children, crumb }: { children: React.ReactNode; crumb
   const [navOrigin, setNavOrigin] = React.useState<NavOrigin | null>(null);
   const [prevPathname, setPrevPathname] = React.useState(pathname);
   const navDrawerId = React.useId();
+  const navTriggerRef = React.useRef<HTMLButtonElement>(null);
   const reducedMotion = usePrefersReducedMotion();
   const navOpen = navStatus === "open";
   const closeNav = React.useCallback(() => setNavStatus((s) => (s === "open" ? "closing" : s)), []);
@@ -56,6 +57,12 @@ export function AppShell({ children, crumb }: { children: React.ReactNode; crumb
     setPrevPathname(pathname);
     setNavStatus("closed");
   }
+  // Return focus to the logo on every close path. useDialogFocus only restores the
+  // previously active element, which is not the trigger when the click did not focus
+  // it (Safari never focuses buttons on click). Runs after the Drawer's own restore.
+  React.useEffect(() => {
+    if (navStatus === "closing") navTriggerRef.current?.focus();
+  }, [navStatus]);
   // Unmount once the exit animation is over (timer = external system).
   React.useEffect(() => {
     if (navStatus !== "closing") return;
@@ -70,6 +77,7 @@ export function AppShell({ children, crumb }: { children: React.ReactNode; crumb
     onToggleNav: toggleNav,
     navOpen,
     navDrawerId,
+    navTriggerRef,
   });
 
   return (

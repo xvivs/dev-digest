@@ -12,10 +12,10 @@ vi.mock("./hooks", async () => {
   return {
     useGlobalShortcuts: () => {},
     useShellCommands: () => [],
-    useShellContext: ({ onToggleNav, navOpen, navDrawerId }: Record<string, unknown>) =>
+    useShellContext: ({ onToggleNav, navOpen, navDrawerId, navTriggerRef }: Record<string, unknown>) =>
       React.useMemo(
-        () => ({ onToggleNav, navOpen, navDrawerId, labels: { openNav: "Open navigation", closeNav: "Close navigation" } }),
-        [onToggleNav, navOpen, navDrawerId],
+        () => ({ onToggleNav, navOpen, navDrawerId, navTriggerRef, labels: { openNav: "Open navigation", closeNav: "Close navigation" } }),
+        [onToggleNav, navOpen, navDrawerId, navTriggerRef],
       ),
   };
 });
@@ -98,6 +98,19 @@ describe("AppShell logo trigger", () => {
     expect(trigger()).toHaveFocus();
     settle(DRAWER_REVEAL_MS);
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("returns focus to the logo on close even when the opening click never focused it (Safari)", () => {
+    renderShell();
+    fireEvent.click(trigger()); // no .focus(): like a programmatic or Safari click
+    expect(trigger()).not.toHaveFocus();
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(document.activeElement).toBe(trigger());
+  });
+
+  it("does not take focus on initial mount", () => {
+    renderShell();
+    expect(trigger()).not.toHaveFocus();
   });
 
   it("backdrop tap, the close button and the Home link each close it", () => {

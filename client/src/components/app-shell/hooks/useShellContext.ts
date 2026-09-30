@@ -16,6 +16,7 @@ interface ShellContextOptions {
   onToggleNav: (origin: NavOrigin) => void;
   navOpen: boolean;
   navDrawerId: string;
+  navTriggerRef: React.Ref<HTMLButtonElement>;
 }
 
 /**
@@ -28,6 +29,7 @@ export function useShellContext({
   onToggleNav,
   navOpen,
   navDrawerId,
+  navTriggerRef,
 }: ShellContextOptions): ShellContext {
   const t = useTranslations("shell");
   const pathname = usePathname() ?? "/";
@@ -86,6 +88,7 @@ export function useShellContext({
       onToggleNav,
       navOpen,
       navDrawerId,
+      navTriggerRef,
       labels: { openNav: t("topbar.openNav"), closeNav: t("topbar.closeNav"), search: t("topbar.search") },
       onSelectRepo,
       onAddRepo,
@@ -107,6 +110,7 @@ export function useShellContext({
       onToggleNav,
       navOpen,
       navDrawerId,
+      navTriggerRef,
       onSelectRepo,
       onAddRepo,
       onRemoveRepo,

@@ -36,6 +36,8 @@ export interface ShellContext {
   navOpen?: boolean;
   /** id of the drawer dialog, for the trigger's `aria-controls`. */
   navDrawerId?: string;
+  /** Attached to the trigger button so the host can return focus to it on close. */
+  navTriggerRef?: React.Ref<HTMLButtonElement>;
   /**
    * Translated Topbar labels (the design system has no i18n of its own).
    * Missing entries fall back to English.

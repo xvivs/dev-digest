@@ -16,6 +16,7 @@ export function LogoTrigger({ ctx }: { ctx: ShellContext }) {
   const label = open ? (ctx.labels?.closeNav ?? "Close navigation") : (ctx.labels?.openNav ?? "Open navigation");
   return (
     <button
+      ref={ctx.navTriggerRef}
       type="button"
       className="dd-logo-trigger dd-show-below-md"
       aria-label={label}
