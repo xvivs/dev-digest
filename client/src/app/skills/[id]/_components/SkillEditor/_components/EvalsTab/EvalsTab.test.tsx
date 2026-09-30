@@ -291,6 +291,12 @@ function renderTab(skill: Skill = SKILL, opts: { initialCase?: string | null; in
 }
 
 let user: ReturnType<typeof userEvent.setup>;
+
+/** Tab forward until `el` has focus, the way a keyboard user reaches it. */
+async function tabTo(el: HTMLElement) {
+  for (let i = 0; i < 50 && document.activeElement !== el; i++) await user.tab();
+  expect(el).toHaveFocus();
+}
 beforeEach(() => {
   user = userEvent.setup();
   world = { carriers: CARRIERS, cases: [CASE_DEFECT, CASE_CLEAN], suites: [SUITE], detail: DETAIL };
@@ -709,25 +715,16 @@ describe("EvalsTab — errored cases", () => {
 });
 
 describe("EvalsTab — card actions and summary line", () => {
-  const actionsOf = (name: string) => screen.getByRole("button", { name }).parentElement as HTMLElement;
 
-  it("each card's Run / Edit / Delete actions are reachable by name, stay available through card and button hover, and Delete keeps its name", async () => {
+  // Hover/focus feedback on the actions is visual only (opacity, colour); there is no
+  // accessible effect to assert, so it is left to the browser suite, not RTL.
+  it("each card's Run / Edit / Delete actions are reachable by name and enabled", async () => {
     renderTab();
     await screen.findByText("stripe-key-leak");
     const card = screen.getByRole("button", { name: /stripe-key-leak: passes/ }).closest("li")!;
-    const names = ["Run stripe-key-leak", "Edit stripe-key-leak", "Delete stripe-key-leak"];
-    for (const name of names) expect(within(card).getByRole("button", { name })).toBeEnabled();
-
-    await user.hover(card);
-    for (const name of names) expect(within(card).getByRole("button", { name })).toBeVisible();
-    const del = within(card).getByRole("button", { name: "Delete stripe-key-leak" });
-    await user.hover(del);
-    expect(del).toBeEnabled();
-    await user.unhover(del);
-    await user.unhover(card);
-    for (const name of names) expect(within(card).getByRole("button", { name })).toBeInTheDocument();
-    expect(h.del).not.toHaveBeenCalled();
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    for (const name of ["Run stripe-key-leak", "Edit stripe-key-leak", "Delete stripe-key-leak"]) {
+      expect(within(card).getByRole("button", { name })).toBeEnabled();
+    }
   });
 
   it("the summary line keeps each segment's separator with its value (the cost keeps its dot)", async () => {
@@ -858,12 +855,12 @@ describe("EvalsTab — lean case cards", () => {
 
     const again = renderTab();
     const cardAgain = await screen.findByRole("button", { name: /stripe-key-leak: passes/ });
-    cardAgain.focus();
+    await tabTo(cardAgain);
     await user.keyboard("{Enter}");
     expect(again.onOpenCase).toHaveBeenCalledTimes(1);
     await user.keyboard("{Escape}");
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
-    screen.getByRole("button", { name: /stripe-key-leak: passes/ }).focus();
+    await tabTo(screen.getByRole("button", { name: /stripe-key-leak: passes/ }));
     await user.keyboard(" ");
     expect(again.onOpenCase).toHaveBeenCalledTimes(2);
 

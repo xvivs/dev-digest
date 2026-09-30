@@ -213,7 +213,8 @@ describe("Restore popup", () => {
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     expect(h.post).toHaveBeenCalledWith("/skills/sk1/versions/3/restore", { expected_version: 4 }, expect.anything());
     expect(screen.getByText("Restored v3 as v5")).toBeInTheDocument();
-    await waitFor(async () => expect((await rows()).map((li) => li.textContent?.slice(0, 2))).toContain("v5"));
+    const history = screen.getByRole("list", { name: "Version history" });
+    expect(await within(history).findByText("v5")).toBeInTheDocument();
     const paths = h.get.mock.calls.map((c) => c[0]);
     expect(paths).toContain("/skills/sk1/versions");
     expect(paths).toContain("/skills/sk1");
