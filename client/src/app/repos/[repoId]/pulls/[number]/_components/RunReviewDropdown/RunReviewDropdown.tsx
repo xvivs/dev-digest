@@ -7,7 +7,7 @@ import React from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { Button, Dropdown, type DropdownItemDef } from "@devdigest/ui";
-import { useAgents, useRunReview } from "@/lib/hooks";
+import { useAgents, usePrActiveRuns, useRunReview } from "@/lib/hooks";
 import { AGENTS_HREF, DROPDOWN_WIDTH } from "./constants";
 import { s } from "./styles";
 
@@ -38,12 +38,17 @@ export function RunReviewDropdown({
   const router = useRouter();
   const { data: agents } = useAgents();
   const run = useRunReview();
+  // Server-sourced, shared by every dropdown on the screen (header + condensed
+  // bar): one run in flight blocks a duplicate start from either.
+  const { data: activeRuns } = usePrActiveRuns(prId);
+  const busy = run.isPending || (activeRuns?.length ?? 0) > 0;
   const all = agents ?? [];
   const hasEnabled = all.some((a) => a.enabled);
 
-  const triggerLabel = run.isPending ? t("runReview.running") : t("runReview.runReview");
+  const triggerLabel = busy ? t("runReview.running") : t("runReview.runReview");
 
   const kick = async (opts: { all?: boolean; agentId?: string }) => {
+    if (busy) return;
     onRunStart?.();
     try {
       const res = await run.mutateAsync({ prId, ...opts });
@@ -101,7 +106,7 @@ export function RunReviewDropdown({
             size={size}
             iconRight="ChevronDown"
             icon="Sparkles"
-            loading={run.isPending}
+            loading={busy}
             {...(iconOnlyBelowMd ? { "aria-label": triggerLabel, title: warnMerged ? undefined : triggerLabel } : null)}
           >
             {iconOnlyBelowMd ? <span className="dd-hide-below-md">{triggerLabel}</span> : triggerLabel}

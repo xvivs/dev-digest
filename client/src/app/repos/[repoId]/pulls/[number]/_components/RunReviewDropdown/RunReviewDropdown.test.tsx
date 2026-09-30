@@ -15,8 +15,10 @@ vi.mock("@/lib/hooks/agents", () => ({
 }));
 
 const mutateAsync = vi.fn();
+let activeRuns: unknown[] = [];
 vi.mock("@/lib/hooks/reviews", () => ({
   useRunReview: () => ({ mutateAsync, isPending: false }),
+  usePrActiveRuns: () => ({ data: activeRuns }),
 }));
 
 import { RunReviewDropdown } from "./RunReviewDropdown";
@@ -24,6 +26,7 @@ import { RunReviewDropdown } from "./RunReviewDropdown";
 afterEach(() => {
   cleanup();
   agents = [];
+  activeRuns = [];
   push.mockReset();
   mutateAsync.mockReset();
 });
@@ -101,5 +104,14 @@ describe("RunReviewDropdown", () => {
     expect(button).not.toHaveAttribute("aria-label");
     expect(button).not.toHaveAttribute("title");
     expect(button.querySelector(".dd-hide-below-md")).toBeNull();
+  });
+
+  it("a run in flight on the server (seen by any instance) disables the trigger and blocks a duplicate start", () => {
+    activeRuns = [{ run_id: "r1" }];
+    renderDropdown(<RunReviewDropdown prId="pr1" />);
+    const button = screen.getByRole("button", { name: /Running/ });
+    expect(button).toBeDisabled();
+    fireEvent.click(button);
+    expect(mutateAsync).not.toHaveBeenCalled();
   });
 });

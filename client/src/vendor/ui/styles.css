@@ -170,40 +170,11 @@ body {
   --card-pad: 16px;
   --dd-topbar-gap: 16px;
   --dd-topbar-pad-x: 24px;
-  /* PR detail header (route pulls/[number]); mobile overrides below */
-  --dd-prh-pad: 18px 32px 0;
-  --dd-prh-row-gap: 18px;
-  --dd-prh-title-basis: 240px;
-  --dd-prh-h1-size: 22px;
-  --dd-prh-h1-gap: 12px;
-  --dd-prh-num-size: 18px;
-  --dd-prh-title-lines: none;
-  --dd-prh-meta-margin: 10px 0 14px;
-  --dd-prh-meta-pad: 0;
-  --dd-prh-meta-gap: 14px;
-  --dd-prh-meta-size: 13px;
-  --dd-prh-branch-size: 12px;
-  --dd-prh-branch-max: none;
-  --dd-prh-actions-gap: 10px;
 }
 @media (max-width: 767px) {
   :root {
     --dd-topbar-gap: 8px;
     --dd-topbar-pad-x: 12px;
-    --dd-prh-pad: 10px 14px 0;
-    --dd-prh-row-gap: 10px;
-    --dd-prh-title-basis: 0px;
-    --dd-prh-h1-size: 16px;
-    --dd-prh-h1-gap: 8px;
-    --dd-prh-num-size: 14px;
-    --dd-prh-title-lines: 2;
-    --dd-prh-meta-margin: 0;
-    --dd-prh-meta-pad: 6px 0 10px;
-    --dd-prh-meta-gap: 4px 10px;
-    --dd-prh-meta-size: 12px;
-    --dd-prh-branch-size: 11.5px;
-    --dd-prh-branch-max: 120px;
-    --dd-prh-actions-gap: 6px;
   }
 }
 

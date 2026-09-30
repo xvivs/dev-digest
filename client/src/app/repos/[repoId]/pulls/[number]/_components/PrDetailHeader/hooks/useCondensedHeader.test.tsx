@@ -1,6 +1,6 @@
 /**
- * useCondensedHeader: layout union from matchMedia + one sentinel observer.
- * jsdom has neither IntersectionObserver nor matchMedia, so both are faked.
+ * useCondensedHeader: layout union from `mobile` + one sentinel observer.
+ * jsdom has no IntersectionObserver, so it is faked.
  */
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import React from "react";
@@ -23,16 +23,10 @@ class FakeIO {
   }
 }
 
-let mobile = true;
+
 beforeEach(() => {
   ios = [];
-  mobile = true;
   vi.stubGlobal("IntersectionObserver", FakeIO);
-  vi.stubGlobal("matchMedia", (q: string) => ({
-    matches: q === "(max-width: 767px)" ? mobile : false,
-    addEventListener: vi.fn(),
-    removeEventListener: vi.fn(),
-  }));
 });
 afterEach(() => {
   cleanup();
@@ -40,8 +34,8 @@ afterEach(() => {
 });
 
 let latest: ReturnType<typeof useCondensedHeader>;
-function Harness({ withSentinel = true }: { withSentinel?: boolean }) {
-  latest = useCondensedHeader();
+function Harness({ withSentinel = true, isMobile = true }: { withSentinel?: boolean; isMobile?: boolean }) {
+  latest = useCondensedHeader(isMobile);
   return <main>{withSentinel && <div data-testid="sentinel" ref={latest.setSentinel} />}</main>;
 }
 const io = () => ios[ios.length - 1]!;
@@ -50,8 +44,7 @@ const fire = (isIntersecting: boolean, top: number) =>
 
 describe("useCondensedHeader", () => {
   it("desktop layout while not mobile", () => {
-    mobile = false;
-    render(<Harness />);
+    render(<Harness isMobile={false} />);
     expect(latest.layout).toBe("desktop");
   });
 

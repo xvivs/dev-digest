@@ -7,13 +7,13 @@ import React from "react";
 import { s } from "./styles";
 
 export interface CondensedBarProps {
+  /** Bar root (React 19 ref-as-prop): the header checks whether focus is inside before hiding it. */
+  ref?: React.Ref<HTMLDivElement>;
   visible: boolean;
   /** prefers-reduced-motion: reduce — no slide/fade. */
   reducedMotion: boolean;
   number: number;
   title: string;
-  /** Focus target when the full header's focus has to move here. */
-  titleRef: React.Ref<HTMLButtonElement>;
   onTitleClick: (e: React.MouseEvent<HTMLElement>) => void;
   /** Primary action(s), right of the title. */
   actions: React.ReactNode;
@@ -22,11 +22,11 @@ export interface CondensedBarProps {
 }
 
 export function CondensedBar({
+  ref,
   visible,
   reducedMotion,
   number,
   title,
-  titleRef,
   onTitleClick,
   actions,
   children,
@@ -34,13 +34,14 @@ export function CondensedBar({
   return (
     <div style={s.anchor}>
       <div
+        ref={ref}
         data-testid="condensed-bar"
         inert={!visible}
         aria-hidden={!visible}
         style={{ ...s.bar, ...(visible ? null : s.hidden), ...(reducedMotion ? s.instant : null) }}
       >
         <div style={s.row}>
-          <button ref={titleRef} type="button" title={title} onClick={onTitleClick} style={s.titleButton}>
+          <button type="button" title={title} onClick={onTitleClick} style={s.titleButton}>
             <span className="mono" style={s.number}>
               #{number}
             </span>

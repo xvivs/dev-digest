@@ -18,11 +18,11 @@ import { FindingsTab } from "@/app/repos/[repoId]/pulls/[number]/_components/Fin
 import { DiffTab } from "@/app/repos/[repoId]/pulls/[number]/_components/DiffTab";
 import { RunTraceDrawer } from "@/app/repos/[repoId]/pulls/[number]/_components/RunTraceDrawer";
 import { PrDetailSkeleton } from "../PrDetailSkeleton";
-import { CONDENSED_BAR_HEIGHT } from "@/app/repos/[repoId]/pulls/[number]/constants";
+import { CONDENSED_BAR_HEIGHT, MOBILE_QUERY } from "@/app/repos/[repoId]/pulls/[number]/constants";
 import { RUNS_TAB, type PrTab } from "../../constants";
 import { parseSeverity, parseTab, prDetailHref } from "../../helpers";
 import { s } from "../../styles";
-import { useCondensedHeader, useStickyOffset } from "./hooks";
+import { useMediaQuery, useStickyOffset } from "./hooks";
 
 export interface PrDetailContentProps {
   repoId: string;
@@ -43,10 +43,10 @@ export function PrDetailContent({ repoId, number, repoFullName }: PrDetailConten
   const { data: pr, isLoading: detailLoading, isError, error, refetch } = usePullDetail(prId);
   const isLoading = pullsLoading || (prId != null && detailLoading);
   const { data: reviews } = usePrReviews(prId);
-  const { layout, setSentinel } = useCondensedHeader();
+  const mobile = useMediaQuery(MOBILE_QUERY);
   // Desktop: measured header height. Mobile: the condensed bar's fixed height.
   const { setSource: setHeaderRef, setTarget: setBodyRef } = useStickyOffset(
-    layout === "desktop" ? undefined : CONDENSED_BAR_HEIGHT,
+    mobile ? CONDENSED_BAR_HEIGHT : undefined,
   );
 
   // Live run tracking is SERVER-SOURCED (agent_runs status='running'): survives
@@ -109,8 +109,7 @@ export function PrDetailContent({ repoId, number, repoFullName }: PrDetailConten
         githubUrl={repoFullName ? githubPrUrl(repoFullName, pr.number) : null}
         onSetTab={setTab}
         onRunStart={openRunsTab}
-        layout={layout}
-        sentinelRef={setSentinel}
+        mobile={mobile}
       />
 
       <div ref={setBodyRef} style={s.body}>

@@ -159,6 +159,8 @@
     "viewOnGithub": "View on GitHub",
     "settledNotice": "This PR is already {status} — running a review is informational and won’t affect the merged code.",
     "tabs": {
+      "label": "PR sections",
+      "labelCondensed": "PR sections (condensed)",
       "overview": "Overview",
       "findings": "Agent runs",
       "diff": "Files changed"

@@ -4,20 +4,20 @@
    bar is shown. One IntersectionObserver on a sentinel at the full header's bottom
    edge decides; there is no scroll handler and no hysteresis, because nothing in
    the flow changes when the bar shows, so nothing can feed back.
+   The state lives in the header (the caller passes `mobile`), so a toggle
+   re-renders only the header subtree, never PrDetailContent or the diff.
    matchMedia is only the behaviour gate (observer on/off, which header is sticky);
    visual differences live in --dd-prh-* vars. Callback ref, for the same reason as
    useStickyOffset: the sentinel mounts after the loading early return. */
 "use client";
 
 import React from "react";
-import { MOBILE_QUERY, type HeaderLayout } from "@/app/repos/[repoId]/pulls/[number]/constants";
-import { useMediaQuery } from "./useMediaQuery";
+import type { HeaderLayout } from "@/app/repos/[repoId]/pulls/[number]/constants";
 
-export function useCondensedHeader(): {
+export function useCondensedHeader(mobile: boolean): {
   layout: HeaderLayout;
   setSentinel: (node: HTMLElement | null) => void;
 } {
-  const mobile = useMediaQuery(MOBILE_QUERY);
   const [past, setPast] = React.useState(false);
   const detach = React.useRef<(() => void) | null>(null);
 

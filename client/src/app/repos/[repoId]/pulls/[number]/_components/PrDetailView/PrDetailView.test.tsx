@@ -8,7 +8,7 @@
  * the chrome (AppShell, repo context) are stubbed.
  */
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { screen, cleanup, fireEvent, waitFor } from "@testing-library/react";
+import { screen, cleanup, fireEvent, waitFor, act } from "@testing-library/react";
 import prReview from "@/../messages/en/prReview.json";
 import cost from "@/../messages/en/cost.json";
 import findings from "@/../messages/en/findings.json";
@@ -97,6 +97,14 @@ vi.mock("@/lib/api", async (importOriginal) => {
   };
 });
 
+let diffRenders = 0;
+vi.mock("@/app/repos/[repoId]/pulls/[number]/_components/DiffTab", () => ({
+  DiffTab: () => {
+    diffRenders++;
+    return <div data-testid="diff-tab" />;
+  },
+}));
+
 import { PrDetailView } from "./PrDetailView";
 
 afterEach(() => {
@@ -153,5 +161,40 @@ describe("PrDetailView", () => {
     renderView();
     expect(screen.queryByText("Review runs")).not.toBeInTheDocument();
     expect(screen.getByText(common.repoNotFound.title)).toBeInTheDocument();
+  });
+
+  it("showing/hiding the mobile condensed bar re-renders only the header subtree, not the diff", async () => {
+    let fire: (past: boolean) => void = () => {};
+    vi.stubGlobal(
+      "IntersectionObserver",
+      class {
+        constructor(cb: (e: Partial<IntersectionObserverEntry>[]) => void) {
+          fire = (past) =>
+            cb([{ isIntersecting: !past, boundingClientRect: { top: past ? -5 : 5 } as DOMRectReadOnly, rootBounds: { top: 0 } as DOMRectReadOnly }]);
+        }
+        observe() {}
+        disconnect() {}
+      },
+    );
+    vi.stubGlobal("matchMedia", (q: string) => ({
+      matches: q === "(max-width: 767px)",
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    }));
+    try {
+      search = new URLSearchParams("tab=diff");
+      renderView();
+      expect(await screen.findByTestId("diff-tab")).toBeInTheDocument();
+      const bar = screen.getByTestId("condensed-bar");
+      expect(bar).toHaveAttribute("inert");
+      const before = diffRenders;
+      act(() => fire(true));
+      expect(bar).not.toHaveAttribute("inert");
+      act(() => fire(false));
+      expect(bar).toHaveAttribute("inert");
+      expect(diffRenders).toBe(before);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

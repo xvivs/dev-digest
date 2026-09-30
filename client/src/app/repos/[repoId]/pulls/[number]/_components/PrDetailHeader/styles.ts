@@ -20,6 +20,7 @@ export const s = {
     minWidth: 0,
   } satisfies CSSProperties,
   h1: {
+    outline: "none",
     fontSize: "var(--dd-prh-h1-size)",
     fontWeight: 700,
     letterSpacing: "-0.02em",
