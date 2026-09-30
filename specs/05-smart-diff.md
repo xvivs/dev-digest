@@ -76,7 +76,7 @@ Layout:
 - `CLASSIFY_ORDER` (matching, first match wins): `boilerplate, tests, wiring, docs`; anything else is `core`;
 - `ROLE_PATTERNS: Record<Exclude<SmartDiffRole, 'core'>, readonly RegExp[]>`.
 
-The patterns are `RegExp` literals, each with its glob in a comment. Neither reviewer-core nor the server depends on a glob library (`grep -E 'picomatch|minimatch' reviewer-core/package.json server/package.json` finds nothing), and 25 patterns do not justify a supply-chain entry. Every regex is anchored and linear: no nested quantifiers, no backreferences.
+The patterns are `RegExp` literals, each with its glob in a comment. Neither reviewer-core nor the server depends on a glob library (`grep -E 'picomatch|minimatch' reviewer-core/package.json server/package.json` finds nothing), and 25 patterns do not justify a supply-chain entry. Every regex is anchored with no nested quantifiers or backreferences; `[^/]*` followed by a literal is quadratic in segment length, so `classifyFile` length-guards first (see Untrusted inputs).
 
 A "segment" match means the pattern matches at the path start or right after a `/`.
 
@@ -150,9 +150,9 @@ Label text: `SEVERITY_LINE_LABEL_KEY: Record<FindingRecord["severity"], "blocker
 **D12 — File and group open state.**
 - `DiffViewer` keys `FileCard` by `file.path`, not the index (`DiffViewer.tsx:28`).
 - `FileCard` gets `defaultOpen?: boolean`; when given, it replaces the `AUTO_EXPAND_MAX_LINES` heuristic (`FileCard.tsx:37-39`).
-- `DiffTab` passes `defaultOpen={false}` for docs and boilerplate files (`COLLAPSED_ROLES`) in **both** order modes, `undefined` otherwise.
+- `DiffTab` passes `defaultOpen={false}` for docs and boilerplate files (`COLLAPSED_ROLES`) in **Smart order only**, `undefined` otherwise. Original order passes no `defaultOpenFor` and behaves like GitHub: only the `AUTO_EXPAND_MAX_LINES` rule applies (impl round 1, F5).
 - Non-empty group `Disclosure`s for `COLLAPSED_ROLES` start closed; the others start open.
-- Switching the order mode remounts the cards, so every file returns to its default. Accepted.
+- Switching the order mode remounts the cards, so every file returns to its default for that mode (Original: size rule only). Accepted.
 - The prototype opens a file only when it has findings; the brief's `AUTO_EXPAND_MAX_LINES` rule wins (functionality).
 
 **D13 — i18n namespaces.** Group labels, descriptions, the header, the order control and empty states go into `prReview.smartDiff` (brief P3). Strings rendered inside `src/components/diff-viewer` go into `diffViewer` (a component used across route namespaces owns its namespace): `finding.{blocker,warning,suggestion}`, `findingsDot`, `unmatchedFindingsTitle`. `client/src/i18n/request.ts:16-25` loads every file in `messages/en`, so nothing is registered.
@@ -412,7 +412,7 @@ AC-27 (sticky) and AC-32 (visuals) are checked in step 10's browser pass; jsdom 
 
 - **R1 — Race with the detail refresh.** With a GitHub token, `GET /pulls/:id` deletes and re-inserts `pr_files` without a transaction (`server/src/modules/pulls/routes.ts:258-268`). A parallel smart-diff read can see no files or a partial set. Mitigation: `DiffTab` mounts only after the detail query resolved (`PrDetailContent.tsx:126-128`), the key is per `head_sha` (D8), and missing paths fall back to core. Worst case: some files sit in core until the head changes. Fixing it is a pulls-module change, out of scope.
 - **R2 — Policy twin drift (D5).** No automated check (AR-3, accepted debt). The UI never reads `finding_lines`, so the screen stays self-consistent; only the route could disagree with it.
-- **R3 — Classifier false positives**, e.g. `src/build/index.ts` → wiring (barrel), since `build/` is root-anchored. A wrong group only reorders files, never hides them. `ROLE_PATTERNS` is the one place to tune.
+- **R3 — Classifier false positives**, e.g. `src/build/index.ts` → wiring (barrel), since `build/` is root-anchored. A wrong group changes the order, and for docs/boilerplate it also collapses the file by default (Smart order). The diff stays one click away and nothing is removed, but a misclassified core file starts collapsed. **L08 forward risk:** if docs/boilerplate are ever filtered out of the review prompt, a misclassification becomes an AI-review evasion path (an author names a file `x.generated.ts` or `README.md` to skip review). Harden the classifier before wiring it into the prompt. `ROLE_PATTERNS` is the one place to tune; README/CHANGELOG match only as a whole name with an optional doc extension (impl round 1, F1).
 - **R4 — "Original order" is only as good as `pr.files` order.** With a token, `pr.files` is GitHub's own list (`pulls/routes.ts:294`). Offline, it is `select … from pr_files` with no `ORDER BY` (`pulls/routes.ts:298`), in practice insertion order. Unchanged here.
 - **R5 — `DiffTab` grows.** Mitigation: sites 22-27 move logic into helpers and three sub-components.
 - **R6 — Restyling the viewer** changes the look of existing rows (fs 13 → 12, del sign muted). Only `DiffTab` uses the viewer (D15); no test asserts styles. Checked in step 10.
@@ -420,7 +420,7 @@ AC-27 (sticky) and AC-32 (visuals) are checked in step 10's browser pass; jsdom 
 
 ## Untrusted inputs
 
-- **PR file paths** (from GitHub, author-controlled) reach `classifyFile`'s regexes. Every pattern is anchored with no nested quantifiers or backreferences, so there is no ReDoS; T-1 bounds a 4 096-character path at 5 ms. Paths render only as JSX text.
+- **PR file paths** (from GitHub, author-controlled) reach `classifyFile`'s regexes. Patterns are anchored with no nested quantifiers or backreferences, but `[^/]*` plus a literal is quadratic in segment length. `classifyFile` therefore returns `core` before matching any path longer than `MAX_PATH_LENGTH` (1024) or with a segment longer than `MAX_SEGMENT_LENGTH` (255); T-1 bounds a 4 096-character path at 5 ms and `'a.generated.'.repeat(10000)` at 50 ms. Paths render only as JSX text.
 - **Finding title, rationale, suggestion** (model output, possibly echoing PR text) render only through `FindingCard` (title as a text node, rationale and suggestion through `<Markdown safe>`, `FindingCard.tsx:89,95`) and as the stripe's `title` attribute, which React escapes. No `dangerouslySetInnerHTML`, no `href` from model data (AC-34).
 - **The `:id` param** is validated by `IdParams`; the PR lookup is workspace-scoped (`pull.repo.ts:8-18`), so there is no IDOR (AC-11, T-3 other-workspace case).
 - No PR, diff or user text reaches an LLM, a shell or raw SQL in this feature.
@@ -492,3 +492,10 @@ AC-27 (sticky) and AC-32 (visuals) are checked in step 10's browser pass; jsdom 
 | 3 | architecture (nit) | `PrDetailContent/hooks/` should have an `index.ts` | — | fixed at site 21 |
 | 3 | architecture (nit) | `findings.ts` mixes a React type with pure functions | LOW | fixed at site 11: header states the type-only React import |
 | 3 | architecture (open question) | Move `isActiveFinding` / `findingsForFile` to `client/src/lib/findings.ts` | — | declined: the promotion rule moves code up on a second real consumer outside the viewer's tier; DiffTab imports through the viewer barrel, which the reviewer confirmed is allowed (`frontend-architecture/references/structure.md:93`) |
+| impl 1 | security-reviewer SEC-1 | `README*`/`CHANGELOG*` matched `src/readmeParser.ts` as docs | MEDIUM | fixed: anchored to whole name + doc extension; anchor tests added |
+| impl 1 | security-reviewer SEC-2 | `[^/]*` patterns quadratic on long segments | MEDIUM | fixed: `MAX_PATH_LENGTH` / `MAX_SEGMENT_LENGTH` guard in `classifyFile`; timing test |
+| impl 1 | architecture AR-1 / AR-2 | `chevronFor` leaked through the viewer barrel; `DiffTab` duplicated `UnmatchedFindings` | LOW | fixed: local chevron in `SmartDiffGroup/styles.ts` (`DisclosureChevron` is a 180deg ChevronDown, not the file cards' 90deg ChevronRight); `UnmatchedFindings` takes `title` + `variant`, exported from the barrel |
+| impl 1 | orchestrator F5 | Original order should behave like GitHub | decision | D12 rewritten; AC-14 test updated |
+| impl 1 | orchestrator F8 | R3 said a wrong group never hides files; Untrusted inputs called the patterns linear | MINOR | R3 and Untrusted inputs rewritten |
+| impl 1 | browser QA F6 | Group wrapper measured 1016px at 1440 | — | not a bug: D15.2 keeps the existing `PrDetailContent` body (`maxWidth 1080`, `padding 24px 32px`), so content width is 1080 − 64 = 1016 |
+| impl 1 | react-best-practices F7 | `activeFindingCount` `useMemo` over a trivial filter | nit | plain derived const (client does not enable React Compiler) |

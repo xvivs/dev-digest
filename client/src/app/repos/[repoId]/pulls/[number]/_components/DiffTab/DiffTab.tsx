@@ -9,6 +9,7 @@ import {
   isActiveFinding,
   type DiffCommentApi,
   type DiffFindingApi,
+  UnmatchedFindings,
 } from "@/components/diff-viewer";
 import {
   usePrComments,
@@ -59,7 +60,7 @@ export function DiffTab({ prId, headSha, files, canComment }: DiffTabProps) {
   const [mode, setMode] = React.useState<OrderMode>("smart");
 
   const findings = React.useMemo(() => selectDiffFindings(reviews ?? []), [reviews]);
-  const activeFindingCount = React.useMemo(() => findings.filter(isActiveFinding).length, [findings]);
+  const activeFindingCount = findings.filter(isActiveFinding).length;
   const hasReviews = (reviews?.length ?? 0) > 0;
 
   const groups = React.useMemo(
@@ -115,10 +116,11 @@ export function DiffTab({ prId, headSha, files, canComment }: DiffTabProps) {
     pendingId: findingAction.isPending ? (findingAction.variables?.findingId ?? null) : null,
   };
 
+  // Smart order keeps docs/boilerplate collapsed; Original order behaves like
+  // GitHub (only the viewer's size heuristic applies).
   const defaultOpenFor = (path: string) => (collapsedPaths.has(path) ? false : undefined);
   const stray = unmatchedFileFindings(files, findings);
   const totals = summarize(files);
-  const { Card } = findingApi;
 
   return (
     <section>
@@ -171,26 +173,16 @@ export function DiffTab({ prId, headSha, files, canComment }: DiffTabProps) {
           </SmartDiffGroup>
         ))
       ) : (
-        <DiffViewer
-          files={files}
-          commenting={commenting}
-          findings={findingApi}
-          defaultOpenFor={defaultOpenFor}
-        />
+        <DiffViewer files={files} commenting={commenting} findings={findingApi} />
       )}
 
-      {findingApi.show && stray.length > 0 && (
-        <div style={s.unmatchedWrap}>
-          <span style={s.unmatchedTitle}>{t("smartDiff.unmatchedFilesTitle", { count: stray.length })}</span>
-          {stray.map((f) => (
-            <Card
-              key={f.id}
-              finding={f}
-              onAction={(action) => findingApi.onAction(f, action)}
-              pending={findingApi.pendingId === f.id}
-            />
-          ))}
-        </div>
+      {findingApi.show && (
+        <UnmatchedFindings
+          findings={stray}
+          api={findingApi}
+          variant="standalone"
+          title={t("smartDiff.unmatchedFilesTitle", { count: stray.length })}
+        />
       )}
     </section>
   );

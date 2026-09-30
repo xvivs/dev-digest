@@ -7,10 +7,9 @@
 import React from "react";
 import { useTranslations } from "next-intl";
 import { Disclosure, Icon } from "@devdigest/ui";
-import { chevronFor } from "@/components/diff-viewer";
 import { COLLAPSED_ROLES, ROLE_META } from "../../constants";
 import type { RoleGroup } from "../../helpers";
-import { s, squareFor } from "./styles";
+import { chevronFor, s, squareFor } from "./styles";
 
 export function SmartDiffGroup({
   group,

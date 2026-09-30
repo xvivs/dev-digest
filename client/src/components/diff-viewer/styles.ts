@@ -164,6 +164,11 @@ export const cs = {
   } satisfies CSSProperties,
 } as const;
 
+/** UnmatchedFindings wrapper: indented under a file card, or flush with the page. */
+export function unmatchedWrapFor(variant: "inFile" | "standalone"): CSSProperties {
+  return variant === "standalone" ? { ...cs.outdatedWrap, margin: "18px 0 0" } : cs.outdatedWrap;
+}
+
 /** Chevron rotates 90deg when the file card is open. */
 export function chevronFor(open: boolean): CSSProperties {
   return {

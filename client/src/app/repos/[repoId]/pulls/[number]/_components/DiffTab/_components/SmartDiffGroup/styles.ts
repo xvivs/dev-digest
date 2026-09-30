@@ -35,6 +35,15 @@ export const s = {
   findingsDot: { width: 6, height: 6, borderRadius: 99, background: "var(--crit)" } satisfies CSSProperties,
 } as const;
 
+/** Same 90deg chevron as the file cards below the header. */
+export function chevronFor(open: boolean): CSSProperties {
+  return {
+    color: "var(--text-muted)",
+    transform: open ? "rotate(90deg)" : "none",
+    transition: "transform .12s",
+  };
+}
+
 export function squareFor(color: string): CSSProperties {
   return { ...s.square, background: color };
 }

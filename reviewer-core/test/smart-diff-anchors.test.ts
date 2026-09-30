@@ -33,6 +33,14 @@ describe('classifyFile anchors', () => {
     ['packages/x/readme', 'docs'],
     ['packages/x/Changelog', 'docs'],
     ['license', 'docs'],
+    // README/CHANGELOG only as a whole name (optionally with a doc extension)
+    ['src/readmeParser.ts', 'core'],
+    ['src/changelogService.ts', 'core'],
+    ['src/Readme.tsx', 'core'],
+    ['README.md', 'docs'],
+    ['docs/README.md', 'docs'],
+    ['CHANGELOG.md', 'docs'],
+    ['README', 'docs'],
     // nested placement of segment patterns
     ['packages/x/tsconfig.base.json', 'wiring'],
     ['packages/x/.env.local', 'wiring'],
@@ -46,6 +54,14 @@ describe('classifyFile anchors', () => {
     ['docs/pnpm-lock.yaml', 'boilerplate'],
   ] as const)('%s → %s', (path, role) => {
     expect(classifyFile(path)).toBe(role);
+  });
+
+  it('length-guards pathological paths: core, fast', () => {
+    for (const p of ['a.generated.'.repeat(10000) + '/x', 'a.config.'.repeat(10000)]) {
+      const t0 = performance.now();
+      expect(classifyFile(p)).toBe('core');
+      expect(performance.now() - t0).toBeLessThan(50);
+    }
   });
 
   it('is deterministic and total: every result is a ROLE_ORDER member', () => {

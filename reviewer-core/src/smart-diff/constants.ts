@@ -17,10 +17,17 @@ export const CLASSIFY_ORDER: readonly Exclude<SmartDiffRole, 'core'>[] = [
   'docs',
 ];
 
+/** classifyFile returns `core` without running a pattern on a longer path. */
+export const MAX_PATH_LENGTH = 1024;
+/** ...or on a path with a longer segment (`[^/]*` patterns are quadratic in it). */
+export const MAX_SEGMENT_LENGTH = 255;
+
 /**
- * Patterns per role. Every regex is anchored and linear (no nested quantifiers,
- * no backreferences): paths come from PR authors. A "segment" match means the
- * pattern matches at the path start or right after a `/`.
+ * Patterns per role. Every regex is anchored and has no nested quantifiers or
+ * backreferences, but `[^/]*` followed by a literal is quadratic in segment
+ * length: paths come from PR authors, so classifyFile length-guards first
+ * (MAX_PATH_LENGTH / MAX_SEGMENT_LENGTH). A "segment" match means the pattern
+ * matches at the path start or right after a `/`.
  */
 export const ROLE_PATTERNS: Record<Exclude<SmartDiffRole, 'core'>, readonly RegExp[]> = {
   boilerplate: [
@@ -52,8 +59,8 @@ export const ROLE_PATTERNS: Record<Exclude<SmartDiffRole, 'core'>, readonly RegE
   docs: [
     /\.md$/, // **/*.md
     /^docs\//, // docs/**
-    /(?:^|\/)README[^/]*$/i, // README*
-    /(?:^|\/)CHANGELOG[^/]*$/i, // CHANGELOG*
+    /(?:^|\/)README(?:\.(?:md|mdx|txt|rst))?$/i, // README, README.md|mdx|txt|rst
+    /(?:^|\/)CHANGELOG(?:\.(?:md|mdx|txt|rst))?$/i, // CHANGELOG, CHANGELOG.md|mdx|txt|rst
     /(?:^|\/)LICENSE$/i, // LICENSE
   ],
 };

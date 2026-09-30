@@ -372,7 +372,7 @@ describe("DiffTab", () => {
     expect(lastPath.compareDocumentPosition(title) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
-  it("AC-14: docs/boilerplate cards collapse and big files collapse; open state follows the path into Original order", async () => {
+  it("AC-14: docs/boilerplate cards collapse and big files collapse; Original order drops the role-based collapse (size rule only)", async () => {
     const user = userEvent.setup();
     const files: PrFile[] = [
       { path: "src/a.ts", additions: 2, deletions: 1, patch: PATCH },
@@ -394,7 +394,8 @@ describe("DiffTab", () => {
     expect(within(sectionOf("Docs")).getAllByRole("button")[0]).toHaveAttribute("aria-expanded", "false");
 
     await user.click(screen.getByRole("button", { name: "Original order" }));
-    expect(screen.getByRole("button", { name: /README\.md/ })).toHaveAttribute("aria-expanded", "false");
+    // Original order behaves like GitHub: no role-based collapse, only the size rule.
+    expect(screen.getByRole("button", { name: /README\.md/ })).toHaveAttribute("aria-expanded", "true");
     expect(screen.getByRole("button", { name: /src\/big\.ts/ })).toHaveAttribute("aria-expanded", "false");
     expect(screen.getByRole("button", { name: /src\/a\.ts/ })).toHaveAttribute("aria-expanded", "true");
   });

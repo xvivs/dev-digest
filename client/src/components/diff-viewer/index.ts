@@ -4,4 +4,4 @@ export { DiffViewer } from "./DiffViewer";
 export type { DiffCommentApi } from "./comments";
 export type { DiffFindingApi, DiffFindingCardProps } from "./findings";
 export { isActiveFinding, findingsForFile } from "./findings";
-export { chevronFor } from "./styles";
+export { UnmatchedFindings } from "./UnmatchedFindings";
