@@ -30,7 +30,7 @@ components live as flat files at the root.
 | **Kit** | `kit/` | `Drawer`, `Modal`, `Tabs`, `Dropdown`, `FormField`, `TextInput`, `SelectInput`, `SearchableSelect`, `Textarea`, `Checkbox` |
 | **Hooks** | `hooks/` | `useDialogFocus` (focus in, Tab trap, Escape, focus restore; ADR 0009) |
 | **Charts** | `charts/` | `Sparkline`, `LineChart`, `Donut`, `BarRow`, `MetricCard` (Recharts + lightweight inline SVG) |
-| **Shell** | `shell/` | `AppFrame`, `Sidebar`, `Topbar`, `NavItem`, `RepoSwitcher` — the app frame |
+| **Shell** | `shell/` | `AppFrame`, `Sidebar`, `Topbar`, `NavItem`, `RepoSwitcher`, `SidebarContent` — the app frame |
 | **Command palette** | `command-palette/` | `CommandPalette` (Cmd+K), `ShortcutsHelp` (`?`) |
 | **Icons** | `icons.tsx` | `Icon` registry + `IconName` type (single source; not split) |
 | **Nav** | `nav.ts` | `NAV`, `SETTINGS_SECTIONS`, `SHORTCUTS`, `resolveHref()` — route/shortcut config |
@@ -63,5 +63,12 @@ fails CI. When you add or change a component, add it to the showcase.
 - **One component per file**, named in PascalCase; the layer's `index.ts` is the
   only re-export point.
 - **Inline styles** keyed off CSS variables (no per-component stylesheet).
+- **Responsive show/hide** uses the global utilities `dd-hide-below-md` /
+  `dd-show-below-md` (breakpoint 767px) and `dd-hide-below-lg` / `dd-show-below-lg`
+  (1023px) from `styles.css`. They use `!important` so they beat the element's
+  inline `display`; each `show` rule is the exact `not all and (max-width: …)`
+  complement of its `hide` rule. Per-breakpoint values stay inline but read CSS
+  variables (`--dd-topbar-gap`, `--dd-topbar-pad-x`). New layout vars and
+  utilities take a `dd-` prefix. See ADR 0024.
 - Prop types are exported alongside the component when consumers need them
   (e.g. `ButtonProps`, `Command`, `ChartSeries`).

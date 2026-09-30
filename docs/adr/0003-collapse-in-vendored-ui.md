@@ -1,6 +1,6 @@
 # ADR 0003 — `@devdigest/ui` is editable; `@devdigest/shared` is not
 
-**Status:** accepted
+**Status:** accepted · inline-styles rule amended by [ADR 0024](0024-responsive-utilities-in-vendored-ui.md)
 **Date:** 2026-09-20
 
 ## Context

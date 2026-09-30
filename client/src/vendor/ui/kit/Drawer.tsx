@@ -4,6 +4,7 @@ import { useDialogFocus } from "../hooks";
 
 export function Drawer({
   width = 720,
+  side = "right",
   title,
   subtitle,
   onClose,
@@ -13,6 +14,8 @@ export function Drawer({
   closeLabel = "Close",
 }: {
   width?: number;
+  /** Edge the panel slides in from. Default `"right"`. */
+  side?: "left" | "right";
   title?: React.ReactNode;
   subtitle?: React.ReactNode;
   /** Close button, backdrop click and Escape all call this. */
@@ -27,8 +30,9 @@ export function Drawer({
   const titleId = React.useId();
   const subtitleId = React.useId();
   const dialogRef = useDialogFocus<HTMLDivElement>({ onClose });
+  const left = side === "left";
   return (
-    <div style={{ position: "fixed", inset: 0, display: "flex", justifyContent: "flex-end", zIndex: 50 }}>
+    <div style={{ position: "fixed", inset: 0, display: "flex", justifyContent: left ? "flex-start" : "flex-end", zIndex: 50 }}>
       <div
         onClick={onClose}
         style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.45)", animation: "ddfadein .15s ease" }}
@@ -46,12 +50,12 @@ export function Drawer({
           width,
           maxWidth: "94%",
           background: "var(--bg-surface)",
-          borderLeft: "1px solid var(--border-strong)",
-          boxShadow: "var(--shadow-drawer)",
+          ...(left ? { borderRight: "1px solid var(--border-strong)" } : { borderLeft: "1px solid var(--border-strong)" }),
+          boxShadow: left ? "var(--shadow-drawer-left)" : "var(--shadow-drawer)",
           display: "flex",
           flexDirection: "column",
           outline: "none",
-          animation: "ddslidein .2s cubic-bezier(.2,.7,.3,1)",
+          animation: `${left ? "ddslideinleft" : "ddslidein"} .2s cubic-bezier(.2,.7,.3,1)`,
         }}
       >
         <div
