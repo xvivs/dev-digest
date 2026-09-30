@@ -219,7 +219,7 @@ export class ConventionsService {
     if (!(await this.store.setScanCommit(scanId, attempt, sha))) throw new StaleAttemptError();
 
     // ---- SAMPLE
-    const signals = await this.loadSignals(repo.id);
+    const signals = await this.loadSignals(scan.workspaceId, repo.id);
     const sent = await this.buildSample(repo, ref, signals);
     progress.sampleFileCount = sent.length;
     const codeFiles = sent.filter((f) => f.kind === 'code');
@@ -341,8 +341,8 @@ export class ConventionsService {
     });
   }
 
-  private async loadSignals(repoId: string): Promise<ScanSignal[]> {
-    const rows = await this.deps.reviews.recurringFindings(repoId, RECURRING_MIN_PRS, RECURRING_LIMIT);
+  private async loadSignals(workspaceId: string, repoId: string): Promise<ScanSignal[]> {
+    const rows = await this.deps.reviews.recurringFindings(workspaceId, repoId, RECURRING_MIN_PRS, RECURRING_LIMIT);
     return rows.map((r, i) => ({
       id: `S${i + 1}`,
       category: r.category,

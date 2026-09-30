@@ -14,9 +14,16 @@ function fakeStore(ctx: RunCancelContext | undefined) {
     async getRunCancelContext() {
       return ctx;
     },
-    async cancelRunWithTrace(runId, trace) {
-      writes.push({ runId, trace });
-      return true;
+    async transaction(work) {
+      return work({
+        async lockRunStatus() {
+          return ctx?.status;
+        },
+        async insertRunTraceIfAbsent(runId, trace) {
+          writes.push({ runId, trace });
+        },
+        async markRunCancelled() {},
+      });
     },
   };
   return { store, writes };

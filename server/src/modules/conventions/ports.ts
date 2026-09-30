@@ -127,6 +127,7 @@ export interface RepoIndexPort {
 
 export interface RecurringFindingsPort {
   recurringFindings(
+    workspaceId: string,
     repoId: string,
     minPrs: number,
     limit: number,

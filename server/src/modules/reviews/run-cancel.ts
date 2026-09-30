@@ -2,8 +2,13 @@ import type { Container } from '../../platform/container.js';
 import type { ReviewRepository } from './repository.js';
 import { failureTrace } from './failure-trace.js';
 
+/** The atomic writes a manual cancel makes inside its transaction. */
+export type CancelRunTx = Pick<ReviewRepository, 'lockRunStatus' | 'insertRunTraceIfAbsent' | 'markRunCancelled'>;
+
 /** The persistence a manual cancel needs (a narrow port over ReviewRepository). */
-export type CancelRunStore = Pick<ReviewRepository, 'getRunCancelContext' | 'cancelRunWithTrace'>;
+export type CancelRunStore = Pick<ReviewRepository, 'getRunCancelContext'> & {
+  transaction<T>(work: (tx: CancelRunTx) => Promise<T>): Promise<T>;
+};
 
 /** The run-bus surface a manual cancel touches. */
 export type CancelRunBus = Pick<Container['runBus'], 'publish' | 'cancel' | 'buffer' | 'complete'>;
@@ -37,7 +42,16 @@ export async function cancelRun(store: CancelRunStore, bus: CancelRunBus, runId:
       grounding: '0/0 passed',
       log: bus.buffer(runId).map((e) => ({ t: e.t, kind: e.kind, msg: e.msg })),
     });
-    await store.cancelRunWithTrace(runId, trace);
+    // Trace (if absent) THEN status, in ONE transaction with the run row locked
+    // FOR UPDATE — the trace-before-terminal invariant every reader relies on
+    // (GET /runs/:id/trace must resolve once the status is terminal). The lock
+    // serialises against the executor's terminal write (finishRun); an existing
+    // trace (the executor got there first) is kept.
+    await store.transaction(async (tx) => {
+      if ((await tx.lockRunStatus(runId)) !== 'running') return;
+      await tx.insertRunTraceIfAbsent(runId, trace);
+      await tx.markRunCancelled(runId);
+    });
   }
   bus.complete(runId);
 }

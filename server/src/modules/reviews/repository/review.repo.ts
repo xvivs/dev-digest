@@ -158,6 +158,7 @@ export interface RecurringFinding {
  */
 export async function recurringFindings(
   db: Db | DbTx,
+  workspaceId: string,
   repoId: string,
   minPrs: number,
   limit: number,
@@ -174,7 +175,13 @@ export async function recurringFindings(
     .from(t.findings)
     .innerJoin(t.reviews, eq(t.findings.reviewId, t.reviews.id))
     .innerJoin(t.pullRequests, eq(t.reviews.prId, t.pullRequests.id))
-    .where(and(eq(t.pullRequests.repoId, repoId), isNull(t.findings.dismissedAt)))
+    .where(
+      and(
+        eq(t.pullRequests.workspaceId, workspaceId),
+        eq(t.pullRequests.repoId, repoId),
+        isNull(t.findings.dismissedAt),
+      ),
+    )
     .groupBy(t.findings.category, normTitle)
     .having(sql`${prCount} >= ${minPrs}`)
     .orderBy(desc(prCount), t.findings.category, normTitle)

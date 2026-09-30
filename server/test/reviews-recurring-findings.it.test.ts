@@ -14,6 +14,7 @@ const d = hasDocker ? describe : describe.skip;
 d('ReviewRepository.recurringFindings (Testcontainers pg)', () => {
   let pg: PgFixture;
   let repo: ReviewRepository;
+  let workspaceId: string;
   let repoId: string;
   let otherRepoId: string;
 
@@ -22,7 +23,7 @@ d('ReviewRepository.recurringFindings (Testcontainers pg)', () => {
     const db = pg.handle.db;
     repo = new ReviewRepository(db);
     const [ws] = await db.insert(t.workspaces).values({ name: 'rf-ws' }).returning();
-    const workspaceId = ws!.id;
+    workspaceId = ws!.id;
     const mkRepo = async (name: string) => {
       const [r] = await db
         .insert(t.repos)
@@ -88,7 +89,7 @@ d('ReviewRepository.recurringFindings (Testcontainers pg)', () => {
   });
 
   it('groups case/whitespace-insensitively, counts distinct PRs, excludes dismissed and other repos', async () => {
-    const rows = await repo.recurringFindings(repoId, 2, 10);
+    const rows = await repo.recurringFindings(workspaceId, repoId, 2, 10);
     expect(rows.map((r) => [r.category, r.prCount])).toEqual([
       ['style', 3],
       ['security', 2],
@@ -99,8 +100,10 @@ d('ReviewRepository.recurringFindings (Testcontainers pg)', () => {
   });
 
   it('honours minPrs and limit', async () => {
-    expect((await repo.recurringFindings(repoId, 3, 10)).map((r) => r.category)).toEqual(['style']);
-    expect((await repo.recurringFindings(repoId, 2, 1)).map((r) => r.category)).toEqual(['style']);
-    expect(await repo.recurringFindings(repoId, 4, 10)).toEqual([]);
+    expect((await repo.recurringFindings(workspaceId, repoId, 3, 10)).map((r) => r.category)).toEqual(['style']);
+    expect((await repo.recurringFindings(workspaceId, repoId, 2, 1)).map((r) => r.category)).toEqual(['style']);
+    expect(await repo.recurringFindings(workspaceId, repoId, 4, 10)).toEqual([]);
+    // Another workspace never sees this repo's findings.
+    expect(await repo.recurringFindings('00000000-0000-0000-0000-000000000000', repoId, 2, 10)).toEqual([]);
   });
 });

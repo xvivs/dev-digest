@@ -101,9 +101,14 @@ export class ReviewRepository {
     return runRepo.getRunCancelContext(this.db, runId);
   }
 
-  /** Cancel a still-running run: trace first (if absent), then the status. */
-  cancelRunWithTrace(runId: string, trace: RunTrace): Promise<boolean> {
-    return runRepo.cancelRunWithTrace(this.db, runId, trace);
+  /** Write the trace only if the run has none yet (keeps the executor's). */
+  insertRunTraceIfAbsent(runId: string, trace: RunTrace): Promise<void> {
+    return runRepo.insertRunTraceIfAbsent(this.db, runId, trace);
+  }
+
+  /** Flip a run to `cancelled` (manual cancel). Call inside `transaction()`. */
+  markRunCancelled(runId: string): Promise<void> {
+    return runRepo.markRunCancelled(this.db, runId);
   }
 
   /** Lock the run row FOR UPDATE; returns its status (undefined = no row).
@@ -146,8 +151,13 @@ export class ReviewRepository {
   }
 
   /** Findings recurring across `minPrs`+ PRs of a repo (non-dismissed), top `limit`. */
-  recurringFindings(repoId: string, minPrs: number, limit: number): Promise<reviewRepo.RecurringFinding[]> {
-    return reviewRepo.recurringFindings(this.db, repoId, minPrs, limit);
+  recurringFindings(
+    workspaceId: string,
+    repoId: string,
+    minPrs: number,
+    limit: number,
+  ): Promise<reviewRepo.RecurringFinding[]> {
+    return reviewRepo.recurringFindings(this.db, workspaceId, repoId, minPrs, limit);
   }
 
   // ---- intent -------------------------------------------------------------

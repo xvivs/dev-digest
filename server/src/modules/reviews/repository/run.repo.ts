@@ -134,34 +134,23 @@ export async function getRunCancelContext(db: Db | DbTx, runId: string): Promise
 }
 
 /**
- * Mark a still-running run as cancelled (no-op if it already finished),
- * writing `trace` FIRST when the run has none yet — the trace-before-terminal
- * invariant every reader relies on (GET /runs/:id/trace must resolve once
- * the status is terminal). One transaction with the row locked, so a
- * concurrent executor write cannot interleave between the check and the
- * update. An existing trace (the executor got there first) is kept.
+ * Write `trace` for a run that has none yet; an existing trace (the executor
+ * got there first) is kept. Atomic — the caller owns the transaction and the
+ * business rule (see `cancelRun`).
  */
-export async function cancelRunWithTrace(db: Db | DbTx, runId: string, trace: RunTrace): Promise<boolean> {
-  return db.transaction(async (tx) => {
-    const [row] = await tx
-      .select({ status: t.agentRuns.status })
-      .from(t.agentRuns)
-      .where(eq(t.agentRuns.id, runId))
-      .for('update');
-    if (row?.status !== 'running') return false;
-    await tx.insert(t.runTraces).values({ runId, trace }).onConflictDoNothing({ target: t.runTraces.runId });
-    await tx
-      .update(t.agentRuns)
-      .set({ status: 'cancelled', error: 'Cancelled by user' })
-      .where(eq(t.agentRuns.id, runId));
-    return true;
-  });
+export async function insertRunTraceIfAbsent(db: Db | DbTx, runId: string, trace: RunTrace): Promise<void> {
+  await db.insert(t.runTraces).values({ runId, trace }).onConflictDoNothing({ target: t.runTraces.runId });
+}
+
+/** Flip a run to `cancelled` (manual cancel). Atomic; no status check. */
+export async function markRunCancelled(db: Db | DbTx, runId: string): Promise<void> {
+  await db.update(t.agentRuns).set({ status: 'cancelled', error: 'Cancelled by user' }).where(eq(t.agentRuns.id, runId));
 }
 
 /**
  * Lock the run row FOR UPDATE and return its current status (undefined when the
  * row is gone). Only meaningful inside a transaction: it serialises the
- * executor's terminal write against `cancelRunWithTrace`, which takes the same
+ * executor's terminal write against the manual cancel (`cancelRun`), which takes the same
  * lock — whichever commits second sees the other's status.
  */
 export async function lockRunStatus(db: Db | DbTx, runId: string): Promise<string | null | undefined> {

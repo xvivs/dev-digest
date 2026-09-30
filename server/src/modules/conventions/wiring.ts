@@ -32,7 +32,8 @@ export function buildConventionsService(container: Container): ConventionsServic
       topFilesByRank: (repoId, n) => container.repoIntel.getTopFilesByRank(repoId, n),
     },
     reviews: {
-      recurringFindings: (repoId, minPrs, limit) => container.reviewRepo.recurringFindings(repoId, minPrs, limit),
+      recurringFindings: (workspaceId, repoId, minPrs, limit) =>
+        container.reviewRepo.recurringFindings(workspaceId, repoId, minPrs, limit),
     },
     files: {
       cloneRoot: (ref) => container.git.clonePathFor(ref),
