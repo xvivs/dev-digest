@@ -21,12 +21,30 @@ export class RunBus {
   private buffers = new Map<string, RunEvent[]>();
   private seq = new Map<string, number>();
   private completed = new Set<string>();
+  // Never cleared on complete(): a run cancelled before its executor reached
+  // it must still read as cancelled (run ids are unique, so this only grows
+  // by one small entry per cancelled run).
   private cancelled = new Set<string>();
+  private controllers = new Map<string, AbortController>();
 
-  /** Request cancellation of an in-flight run. The runner checks `isCancelled`
-   *  at its next checkpoint (between map-reduce files) and stops. */
+  /** Request cancellation of an in-flight run: aborts the run's signal (so an
+   *  in-flight LLM request is closed at once) and flags it for the runner's
+   *  checkpoints (between map-reduce files). */
   cancel(runId: string): void {
     this.cancelled.add(runId);
+    this.controllers.get(runId)?.abort();
+  }
+
+  /** The run's cancellation signal — aborted by `cancel()`. Already aborted
+   *  when the run was cancelled before anyone asked for it. */
+  signal(runId: string): AbortSignal {
+    let c = this.controllers.get(runId);
+    if (!c) {
+      c = new AbortController();
+      if (this.cancelled.has(runId)) c.abort();
+      this.controllers.set(runId, c);
+    }
+    return c.signal;
   }
 
   /** Whether cancellation has been requested for a run. */
@@ -76,7 +94,8 @@ export class RunBus {
   complete(runId: string): void {
     const e = this.emitters.get(runId);
     this.completed.add(runId);
-    this.cancelled.delete(runId);
+    // A holder keeps its signal; dropping the controller only frees the map.
+    this.controllers.delete(runId);
     e?.emit('done');
     // Keep the buffer briefly available for late subscribers; clear emitter.
     this.emitters.delete(runId);

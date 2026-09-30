@@ -1,4 +1,4 @@
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, sql } from 'drizzle-orm';
 import type { Db } from '../../../db/client.js';
 import * as t from '../../../db/schema.js';
 import type { CostMissingReason, CostSource, RunSummary, RunTrace } from '@devdigest/shared';
@@ -104,14 +104,58 @@ export async function deleteAgentRun(
   return rows.length > 0;
 }
 
-/** Mark a still-running run as cancelled (no-op if it already finished). */
-export async function cancelRunIfRunning(db: Db, runId: string): Promise<boolean> {
-  const rows = await db
-    .update(t.agentRuns)
-    .set({ status: 'cancelled' })
-    .where(and(eq(t.agentRuns.id, runId), eq(t.agentRuns.status, 'running')))
-    .returning({ id: t.agentRuns.id });
-  return rows.length > 0;
+/** What a manual cancel needs to build the run's minimal trace. */
+export interface RunCancelContext {
+  status: string | null;
+  provider: string | null;
+  model: string | null;
+  agentName: string | null;
+  agentVersion: number | null;
+  systemPrompt: string | null;
+  prNumber: number | null;
+}
+
+export async function getRunCancelContext(db: Db, runId: string): Promise<RunCancelContext | undefined> {
+  const [row] = await db
+    .select({
+      status: t.agentRuns.status,
+      provider: t.agentRuns.provider,
+      model: t.agentRuns.model,
+      agentName: t.agents.name,
+      agentVersion: t.agents.version,
+      systemPrompt: t.agents.systemPrompt,
+      prNumber: t.pullRequests.number,
+    })
+    .from(t.agentRuns)
+    .leftJoin(t.agents, eq(t.agents.id, t.agentRuns.agentId))
+    .leftJoin(t.pullRequests, eq(t.pullRequests.id, t.agentRuns.prId))
+    .where(eq(t.agentRuns.id, runId));
+  return row;
+}
+
+/**
+ * Mark a still-running run as cancelled (no-op if it already finished),
+ * writing `trace` FIRST when the run has none yet — the trace-before-terminal
+ * invariant every reader relies on (GET /runs/:id/trace must resolve once
+ * the status is terminal). One transaction with the row locked, so a
+ * concurrent executor write cannot interleave between the check and the
+ * update. An existing trace (the executor got there first) is kept.
+ */
+export async function cancelRunWithTrace(db: Db, runId: string, trace: RunTrace): Promise<boolean> {
+  return db.transaction(async (tx) => {
+    const [row] = await tx
+      .select({ status: t.agentRuns.status })
+      .from(t.agentRuns)
+      .where(eq(t.agentRuns.id, runId))
+      .for('update');
+    if (row?.status !== 'running') return false;
+    await tx.insert(t.runTraces).values({ runId, trace }).onConflictDoNothing({ target: t.runTraces.runId });
+    await tx
+      .update(t.agentRuns)
+      .set({ status: 'cancelled', error: 'Cancelled by user' })
+      .where(eq(t.agentRuns.id, runId));
+    return true;
+  });
 }
 
 /** On boot: any run still 'running' is orphaned (its process died / restarted),
@@ -190,7 +234,15 @@ export async function completeAgentRun(
       costUsd: values.costUsd ?? null,
       costSource: values.costSource ?? null,
     })
-    .where(eq(t.agentRuns.id, runId));
+    // A manual cancel is final: the executor may still finish (its last LLM
+    // call returned just before the abort) and must not flip `cancelled` back
+    // to done/failed. Writing `cancelled` again only refines the counters.
+    .where(
+      and(
+        eq(t.agentRuns.id, runId),
+        values.status === 'cancelled' ? undefined : sql`${t.agentRuns.status} IS DISTINCT FROM 'cancelled'`,
+      ),
+    );
 }
 
 /** Persist the WHOLE run log as ONE document. PK = runId → agent_runs. */

@@ -7,6 +7,7 @@ import { type ReviewDto, type ReviewDtoFinding } from './helpers.js';
 import { ReviewRunExecutor, type Logger } from './run-executor.js';
 import { actOnFinding as actOnFindingImpl } from './findings.js';
 import { reviewToDto } from './helpers.js';
+import { failureTrace } from './failure-trace.js';
 
 // Re-export DTO types + converters for backward-compatible imports from
 // './service.js' (these previously lived here; logic now in ./helpers.ts).
@@ -84,8 +85,28 @@ export class ReviewService {
    */
   async cancelRun(runId: string): Promise<void> {
     this.publish(runId, 'info', 'Cancellation requested — stopping…');
+    // Aborts the live executor's in-flight LLM request (closes the socket).
     this.container.runBus.cancel(runId);
-    await this.repo.cancelRunIfRunning(runId);
+    // The status flips here, not when the executor notices, so an orphaned or
+    // slow-to-stop run is cancelled at once — but a minimal trace (the log so
+    // far) lands first. The executor's own cancel path later overwrites it
+    // with the fuller one.
+    const ctx = await this.repo.getRunCancelContext(runId);
+    if (ctx?.status === 'running') {
+      const trace = failureTrace({
+        agent: {
+          name: ctx.agentName ?? 'unknown agent',
+          version: ctx.agentVersion,
+          provider: ctx.provider,
+          model: ctx.model,
+          systemPrompt: ctx.systemPrompt,
+        },
+        prNumber: ctx.prNumber,
+        grounding: '0/0 passed',
+        log: this.container.runBus.buffer(runId).map((e) => ({ t: e.t, kind: e.kind, msg: e.msg })),
+      });
+      await this.repo.cancelRunWithTrace(runId, trace);
+    }
     this.container.runBus.complete(runId);
   }
 

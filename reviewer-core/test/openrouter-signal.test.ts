@@ -136,3 +136,25 @@ describe('OpenRouterProvider.completeStructured — response format / reasoning 
     expect(create).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('OpenRouterProvider — the request body a review sends', () => {
+  beforeEach(() => create.mockReset());
+
+  it('carries reasoning off, provider routing, explicit temperature and the per-request signal', async () => {
+    create.mockResolvedValue(okResponse);
+    const signal = new AbortController().signal;
+    await new OpenRouterProvider('k').completeStructured({
+      ...base,
+      temperature: 0,
+      timeoutMs: 120_000,
+      signal,
+      disableReasoning: true,
+      providerRouting: { sort: 'throughput', allowFallbacks: true },
+    });
+    const [body, opts] = create.mock.calls[0]!;
+    expect(body.reasoning).toEqual({ enabled: false });
+    expect(body.provider).toEqual({ sort: 'throughput', allow_fallbacks: true });
+    expect(body.temperature).toBe(0);
+    expect(opts).toEqual({ timeout: 120_000, maxRetries: 0, signal });
+  });
+});

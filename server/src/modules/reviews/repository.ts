@@ -87,9 +87,14 @@ export class ReviewRepository {
     return runRepo.deleteAgentRun(this.db, workspaceId, runId);
   }
 
-  /** Mark a still-running run as cancelled (no-op if it already finished). */
-  cancelRunIfRunning(runId: string): Promise<boolean> {
-    return runRepo.cancelRunIfRunning(this.db, runId);
+  /** Run fields a manual cancel needs to build its minimal trace. */
+  getRunCancelContext(runId: string): Promise<runRepo.RunCancelContext | undefined> {
+    return runRepo.getRunCancelContext(this.db, runId);
+  }
+
+  /** Cancel a still-running run: trace first (if absent), then the status. */
+  cancelRunWithTrace(runId: string, trace: RunTrace): Promise<boolean> {
+    return runRepo.cancelRunWithTrace(this.db, runId, trace);
   }
 
   /** On boot: any run still 'running' is orphaned (its process died / restarted),
