@@ -37,6 +37,14 @@ lives in the engineering-insights skill).
 
 - **`pnpm <script>` fails in this environment before the script even starts.** pnpm 11.5.3 via corepack runs a preflight `pnpm install` that exits 1 on `[ERR_PNPM_IGNORED_BUILDS]` (esbuild, sharp) — so `pnpm typecheck` / `pnpm test` look broken while the code is fine. `node_modules` is complete; call the binary directly (`./node_modules/.bin/tsc`, `./node_modules/.bin/vitest`) or run `pnpm approve-builds` once. Affects every package. _(2026-09-19)_
 
+- **Project subagent frontmatter hooks are skipped in `claude -p`, so a headless run cannot test `agent-guard.mjs`** — `claude -p --agent investigator` wrote `server/src/__guard_probe.ts` unblocked, while the same hook passed via `claude -p --agents '<json>' --agent <name>` denied it; definitions from `--agents` skip the workspace-trust requirement. Test guard wiring through `--agents` JSON (see `.claude/hooks/agent-guard.mjs:1`), or interactively after accepting workspace trust. Claude Code 2.1.285. _(2026-09-30)_
+
+- **New files in `.claude/agents/` are not spawnable in the session that created them** — `Agent(subagent_type: "investigator")` returned `Agent type 'investigator' not found` right after `.claude/agents/investigator.md` was written; the roster is read at session start. Restart the session (or use `claude -p --agent <name>` to smoke-test loading). Claude Code 2.1.285. _(2026-09-30)_
+
+- **`Agent(name, …)` in a subagent's `tools` is ignored; `Agent` alone enables spawning any type** — the allowlist form applies only to `claude --agent` main threads (code.claude.com/docs/en/sub-agents, "Restrict which subagents can be spawned"). The allowed children of each dev agent are therefore stated in its prompt body, e.g. `.claude/agents/architecture-reviewer.md:66`. Nesting default is 3 layers since v2.1.219 (was 5 in v2.1.172–216). _(2026-09-30)_
+
+- **Skills are picked up mid-session, agents are not** — `.claude/skills/agent-authoring/SKILL.md` appeared in the Skill tool list right after it was written, while a freshly written `.claude/agents/*.md` stays `not found` until restart. So a new skill can be used to author an agent in the same session, but the agent itself can only be exercised headlessly (`claude -p --agent <name>`, `.claude/skills/agent-authoring/scripts/smoke-guard.mjs`) until the session restarts. Claude Code 2.1.285. _(2026-09-30)_
+
 ## Recurring Errors & Fixes
 
 - **`./scripts/dev.sh` cannot complete on this machine: it dies at `applying migrations`, hitting both known blockers in sequence.** First `pnpm db:migrate` exits 1 on `[ERR_PNPM_IGNORED_BUILDS]` (the preflight-install issue above) — and `--config.strict-dep-builds=false` / `npm_config_*` env vars do NOT help, because the preflight `pnpm install` is spawned as a separate process that ignores the outer invocation's flags; only an `.npmrc`/`package.json` config or `pnpm approve-builds` would. Second, even bypassing pnpm, `tsx src/db/migrate.ts` fails with `42701 column "cost_usd" of relation "agent_runs" already exists`. Working bring-up that needs no file changes: `docker start devdigest-postgres`, then `server/node_modules/.bin/tsx src/db/seed.ts` (seed alone — skip migrate, the shared DB is already ahead), then `server/node_modules/.bin/tsx watch src/server.ts` and `client/node_modules/.bin/next dev -p 3000`. Verified: `/health`, `/repos`, `/workspace`, `/agents`, `/settings` all 200. _(2026-09-20)_
@@ -72,6 +80,9 @@ Wrote SPEC-02 and ADR 0012, froze the contracts and the reviewer-core/client-hoo
 
 ### 2026-09-29 — root session
 `scripts/e2e.sh` warms every route the flows open after "web up" (repo id resolved from `/repos`, not hardcoded) and its header no longer claims acme/payments-api is the only seeded repo.
+
+### 2026-09-30 — dev-agents session
+Added 15 Claude Code subagents in `.claude/agents/` with a feature and a refactor chain, nested skeptics (plan-critic, finding-verifier) and a profile-based write guard `.claude/hooks/agent-guard.mjs` with `node --test` coverage. Documented in `docs/dev-agents.md` and ADR 0019. Left: guard hooks unverified in an interactive trusted session, and no orchestrator skill yet to drive the chains.
 
 ## Open Questions
 
