@@ -16,6 +16,7 @@ export function RunReviewDropdown({
   size = "sm",
   kind = "primary",
   warnMerged = false,
+  iconOnly = false,
   onRunStart,
   onRunsStarted,
   onRunSettled,
@@ -25,6 +26,8 @@ export function RunReviewDropdown({
   kind?: "primary" | "secondary";
   /** PR is already merged/closed — dim the trigger and warn, but still allow. */
   warnMerged?: boolean;
+  /** Icon-only trigger (mobile header); the label moves to aria-label/title. */
+  iconOnly?: boolean;
   /** Fired the moment a run is kicked off (before it completes). */
   onRunStart?: () => void;
   onRunsStarted?: (runIds: string[]) => void;
@@ -37,6 +40,8 @@ export function RunReviewDropdown({
   const run = useRunReview();
   const all = agents ?? [];
   const hasEnabled = all.some((a) => a.enabled);
+
+  const triggerLabel = run.isPending ? t("runReview.running") : t("runReview.runReview");
 
   const kick = async (opts: { all?: boolean; agentId?: string }) => {
     onRunStart?.();
@@ -91,9 +96,21 @@ export function RunReviewDropdown({
           title={warnMerged ? t("runReview.mergedTooltip") : undefined}
           style={warnMerged ? s.dimmedTrigger : undefined}
         >
-          <Button kind={kind} size={size} iconRight="ChevronDown" icon="Sparkles" loading={run.isPending}>
-            {run.isPending ? t("runReview.running") : t("runReview.runReview")}
-          </Button>
+          {iconOnly ? (
+            <Button
+              kind={kind}
+              size={size}
+              iconRight="ChevronDown"
+              icon="Sparkles"
+              loading={run.isPending}
+              aria-label={triggerLabel}
+              title={warnMerged ? undefined : triggerLabel}
+            />
+          ) : (
+            <Button kind={kind} size={size} iconRight="ChevronDown" icon="Sparkles" loading={run.isPending}>
+              {triggerLabel}
+            </Button>
+          )}
         </span>
       }
     />
