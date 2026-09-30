@@ -35,6 +35,8 @@ lives in the engineering-insights skill).
 
 - **A correlated scalar subquery for a per-skill run count in `GET /skills` re-scans the whole time window once per skill** — EXPLAIN ANALYZE on 55 skills / 20k runs / 40k `run_skills` showed `SubPlan … loops=55` over `agent_runs` and 64 ms. A grouped derived table (`run_skills ⋈ agent_runs … GROUP BY skill_id`, LEFT JOINed once, `src/modules/skills/repository.ts:135`) scans the window once: 6.3 ms, same totals. _(2026-09-29)_
 
+- **A fixed SQL `LIMIT` on the auto-brief candidate query starves open PRs, because the service drops candidates in memory after the query** — queued, running, negative-cached and attempt-capped PRs are filtered in `BriefService` (in-process state), not in SQL, so a `LIMIT 30` on `listScheduleCandidates` (`server/src/modules/brief/repository.ts`) could return 30 skipped rows forever. The existing "25 rows, no LIMIT" case in `server/test/brief-repository.it.test.ts` did not catch it (25 < 30). Keep the query unbounded (spec 04); if it ever needs a bound, use keyset pagination over `(updated_at, id)` until N enqueue, not a cap. _(2026-09-30)_
+
 ## Codebase Patterns
 
 - **Seed rows created inside one `if (!row)` guard are invisible to the next guard, so cross-entity links need their own idempotent pass** — `src/db/seed.ts` creates each review inside `if (!pr) { … }` and the runs inside `if (!existingRun) { … }`, so neither block can see the other's `.returning()` value, and `runs[0].id` does not compile under `noUncheckedIndexedAccess` anyway. Pattern that works: a separate loop after both blocks that re-selects the newest `status='done'` run per PR and updates `reviews` from it. Do NOT guard that update with `WHERE run_id IS NULL` — the pass carries `agent_id` too, and an `isNull` guard on one column silently strands every column added to the pass later (see What Doesn't Work). Re-deriving from a deterministic lookup makes the UPDATE a no-op when the values already match, so it stays idempotent without a guard. _(2026-09-20)_
@@ -140,6 +142,9 @@ Applied migrations 0015-0020 to the shared dev Postgres, after a pg_dump backup,
 
 ### 2026-09-29 — server session
 `RepoRepository.list` now orders by `created_at, id` so `GET /repos` and the home redirect are deterministic instead of heap-ordered. No caller assumed an order (`service.ts` passes the list through); `pnpm typecheck && pnpm test` green (435 tests incl. `integration.it.test.ts`).
+
+### 2026-09-30 — server session
+Added the brief, blast and history modules, migrations 0025-0027 and 10 new test files; fixed SEC-1 (quadratic doc-path regex in planLinks). Left for later: the non-atomic legacy pulls detail refresh, splitting the 839-line BriefService, and the remaining Test plan rows.
 
 ## Open Questions
 

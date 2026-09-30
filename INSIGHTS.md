@@ -22,6 +22,8 @@ lives in the engineering-insights skill).
 
 - **Picking the next ADR number from your own branch collides: two parallel branches both took 0019** — `feat/agent-system` added `0019-dev-agent-pipeline.md` while `l02-homework` added `docs/adr/0019-extracted-skill-trust-tier.md`; git merged both without a conflict because the file names differ, so nothing flagged it. The branch merged later renumbers (`docs/adr/0021-dev-agent-pipeline.md:3`). Before numbering an ADR, run `git fetch && git ls-tree --name-only origin/main docs/adr/` and take the next number after both. _(2026-09-30)_
 
+- **Mutating a constant that the test also imports proves nothing: the test moves with the code** — `server/test/history-service.test.ts:5` imports `HISTORY_TTL_MS` and advances the clock by `HISTORY_TTL_MS + 1` (`:91`), so setting the constant to `Number.MAX_SAFE_INTEGER` left all 11 tests green. Mutating the comparison itself (`server/src/modules/history/domain.ts:73` → `true`) turned 2 red. For a spot mutation check, break the logic, not a shared constant. _(2026-09-30)_
+
 ## Codebase Patterns
 
 - **A cost figure is stored as a pair — value plus `cost_source` ('provider' | 'estimated') — never as a bare number.** Only OpenRouter reports an actual charge (`reviewer-core/src/llm/openrouter.ts`); OpenAI and Anthropic never do, so their figures are always local estimates off `pricing.ts`. One column for both would make `SUM(cost_usd)` silently add invoices to arithmetic. Decision and its constraints: `docs/adr/0002-cost-provenance.md`. _(2026-09-19)_
@@ -34,6 +36,8 @@ lives in the engineering-insights skill).
 - **`tsx watch` does not reload `server/.env`.** `dotenv/config` runs once per process (`server/src/platform/config.ts:1`), so editing `.env` under a running dev server changes nothing — and the stale value is invisible, since the API stays green. `touch server/src/server.ts` is enough to make the watcher respawn the child, which re-reads the file (~2s). Provider clients are cached on the container as well (`_github`, `llmCache`); the only in-process way to drop them is `invalidateSecretCaches()`, which currently has exactly one caller — `POST /settings/test-connection` when it is given a key. _(2026-09-20)_
 
 - **Agent rules live in `AGENTS.md`; each directory's `CLAUDE.md` is a one-line `@AGENTS.md` stub, and a new nested `AGENTS.md` needs its own stub** — Claude Code 2.1.283 loaded root+nested `AGENTS.md` without stubs in only 5 of 6 `claude -p` runs in a scratch repo (5 of 5 with stubs), so a stub-less `AGENTS.md` may silently not reach Claude Code sessions; rules written into a stub reach Claude Code only, not Cursor/Antigravity. See `docs/adr/0004-agents-md-as-instructions-source.md:14`. _(2026-09-28)_
+
+- **The pr-self-review gate is per worktree: a new worktree starts with an empty `.devdigest/self-review/` cache, so the first run re-reviews every file, and the hook only accepts a literal `cd <path> && …` and the current branch** — the stamp, per-file lens cache and runs live under the worktree's own `.devdigest/self-review/` (`.claude/skills/pr-self-review/SKILL.md`, "What is where"), so moving the branch to `pr-overview-final` turned an incremental run (85 file-lenses cached) into a full one (147 files, 6 lenses). `gate-hook.mjs` blocks `cd $VAR && gh pr create` ("не вдалося визначити статично") and `git push origin <other-branch>`; write the path literally. Copying the cache between worktrees is not allowed (the skill forbids hand-editing gate state). _(2026-09-30)_
 
 ## Tool & Library Notes
 
@@ -76,6 +80,8 @@ lives in the engineering-insights skill).
 
 - **`./scripts/e2e.sh` in a fresh worktree boots the whole stack, then dies at the very end with `sh: tsx: command not found`** — `install_if_needed` covers only `server` and `client` (`scripts/e2e.sh:118-119`), but the final step runs `(cd e2e && npm test)` (`scripts/e2e.sh:181`), and `e2e/` has its own `package-lock.json` and no `node_modules` in a new worktree. Fix: `cd e2e && npm ci` once, then rerun; 11/11 flows passed afterwards. _(2026-09-30)_
 
+- **Commits land on the wrong branch when two Claude sessions share one worktree: one session's `git checkout -b` moves HEAD for the other** — `git reflog` showed `checkout: moving from feat/pr-overview to feat/smart-diff` (made by a parallel session) between two of this session's commits, so the next three commits went to `feat/smart-diff` while `feat/pr-overview` stayed behind, and the pr-self-review hook then refused `git push origin feat/pr-overview` because it only pushes the current branch. Fix without touching the other session: `git merge-base --is-ancestor <branch> <sha> && git branch -f <branch> <sha>` (fast-forward, nothing lost), then `git worktree add ../<name> <branch>` and push from there. Prevention: one session per worktree; check `git branch --show-current` before committing after any pause. _(2026-09-30)_
+
 ## Session Notes
 
 ### 2026-09-19 — repo-wide session
@@ -96,6 +102,9 @@ Added 15 Claude Code subagents in `.claude/agents/` with a feature and a refacto
 
 ### 2026-09-30 — .claude/agents session
 Audited the 16 dev agents against a README proposal: roster and chains were already in `docs/dev-agents.md`, but no agent rule cited an external source. Added `.claude/agents/README.md` (map + practice → source → rule → location tables, sources fetched by researcher and spot-checked). Planner now preloads onion-architecture, frontend-architecture and security and loads change-site skills itself before writing a spec; skill table extended for platform, adapters, vendored shared and diagrams. Left: ADR 0019 still says `Status: proposed` and "Fifteen" agents.
+
+### 2026-09-30 — PR Overview session (root)
+Implemented specs/04-pr-overview.md end to end with implementer, reviewers, test-writers and three pr-self-review rounds, and opened PR #11 with the mobile nav drawer (client/specs/01). Responsive design, the repo-UUID crumb flash and pnpm IGNORED_BUILDS went to issues #10, #9 and #8. A parallel Smart Diff session switched branches in the shared worktree, so the PR was finished from a separate worktree.
 
 ## Open Questions
 
