@@ -9,6 +9,7 @@ import {
   DEP_MANIFESTS,
   DESTRUCTIVE_SQL_RE,
   DOC_EXTENSIONS,
+  MAX_DOC_PATH_LEN,
   MAX_LINKED_DOCS,
   MAX_LINKED_ISSUES,
   MAX_UNRESOLVED_LINKS,
@@ -43,7 +44,7 @@ export interface LinkPlan {
 const EXT_GROUP = DOC_EXTENSIONS.join('|');
 const URL_RE = /https?:\/\/[^\s<>()[\]"'`]+/gi;
 const PATH_RE = new RegExp(
-  `(?<![\\w@:/.\\-])(?:/|\\.{1,2}/)?[^\\s()<>[\\]"'\`,;]*?\\.(?:${EXT_GROUP})(?![\\w\\-])`,
+  `(?<![\\w@:/.\\-])(?:/|\\.{1,2}/)?[^\\s()<>[\\]"'\`,;]{0,${MAX_DOC_PATH_LEN}}?\\.(?:${EXT_GROUP})(?![\\w\\-])`,
   'gi',
 );
 const CLOSING_ISSUE_RE = /\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(\d+)\b/gi;

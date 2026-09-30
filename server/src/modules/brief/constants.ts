@@ -29,6 +29,8 @@ export const FETCH_HEAD_BUDGET_MS = 15_000;
 export const MAX_LINKED_DOCS = 3;
 export const MAX_LINKED_ISSUES = 1;
 export const DOC_EXTENSIONS = ['md', 'mdx', 'txt', 'rst', 'adoc'] as const;
+/** Longest relative doc path token scanned in a PR body; bounds the path regex (untrusted input, no ReDoS). */
+export const MAX_DOC_PATH_LEN = 300;
 /** Bytes `readFileAtRef` may read per doc. */
 export const DOC_READ_MAX_BYTES = 64 * 1024;
 /** An unresolved link whose url matches this lowers the confidence cap to `medium` (D7). */
