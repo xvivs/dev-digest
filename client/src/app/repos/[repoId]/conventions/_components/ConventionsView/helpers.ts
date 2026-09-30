@@ -1,8 +1,8 @@
 /* Pure view-model logic for ConventionsView: which of the page's states to
    render (AC-32) and what the extract error means. */
-import type { ConventionsPage } from "@devdigest/shared";
+import type { ConventionCandidate, ConventionCategory, ConventionsPage, UpdateConventionBody } from "@devdigest/shared";
 import type { ErrorInfo } from "@/lib/types";
-import { CONFLICT_STATUS, type TabKey } from "../../constants";
+import { CONFLICT_STATUS, MAX_SKILL_CONVENTIONS, type TabKey } from "../../constants";
 import { INDEXED_STATUSES, NOT_CLONED_CODE, REPO_BLOCKED_CODES } from "./constants";
 
 /**
@@ -85,4 +85,57 @@ export function isIndexed(status: string | undefined): boolean {
 export function errorMessage(error: ErrorInfo | null, fallback: string): string | null {
   if (!error) return null;
   return error.status !== undefined ? error.message : fallback;
+}
+
+/**
+ * The PATCH body for an edit: only the fields that differ from `current`, or `null` when
+ * nothing changed (no request is sent). An unknown `current` counts as "everything changed".
+ */
+export function buildConventionPatch(
+  current: Pick<ConventionCandidate, "rule" | "category"> | undefined,
+  next: { rule: string; category: ConventionCategory },
+): UpdateConventionBody | null {
+  const patch: UpdateConventionBody = {
+    ...(next.rule !== current?.rule && { rule: next.rule }),
+    ...(next.category !== current?.category && { category: next.category }),
+  };
+  return Object.keys(patch).length > 0 ? patch : null;
+}
+
+/** Ids of the accepted candidates in the visible tab. */
+export function visibleAcceptedIds(visible: readonly ConventionCandidate[]): string[] {
+  return visible.filter((c) => c.status === "accepted").map((c) => c.id);
+}
+
+/** True when there is something to select and every one of `ids` is selected. */
+export function allSelected(ids: readonly string[], selection: readonly string[]): boolean {
+  return ids.length > 0 && ids.every((id) => selection.includes(id));
+}
+
+/** A new selection set with `id` added or removed; `prev` is never mutated. */
+export function withSelected(prev: ReadonlySet<string>, id: string, on: boolean): Set<string> {
+  const next = new Set(prev);
+  if (on) next.add(id);
+  else next.delete(id);
+  return next;
+}
+
+/** A new selection set with all of `ids` deselected (`deselect`) or selected. */
+export function toggleAllSelected(prev: ReadonlySet<string>, ids: readonly string[], deselect: boolean): Set<string> {
+  const next = new Set(prev);
+  for (const id of ids) {
+    if (deselect) next.delete(id);
+    else next.add(id);
+  }
+  return next;
+}
+
+/** A skill can be created from 1..MAX_SKILL_CONVENTIONS selected conventions. */
+export function canCreateSkill(selectedCount: number): boolean {
+  return selectedCount > 0 && selectedCount <= MAX_SKILL_CONVENTIONS;
+}
+
+/** Whether the tabbed list renders: it stays readable under a failed-scan banner when older candidates exist. */
+export function shouldShowList(screen: Screen, candidateCount: number): boolean {
+  return screen === "list" || screen === "allRejected" || (screen === "failed" && candidateCount > 0);
 }

@@ -23,7 +23,7 @@ import {
   useUpdateConvention,
 } from "@/lib/hooks";
 import { useActiveRepo, useRepoNotFound } from "@/lib/repo-context";
-import { DEFAULT_TAB, LOCAL_ERRORS, MAX_SKILL_CONVENTIONS, TAB_KEYS, type TabKey } from "../../constants";
+import { DEFAULT_TAB, LOCAL_ERRORS, TAB_KEYS, type TabKey } from "../../constants";
 import {
   acceptedIds,
   effectiveSelection,
@@ -36,7 +36,22 @@ import { NotIndexedState } from "../NotIndexedState";
 import { ScanHeader } from "../ScanHeader";
 import { TransformToSkillModal } from "../TransformToSkillModal";
 import { SKELETON_CARDS, SKELETON_CARD_HEIGHT } from "./constants";
-import { emptyTabKind, errorMessage, isIndexBlocked, isIndexed, isNotCloned, isRepoBlockedError, resolveScreen } from "./helpers";
+import {
+  allSelected,
+  buildConventionPatch,
+  canCreateSkill,
+  emptyTabKind,
+  errorMessage,
+  isIndexBlocked,
+  isIndexed,
+  isNotCloned,
+  isRepoBlockedError,
+  resolveScreen,
+  shouldShowList,
+  toggleAllSelected,
+  visibleAcceptedIds,
+  withSelected,
+} from "./helpers";
 import { s } from "./styles";
 
 export function ConventionsView({ repoId }: { repoId: string }) {
@@ -114,33 +129,15 @@ export function ConventionsView({ repoId }: { repoId: string }) {
   const indexError = errorMessage(errorInfo(resync.error), errorFallback);
   const decide = (id: string, status: ConventionStatus) => update.mutate({ id, patch: { status } });
   const edit = (id: string, next: { rule: string; category: ConventionCategory }) => {
-    const current = candidates.find((c) => c.id === id);
-    const patch = {
-      ...(next.rule !== current?.rule && { rule: next.rule }),
-      ...(next.category !== current?.category && { category: next.category }),
-    };
-    if (Object.keys(patch).length > 0) update.mutate({ id, patch });
+    const patch = buildConventionPatch(candidates.find((c) => c.id === id), next);
+    if (patch) update.mutate({ id, patch });
   };
-  const setSelected = (id: string, on: boolean) =>
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (on) next.add(id);
-      else next.delete(id);
-      return next;
-    });
+  const setSelected = (id: string, on: boolean) => setSelectedIds((prev) => withSelected(prev, id, on));
 
-  const visibleAccepted = visible.filter((c) => c.status === "accepted").map((c) => c.id);
-  const allVisibleSelected = visibleAccepted.length > 0 && visibleAccepted.every((id) => selection.includes(id));
-  const toggleAll = () =>
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      for (const id of visibleAccepted) {
-        if (allVisibleSelected) next.delete(id);
-        else next.add(id);
-      }
-      return next;
-    });
-  const canCreate = selection.length > 0 && selection.length <= MAX_SKILL_CONVENTIONS;
+  const visibleAccepted = visibleAcceptedIds(visible);
+  const allVisibleSelected = allSelected(visibleAccepted, selection);
+  const toggleAll = () => setSelectedIds((prev) => toggleAllSelected(prev, visibleAccepted, allVisibleSelected));
+  const canCreate = canCreateSkill(selection.length);
 
   if (repoNotFound) {
     return (
@@ -158,7 +155,7 @@ export function ConventionsView({ repoId }: { repoId: string }) {
   }));
   const emptyKind = emptyTabKind(screen, tab);
   const failedScan = screen === "failed" ? page?.last_scan : null;
-  const showList = screen === "list" || screen === "allRejected" || (screen === "failed" && candidates.length > 0);
+  const showList = shouldShowList(screen, candidates.length);
   const extractError = repoBlocked ? null : errorMessage(extractFailure, t("extract.errorTitle"));
   const extractCode = extractFailure?.status !== undefined ? knownErrorCode(extractFailure.code) ?? knownErrorCode(extractError) : null;
 

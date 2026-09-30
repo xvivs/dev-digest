@@ -1,6 +1,21 @@
 import { describe, it, expect } from "vitest";
 import { candidate, page, scan } from "../../fixtures";
-import { emptyTabKind, errorMessage, isIndexBlocked, isRepoBlockedError, resolveScreen, type ScreenInput } from "./helpers";
+import { MAX_SKILL_CONVENTIONS } from "../../constants";
+import {
+  allSelected,
+  buildConventionPatch,
+  canCreateSkill,
+  emptyTabKind,
+  errorMessage,
+  isIndexBlocked,
+  isRepoBlockedError,
+  resolveScreen,
+  shouldShowList,
+  toggleAllSelected,
+  visibleAcceptedIds,
+  withSelected,
+  type ScreenInput,
+} from "./helpers";
 
 const base: ScreenInput = { page: page({ candidates: [candidate("a")] }), loading: false, loadFailed: false, indexBlocked: false, indexPending: false };
 const screenOf = (over: Partial<ScreenInput>) => resolveScreen({ ...base, ...over });
@@ -97,5 +112,98 @@ describe("errorMessage", () => {
 
   it("falls back for an error that never reached the API", () => {
     expect(errorMessage({ message: "boom" }, "fallback")).toBe("fallback");
+  });
+});
+
+describe("buildConventionPatch (AC-37)", () => {
+  const current = { rule: "Old rule text", category: "async" as const };
+
+  it("sends only the changed rule", () => {
+    expect(buildConventionPatch(current, { rule: "New rule text", category: "async" })).toEqual({ rule: "New rule text" });
+  });
+
+  it("sends only the changed category", () => {
+    expect(buildConventionPatch(current, { rule: current.rule, category: "testing" })).toEqual({ category: "testing" });
+  });
+
+  it("sends both when both changed", () => {
+    expect(buildConventionPatch(current, { rule: "New rule text", category: "testing" })).toEqual({
+      rule: "New rule text",
+      category: "testing",
+    });
+  });
+
+  it("returns null when nothing changed", () => {
+    expect(buildConventionPatch(current, { ...current })).toBeNull();
+  });
+
+  it("treats an unknown current as everything changed", () => {
+    expect(buildConventionPatch(undefined, { rule: "New rule text", category: "async" })).toEqual({
+      rule: "New rule text",
+      category: "async",
+    });
+  });
+});
+
+describe("selection helpers (AC-39)", () => {
+  it("visibleAcceptedIds keeps only accepted candidates, in order", () => {
+    const list = [candidate("a", { status: "accepted" }), candidate("b"), candidate("c", { status: "accepted" })];
+    expect(visibleAcceptedIds(list)).toEqual(["a", "c"]);
+  });
+
+  it("allSelected is false for an empty id list", () => {
+    expect(allSelected([], ["a"])).toBe(false);
+  });
+
+  it("allSelected needs every id selected", () => {
+    expect(allSelected(["a", "b"], ["a", "b", "c"])).toBe(true);
+    expect(allSelected(["a", "b"], ["a"])).toBe(false);
+  });
+
+  it("withSelected adds and removes without mutating the input", () => {
+    const prev: ReadonlySet<string> = new Set(["a"]);
+    expect([...withSelected(prev, "b", true)]).toEqual(["a", "b"]);
+    expect([...withSelected(prev, "a", false)]).toEqual([]);
+    expect([...prev]).toEqual(["a"]);
+  });
+
+  it("toggleAllSelected selects all ids, keeping unrelated ones", () => {
+    expect([...toggleAllSelected(new Set(["x"]), ["a", "b"], false)].sort()).toEqual(["a", "b", "x"]);
+  });
+
+  it("toggleAllSelected deselects only the given ids", () => {
+    const prev: ReadonlySet<string> = new Set(["a", "b", "x"]);
+    expect([...toggleAllSelected(prev, ["a", "b"], true)]).toEqual(["x"]);
+    expect(prev.size).toBe(3);
+  });
+});
+
+describe("canCreateSkill", () => {
+  it("needs at least one selected convention", () => {
+    expect(canCreateSkill(0)).toBe(false);
+    expect(canCreateSkill(1)).toBe(true);
+  });
+
+  it("is capped at MAX_SKILL_CONVENTIONS", () => {
+    expect(canCreateSkill(MAX_SKILL_CONVENTIONS)).toBe(true);
+    expect(canCreateSkill(MAX_SKILL_CONVENTIONS + 1)).toBe(false);
+  });
+});
+
+describe("shouldShowList", () => {
+  it("shows for list and allRejected", () => {
+    expect(shouldShowList("list", 0)).toBe(true);
+    expect(shouldShowList("allRejected", 2)).toBe(true);
+  });
+
+  it("shows under a failed scan only when older candidates exist", () => {
+    expect(shouldShowList("failed", 1)).toBe(true);
+    expect(shouldShowList("failed", 0)).toBe(false);
+  });
+
+  it("hides for every other screen", () => {
+    for (const screen of ["loading", "loadError", "scanning", "notIndexed", "never", "zeroVerified"] as const) {
+      expect(shouldShowList(screen, 5)).toBe(false);
+    }
   });
 });
