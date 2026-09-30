@@ -12,7 +12,7 @@ Put here what needs more than ~3 lines to explain, then point at it from
   superseded by a newer ADR.
 - `agent-prompts/` — the reviewer system prompts shipped with the starter.
 - `dev-agents.md` — the Claude Code subagents that build this repo: roster,
-  chains, review loops, write guard (`.claude/agents/`, ADR 0019).
+  chains, review loops, write guard (`.claude/agents/`, ADR 0021).
 
 Not here: plans for unbuilt work (`specs/`), raw debugging findings
 (`INSIGHTS.md`), or usage instructions (`README.md`).

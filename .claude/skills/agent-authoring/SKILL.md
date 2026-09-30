@@ -7,7 +7,7 @@ description: Create, change or review a Claude Code subagent in .claude/agents/ 
 
 Every dev agent in this repo follows one system: fixed roles, a write guard
 per profile, nested skeptics, machine-shaped reports (`docs/dev-agents.md`,
-ADR 0019). This skill is the checklist for adding one without breaking that
+ADR 0021). This skill is the checklist for adding one without breaking that
 system. Claude Code checks almost none of it. It silently ignores unknown
 fields and `Agent(x)` allowlists, skips files whose YAML doesn't parse, and
 skips project-agent hooks when the workspace isn't trusted.
@@ -18,7 +18,7 @@ Do them in order. Each step's output feeds the next.
 
 ### 0. Read the system
 
-Read `docs/dev-agents.md` (roster, chains, guard profiles, limits), ADR 0019,
+Read `docs/dev-agents.md` (roster, chains, guard profiles, limits), ADR 0021,
 and the existing agent closest to the new one. Read
 `references/platform-facts.md` once per session. It holds the verified
 platform behaviour that everything below relies on.
@@ -118,7 +118,7 @@ the existing agents verbatim. They're contracts other agents depend on.
   the `Spawns:` line.
 - Its place in the chains and in the routing table (who consumes its findings).
 - A new pattern (a new profile, a new loop, a new contract) needs an ADR or an
-  amendment to ADR 0019.
+  amendment to ADR 0021.
 
 ### 8. Prove it
 

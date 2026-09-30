@@ -1,6 +1,6 @@
-# ADR 0019 — A fixed pipeline of scoped dev subagents with nested skeptics and a hook-enforced write guard
+# ADR 0021 — A fixed pipeline of scoped dev subagents with nested skeptics and a hook-enforced write guard
 
-**Status:** proposed
+**Status:** accepted · renumbered from 0019 on 2026-09-30 (the number collided with [ADR 0019](0019-extracted-skill-trust-tier.md))
 **Date:** 2026-09-30
 **Relates to:** ADR 0004 (AGENTS.md as instructions source), ADR 0006 / 0014 (self-review gate)
 
@@ -79,4 +79,4 @@ are ignored there.
 | Agent Team / dynamic workflow | The roles are fixed and the transitions are linear. A team adds coordination cost and state without buying parallelism the pipeline doesn't have |
 | Path rules via `permissions` in `.claude/settings.json` | Session-wide: they can't differ per agent, and would restrict the main session too |
 | Skeptic only for CRITICAL (as in pr-self-review) | Leaves HIGH/MEDIUM noise that erodes trust in the reviews; the extra cost is bounded by the 25-finding caps |
-| Separate guard script per agent | Fifteen near-identical scripts drift; profiles in one tested file don't |
+| Separate guard script per agent | Sixteen near-identical scripts drift; profiles in one tested file don't |

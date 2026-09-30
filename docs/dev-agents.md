@@ -2,7 +2,7 @@
 
 Claude Code subagents that build DevDigest itself. Definitions live in
 `.claude/agents/`; the write guard is `.claude/hooks/agent-guard.mjs`. Why the
-system looks like this: [ADR 0019](adr/0019-dev-agent-pipeline.md).
+system looks like this: [ADR 0021](adr/0021-dev-agent-pipeline.md).
 
 These are not the product's reviewer agents. Those are stored in the DB, and
 their prompts are in `docs/agent-prompts/`.

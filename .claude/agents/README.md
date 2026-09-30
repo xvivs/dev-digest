@@ -7,7 +7,7 @@ agent files are the behaviour, and this page points at them.
 - Chains, routing on findings, nesting limits, guard profiles:
   [`docs/dev-agents.md`](../../docs/dev-agents.md). That roster is the source of
   truth for model and `Spawns`, and `validate-agents.mjs` checks it.
-- Why the system looks like this: [ADR 0019](../../docs/adr/0019-dev-agent-pipeline.md).
+- Why the system looks like this: [ADR 0021](../../docs/adr/0021-dev-agent-pipeline.md).
 - Adding or changing an agent: the `agent-authoring` skill
   (`.claude/skills/agent-authoring/`).
 
@@ -50,7 +50,7 @@ insights through `engineering-insights`.
 Each row gives a practice, the source it rests on, the concrete rule, and where
 the rule lives. Line numbers are as of 2026-09-30. External quotes were fetched
 on that date; "principle" means the source backs the idea, while the number or
-exact wording is this repo's own choice (ADR 0019).
+exact wording is this repo's own choice (ADR 0021).
 
 Short names: **BP** [Claude Code best practices](https://code.claude.com/docs/en/best-practices) ·
 **SA** [Claude Code subagents](https://code.claude.com/docs/en/sub-agents) ·
@@ -73,7 +73,7 @@ Short names: **BP** [Claude Code best practices](https://code.claude.com/docs/en
 | Small changes | GCL (principle; 3-12 is ours) | 3-12 steps, more means split the feature | `planner.md:103` |
 | Fresh-context adversarial review | BP, "Add an adversarial review step" | mandatory loop: plan-critic ∥ architecture-reviewer (PLAN) each round | `planner.md:53`, `:55-76` |
 | Bounded iteration | BEA, stopping conditions (principle; 3 rounds is ours) | stop at zero CRITICAL/MAJOR/HIGH or after 3 rounds, leftovers become BLOCKING | `planner.md:85` |
-| Reject findings only with evidence | BP, adversarial-review callout (principle); ADR 0019 | reject needs `path:line` or `skill:rule`, "disagree" is not a reason | `planner.md:78` |
+| Reject findings only with evidence | BP, adversarial-review callout (principle); ADR 0021 | reject needs `path:line` or `skill:rule`, "disagree" is not a reason | `planner.md:78` |
 | Scoped writes enforced, not requested | HK; BP, "Set up hooks" | `specs` guard profile; the prompt rule is backed by the hook | `planner.md:11-17`, `:109` |
 | Clear delegation contract | MAR: each subagent needs "an objective, an output format, guidance on the tools and sources to use, and clear task boundaries" | fixed output skeleton with a status enum, 350-word cap | `planner.md:116-141` |
 | Untrusted input is named in the plan | [OWASP Top 10:2025](https://top10.owasp.org/2025/), Injection (category only) | a `## Untrusted inputs` section in every spec | `planner.md:48` |
@@ -101,7 +101,7 @@ Short names: **BP** [Claude Code best practices](https://code.claude.com/docs/en
 | Practice | Source | Rule | Where |
 |---|---|---|---|
 | One agent, one job | SA: "each subagent should excel at one specific task" | owned / not-owned work, each exclusion names its owner | every agent's opening lines; `agent-authoring` step 1 |
-| Fixed pipeline over dynamic routing | BEA: "Workflows offer predictability for well-defined tasks" | feature and refactor chains orchestrated by main | `docs/dev-agents.md` Chains; ADR 0019 |
+| Fixed pipeline over dynamic routing | BEA: "Workflows offer predictability for well-defined tasks" | feature and refactor chains orchestrated by main | `docs/dev-agents.md` Chains; ADR 0021 |
 | Least-privilege tools | SA, "Available tools" (`tools` allowlist) | every agent lists its tools; `readonly` drops Edit/Write | frontmatter `tools:` |
 | Write guard as an agent-scoped hook | SA, "Conditional rules with hooks"; HK | `agent-guard.mjs <profile>` on `Edit\|Write\|MultiEdit\|NotebookEdit\|Bash` | frontmatter `hooks:`; `.claude/hooks/agent-guard.mjs` |
 | Model by the work | SA, "Choose a model" (mechanism; mapping is ours) | judgment → opus, execution → sonnet, sweeps → haiku | frontmatter `model:`; `agent-authoring` step 3 |
@@ -111,7 +111,7 @@ Short names: **BP** [Claude Code best practices](https://code.claude.com/docs/en
 | Refactoring keeps behaviour | [Fowler, Definition of Refactoring](https://martinfowler.com/bliki/DefinitionOfRefactoring.html): "without changing its observable behavior" | stop on any behaviour change: `STOPPED (behaviour change)` | `refactor-implementer.md` Status enum |
 | Output contract + word caps | MAR (delegation contract); BP: "The context window is the most important resource to manage." (caps are ours) | fixed skeleton, enum verdicts, `Cap:` line | every `## Output format` |
 | Prompt anatomy | [oh-my-claudecode agents](https://github.com/Yeachan-Heo/oh-my-claudecode) (per `prompt-anatomy.md:3-5`, not re-fetched) | identity + stance, owned/not owned, why it matters, protocol, contracts | `.claude/skills/agent-authoring/references/prompt-anatomy.md` |
-| Cost of multi-agent | MAR: "Multi-agent systems use about 15× more tokens than chats" | nesting depth 3, waves ≤4, `no sub-spawn` for lookups | `docs/dev-agents.md` Nesting depth; ADR 0019 |
+| Cost of multi-agent | MAR: "Multi-agent systems use about 15× more tokens than chats" | nesting depth 3, waves ≤4, `no sub-spawn` for lookups | `docs/dev-agents.md` Nesting depth; ADR 0021 |
 
 ### Rules with no external source
 
@@ -123,4 +123,4 @@ unless you find one.
 - Don't invent requirements; assumptions go into Decisions (`planner.md:110`).
 - Onion/DI, `arch:check`, `SecretsProvider`, vendored-shared twins
   (`implementer.md:54`, `:58`): AGENTS.md "Cross-package rules".
-- The numbers: 3 review rounds, 3 retries, 3-12 steps, word caps (ADR 0019).
+- The numbers: 3 review rounds, 3 retries, 3-12 steps, word caps (ADR 0021).
