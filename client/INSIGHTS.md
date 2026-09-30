@@ -172,6 +172,8 @@ lives in the engineering-insights skill).
 
 - **Agent Skills tab dropped the first toggle: the response to a debounced PUT overwrote a newer pending edit, and a click before `["agent-skills"]` loaded was wiped by the fetch** — `SkillsTab.tsx` (autosave 400 ms) wrote the PUT response into the query cache and `latestRef` unconditionally, so a click made while the save was in flight vanished and the next debounce saved the stale list. Fix: when the debounce timer is armed, the response restores `latestRef` into the cache instead; rows do not render (`aria-busy`) until links load. Rule: a debounced mutation's response must not clobber a newer unsaved edit. `client/src/app/agents/[id]/_components/AgentEditor/_components/SkillsTab/SkillsTab.tsx`. _(2026-09-30)_
 
+- **Whole app frame scrolls up off-screen leaving a black area below (window scrolls, not `<main>`) = an unanchored `position: absolute` descendant escaped the `<main>` scroll container** — `<main>` is the app's only scroll container (`overflow: auto`); if it isn't positioned, absolute children (e.g. sr-only `<span role="status">` live regions, one per `EvidenceBlock` on /conventions) anchor to the initial containing block, bypass main's overflow and stretch `document.scrollHeight` (seen: 2397px vs 782px viewport). Diagnose with `document.documentElement.scrollHeight > innerHeight` + list `position:absolute` nodes whose bottom exceeds the viewport. Fix lives in the shell: `position: "relative"` on `<main>` in `client/src/vendor/ui/shell/AppFrame.tsx:33` — don't remove it; overlays stay safe because Modal/Drawer wrap themselves in `position: fixed`. _(2026-09-30)_
+
 ## Session Notes
 
 - Cost Badge (L01, client half): added `RunCostValue` + `formatCost`/`exactCost`
