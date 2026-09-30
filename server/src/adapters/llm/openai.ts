@@ -11,7 +11,13 @@ import { withRetry, withTimeout } from '../../platform/resilience.js';
 import { toJsonSchema, parseWithRepair } from '../../platform/structured.js';
 import { estimateCost } from './pricing.js';
 import { ExternalServiceError } from '../../platform/errors.js';
-import { pickCost, sdkRequestOptions, throwIfAborted } from '@devdigest/reviewer-core';
+import {
+  pickCost,
+  sdkRequestOptions,
+  throwIfAborted,
+  withTransientRetry,
+  deadlineFrom,
+} from '@devdigest/reviewer-core';
 
 const DEFAULT_TIMEOUT = 60_000;
 const EMBED_MODEL = 'text-embedding-3-small';
@@ -98,10 +104,11 @@ export class OpenAIProvider implements LLMProvider {
     let tokensOut = 0;
     let lastRaw = '';
     const sdkOpts = sdkRequestOptions(req);
+    const deadlineAt = deadlineFrom(req.timeoutMs);
 
     for (let attempt = 1; attempt <= maxRetries + 1; attempt++) {
       throwIfAborted(req.signal);
-      const res = await withRetry(() =>
+      const call = () =>
         withTimeout(
           this.client.chat.completions.create({
             model: req.model,
@@ -116,10 +123,15 @@ export class OpenAIProvider implements LLMProvider {
                   },
           }, sdkOpts),
           req.timeoutMs ?? DEFAULT_TIMEOUT,
-        ),
-        // A caller-owned deadline/signal disables the outer retry too.
-        sdkOpts ? { retries: 0 } : {},
-      );
+        );
+      // A caller-owned deadline/signal: deadline-aware transient retry
+      // (SDK retries are 0); otherwise the generic backoff retry.
+      const res = sdkOpts
+        ? await withTransientRetry(call, {
+            ...(req.signal ? { signal: req.signal } : {}),
+            ...(deadlineAt !== undefined ? { deadlineAt } : {}),
+          })
+        : await withRetry(call);
       lastRaw = res.choices?.[0]?.message?.content ?? '';
       tokensIn += res.usage?.prompt_tokens ?? 0;
       tokensOut += res.usage?.completion_tokens ?? 0;

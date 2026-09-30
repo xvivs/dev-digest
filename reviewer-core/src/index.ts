@@ -73,3 +73,14 @@ export { pickCost } from './llm/cost.js';
 
 // Per-request SDK options + abort guard shared by every LLMProvider (timeout/signal).
 export { sdkRequestOptions, throwIfAborted, type SdkRequestOptions } from './llm/request-options.js';
+
+// Deadline-aware retry for transient LLM errors (429 / 5xx / resets) — replaces
+// SDK retries whenever a request carries signal/timeoutMs.
+export {
+  withTransientRetry,
+  isTransientLlmError,
+  retryAfterMs,
+  abortableSleep,
+  deadlineFrom,
+  type TransientRetryOptions,
+} from './llm/retry.js';

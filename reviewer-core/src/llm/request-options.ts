@@ -3,8 +3,9 @@
  * `{ timeout, maxRetries, signal }` as the second argument of `create`).
  * Returns undefined when the caller set neither `timeoutMs` nor `signal`, so
  * the client's constructor defaults (timeout, retries) stay in force.
- * When set, SDK retries are off: the caller owns the deadline, and a retry
- * would outlive it.
+ * When set, SDK retries are off: the caller owns the deadline, and the SDK's
+ * retry loop would outlive it. Transient errors are retried instead by
+ * `withTransientRetry` (retry.ts), which honours the signal and deadline.
  */
 export interface SdkRequestOptions {
   timeout?: number;

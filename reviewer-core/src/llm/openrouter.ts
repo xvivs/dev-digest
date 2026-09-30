@@ -11,6 +11,7 @@ import type {
 import { toJsonSchema, parseWithRepair } from './structured.js';
 import { pickCost } from './cost.js';
 import { sdkRequestOptions, throwIfAborted } from './request-options.js';
+import { withTransientRetry, deadlineFrom } from './retry.js';
 
 /**
  * The single OpenAI-compatible structured provider, owned by the engine because
@@ -78,10 +79,12 @@ export class OpenRouterProvider implements LLMProvider {
     let costFromApi: number | null = null;
     let lastRaw = '';
     const sdkOpts = sdkRequestOptions(req);
+    // One deadline for the whole call (repair attempts + transient retries).
+    const deadlineAt = deadlineFrom(req.timeoutMs);
 
     for (let attempt = 1; attempt <= maxRetries + 1; attempt++) {
       throwIfAborted(req.signal);
-      const res = await this.client.chat.completions.create({
+      const create = () => this.client.chat.completions.create({
         model: req.model,
         messages,
         temperature: req.temperature ?? 0,
@@ -105,6 +108,13 @@ export class OpenRouterProvider implements LLMProvider {
         // cost (USD) in `usage.cost`, instead of estimating from a price book.
         ...(this.id === 'openrouter' ? { usage: { include: true } } : {}),
       }, sdkOpts);
+      // SDK retries stay on without signal/timeoutMs; with them, retry here.
+      const res = sdkOpts
+        ? await withTransientRetry(create, {
+            ...(req.signal ? { signal: req.signal } : {}),
+            ...(deadlineAt !== undefined ? { deadlineAt } : {}),
+          })
+        : await create();
 
       // OpenRouter can return HTTP 200 with no `choices` (an upstream provider
       // error / moderation / free-tier limit in the body) — surface it.
