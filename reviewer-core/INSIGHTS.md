@@ -38,6 +38,8 @@ lives in the engineering-insights skill).
 
 - **The OpenAI SDK's `timeout` (constructor or per-request) stops counting once response headers arrive, so a stalled body hangs indefinitely; only an `AbortSignal` bounds it** — measured with a local server sending headers plus whitespace keep-alives: `timeout: 1000` calls were still pending after 6 s with the socket open, `AbortSignal.timeout(1500)` aborted at 1505 ms and closed the socket (cause: `fetchWithTimeout` in `openai/core.js` clears its timer on headers). Answers the Open Question about hung runs `d700a086`/`42e9897f`; review chunk calls now pass a combined cancel + 120 s signal (`reviewer-core/src/review/run.ts:248`). openai 4.104.0. _(2026-09-30)_
 
+- **Segment-style path regexes like `(?:^|\/)docker-compose[^/]*\.yml$` are quadratic in V8 on one very long segment, and a timing test on `a/` repeated segments does not prove otherwise — length-guard untrusted paths before matching** — `classifyFile` rejects paths over `MAX_PATH_LENGTH` (1024) or segments over `MAX_SEGMENT_LENGTH` (255) first (`reviewer-core/src/smart-diff/classify.ts:10`, limits in `src/smart-diff/constants.ts:21-23`, rationale at `:26-30`). Paths come from PR authors. _(2026-10-01)_
+
 ## Recurring Errors & Fixes
 
 ## Session Notes

@@ -104,6 +104,18 @@ lives in the engineering-insights skill).
 
 - **`Modal` (`@devdigest/ui`) gives its body no padding; each caller's body style carries `padding: 24` to line up with the 24px header and footer** — `client/src/vendor/ui/kit/Modal.tsx:81` renders `{children}` in a bare scroll container, while `VetSkillModal/styles.ts:5` sets `body: { padding: 24 }`. A body without it sits flush against the dialog border. Tests stay green; only a browser shows it (the Evals modals shipped this way until `d3f8734`). _(2026-09-29)_
 
+- **Nested sticky elements on the PR page need an offset and an opaque background, because `PrDetailHeader` is already `sticky; top: 0; z-index: 5` inside the scrolling `<main>`** — header at `src/app/repos/[repoId]/pulls/[number]/_components/PrDetailHeader/styles.ts:4-8`, scroll container `overflow: "auto"` at `src/vendor/ui/shell/AppFrame.tsx:33`. A second sticky at `top: 0` slides under the header. Smart Diff measures the header with `useStickyOffset` into the CSS var `PR_HEADER_OFFSET_VAR` (`pulls/[number]/constants.ts:3`) and reads it as `top: var(--pr-header-h, 0px)` (`SmartDiffGroup/styles.ts:8`). _(2026-10-01)_
+
+- **Inside a `Disclosure`/`Collapse`, only the `headerStyle` row can be sticky — the body wrapper is permanently `overflow: hidden`** — `src/vendor/ui/primitives/Collapse.tsx:87` (documented at `:25`), which makes any sticky element in `children` stick to that clipped wrapper instead of the page scroller. Put the sticky style on the header row, not on content. _(2026-10-01)_
+
+- **`@devdigest/ui`'s `Severity` type includes `"INFO"`, which finding data never has — type maps over findings with `FindingRecord["severity"]`** — `export type Severity = FindingSeverity | "INFO"` (`src/vendor/ui/primitives/tokens.ts:11`); a `Record<Severity, …>` over finding data forces a dead INFO key. _(2026-10-01)_
+
+- **`DisclosureChevron` is a `ChevronDown` that rotates 180deg; the diff file cards use `ChevronRight` rotating 90deg — they are not interchangeable** — `src/vendor/ui/primitives/Disclosure.tsx:117-121` vs `src/components/diff-viewer/styles.ts:176` and `FileCard/FileCard.tsx:105` (Smart Diff copies the latter at `SmartDiffGroup/SmartDiffGroup.tsx:58`). Use the same glyph as the surrounding diff UI. _(2026-10-01)_
+
+- **React Compiler is NOT enabled in the client, so memoization rules apply manually (stable props for memoized children, `useMemo` for expensive derivations), while trivial filters need no `useMemo`** — `client/next.config.mjs` has no `reactCompiler` option and `client/package.json` has no `babel-plugin-react-compiler`. _(2026-10-01)_
+
+- **Exporting a value from `src/components/diff-viewer/index.ts` makes every consumer of a pure helper load the React/next-intl graph, including in vitest** — the barrel re-exports `DiffViewer` and `UnmatchedFindings` components next to the helpers `isActiveFinding`/`findingsForFile` (`index.ts:3-6`). Import pure helpers from their own file (`diff-viewer/findings.ts`) in logic code and tests. _(2026-10-01)_
+
 ## Tool & Library Notes
 
 - In this worktree, `pnpm typecheck` / `pnpm test` / any `pnpm exec …` first
