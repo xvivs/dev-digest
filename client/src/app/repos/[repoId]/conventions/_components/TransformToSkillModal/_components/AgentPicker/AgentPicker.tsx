@@ -7,7 +7,7 @@
 import { useTranslations } from "next-intl";
 import { Icon, SearchableSelect } from "@devdigest/ui";
 import type { Agent } from "@devdigest/shared";
-import { MAX_ATTACHED_AGENTS } from "../../../../constants";
+import { MAX_ATTACHED_AGENTS } from "../../constants";
 import { s } from "./styles";
 
 export function AgentPicker({

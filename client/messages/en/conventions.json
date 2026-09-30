@@ -12,6 +12,7 @@
     "runAnalysis": "Run analysis",
     "extractionFailed": "Extraction failed",
     "loadError": "Could not load conventions.",
+    "loading": "Loading conventions",
     "retry": "Retry",
     "empty": {
       "title": "No conventions extracted yet",

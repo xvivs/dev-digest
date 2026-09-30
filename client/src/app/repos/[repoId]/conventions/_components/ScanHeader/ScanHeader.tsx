@@ -10,6 +10,7 @@ import { useFormatter, useTranslations } from "next-intl";
 import { Button } from "@devdigest/ui";
 import type { ConventionScan } from "@devdigest/shared";
 import { RunCostValue } from "@/components/run-cost-value";
+import { ScanningSince } from "./_components/ScanningSince";
 import { formatDuration, formatTokenCount } from "./helpers";
 import { s } from "./styles";
 
@@ -46,10 +47,10 @@ export function ScanHeader({
   const hasScanned = scan !== null || runningScan !== null || failedScan !== null;
   // A running scan has no results yet; a failed one shows the older results, labelled as such.
   const showStats = scan !== null && runningScan === null;
-  let subtitle: string;
+  let subtitle: ReactNode;
   let olderNote: string | null = null;
   if (runningScan) {
-    subtitle = t("header.scanning", { when: ago(runningScan) });
+    subtitle = <ScanningSince since={runningScan.finished_at ?? runningScan.started_at} />;
   } else if (failedScan) {
     subtitle = t("header.failed", { when: ago(failedScan) });
     if (scan) {

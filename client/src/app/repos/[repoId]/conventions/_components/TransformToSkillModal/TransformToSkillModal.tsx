@@ -14,25 +14,33 @@ import React from "react";
 import { useTranslations } from "next-intl";
 import { Button, FormField, Modal, SelectInput, TextInput, Toggle } from "@devdigest/ui";
 import type { ConventionCandidate, CreateSkillFromConventionsResponse } from "@devdigest/shared";
-import { useAgents, useAgentsSkillLinks, useCreateSkillFromConventions, useSkills } from "@/lib/hooks";
-import { MAX_ATTACHED_AGENTS } from "../../constants";
+import { errorInfo, useAgents, useAgentsSkillLinks, useCreateSkillFromConventions, useSkills } from "@/lib/hooks";
+import { LOCAL_ERRORS } from "../../constants";
+import {
+  DISCARD_MODAL_WIDTH,
+  EMPTY,
+  FIELD_IDS,
+  FIXED_SKILL_OPTIONS,
+  FIXED_SKILL_TYPE,
+  MAX_ATTACHED_AGENTS,
+  MODAL_WIDTH,
+} from "./constants";
 import {
   agentBudgets,
   bodyBytes,
   buildConventionSkillBody,
+  classifyCreateError,
   firstFreeSkillName,
+  isModalDirty,
   isValidSkillName,
-} from "../../helpers";
-import { DISCARD_MODAL_WIDTH, FIELD_IDS, FIXED_SKILL_TYPE, MODAL_WIDTH } from "./constants";
-import { classifyCreateError, isModalDirty, renameBodyHeading, type CreateError } from "./helpers";
+  renameBodyHeading,
+  type CreateError,
+} from "./helpers";
 import { AgentPicker } from "./_components/AgentPicker";
 import { BodyEditor } from "./_components/BodyEditor";
 import { BudgetStatus } from "./_components/BudgetStatus";
 import { SuccessPanel } from "./_components/SuccessPanel";
 import { s } from "./styles";
-
-const LOCAL_ERRORS = { meta: { errorSurface: "local" } } as const;
-const EMPTY: readonly never[] = [];
 
 export function TransformToSkillModal({
   repoId,
@@ -57,13 +65,17 @@ export function TransformToSkillModal({
   const takenNames = skills.map((sk) => sk.name);
 
   // Name and body are derived until the person edits them: the default is the first
-  // free name in the workspace, and an untouched body follows the current name.
+  // free name in the workspace (it can change once the skill list arrives), and the
+  // body always follows the current name. An edited body is stored with the name its
+  // H1 was written for, so `renameBodyHeading` can carry that H1 over to whatever the
+  // name is now, whether the person typed it or the default moved. Nothing to sync in
+  // an effect, and submit sends the same derived body the textarea shows.
   const [typedName, setTypedName] = React.useState<string | null>(null);
-  const [editedBody, setEditedBody] = React.useState<string | null>(null);
+  const [edited, setEdited] = React.useState<{ body: string; forName: string } | null>(null);
   const defaultName = firstFreeSkillName(repoName, takenNames);
   const name = typedName ?? defaultName;
   const buildBody = (skillName: string) => buildConventionSkillBody({ repoName, skillName, conventions });
-  const body = editedBody ?? buildBody(name);
+  const body = edited ? renameBodyHeading(edited.body, edited.forName, name) : buildBody(name);
   const [description, setDescription] = React.useState(() =>
     t("modal.descriptionDefault", { count: conventions.length, repo: repoName }),
   );
@@ -78,8 +90,6 @@ export function TransformToSkillModal({
   };
 
   const changeName = (next: string) => {
-    // An edited body keeps its text; only an untouched `# <name>` first line follows the rename.
-    if (editedBody !== null) setEditedBody(renameBodyHeading(editedBody, name, next));
     setTypedName(next);
     if (error?.kind === "name") setError(null);
   };
@@ -117,7 +127,7 @@ export function TransformToSkillModal({
       setCreated(res);
       onCreated();
     } catch (err) {
-      setError(classifyCreateError(err));
+      setError(classifyCreateError(errorInfo(err) ?? { message: "" }));
     }
   };
 
@@ -214,7 +224,7 @@ export function TransformToSkillModal({
                 <SelectInput
                   id={FIELD_IDS.type}
                   value={FIXED_SKILL_TYPE}
-                  options={[FIXED_SKILL_TYPE]}
+                  options={FIXED_SKILL_OPTIONS}
                   disabled
                 />
               </FormField>
@@ -223,7 +233,7 @@ export function TransformToSkillModal({
               </FormField>
             </div>
             <FormField label={t("modal.body")} required>
-              <BodyEditor fileName={name || initial.name} body={body} bytes={size} onChange={setEditedBody} />
+              <BodyEditor fileName={name || initial.name} body={body} bytes={size} onChange={(next) => setEdited({ body: next, forName: name })} />
             </FormField>
             <FormField label={t("modal.attach")} htmlFor={FIELD_IDS.agents} hint={t("modal.attachHint", { max: MAX_ATTACHED_AGENTS })}>
               <AgentPicker id={FIELD_IDS.agents} agents={agents} selectedIds={agentIds} onChange={setAgentIds} />

@@ -16,7 +16,10 @@ import { createQueryClient } from "../query-client";
 const notifyError = vi.fn();
 vi.mock("../toast", () => ({ notify: { error: (m: string) => notifyError(m) } }));
 
+import { useAgents, useAgentsSkillLinks } from "./agents";
+import { useSkills } from "./skills";
 import {
+  errorInfo,
   runningScanId,
   useConventions,
   useCreateSkillFromConventions,
@@ -142,16 +145,48 @@ describe("runningScanId", () => {
   });
 });
 
+describe("errorInfo", () => {
+  it("is null when there is no error", () => {
+    expect(errorInfo(null)).toBeNull();
+    expect(errorInfo(undefined)).toBeNull();
+  });
+
+  it("turns an ApiError into plain status, code, details and message", () => {
+    expect(errorInfo(new ApiError("Clone is locked", 409, "clone_locked", { scan_id: "s1" }))).toEqual({
+      message: "Clone is locked",
+      status: 409,
+      code: "clone_locked",
+      details: { scan_id: "s1" },
+    });
+  });
+
+  it("keeps only the message of an error that never reached the API, with no status", () => {
+    expect(errorInfo(new Error("boom"))).toEqual({ message: "boom" });
+    expect(errorInfo("weird")).toEqual({ message: "" });
+  });
+});
+
 describe("useExtractConventions", () => {
-  it("starts a scan and refreshes the page", async () => {
-    route("POST", "/repos/repo-1/conventions/extract", () => json({ scan_id: "s1" }, 202));
-    const qc = makeClient();
-    const invalidate = vi.spyOn(qc, "invalidateQueries");
-    const { result } = renderHook(() => useExtractConventions("repo-1"), { wrapper: wrapperFor(qc) });
+  it("starts a scan and the page it already shows picks up the running scan", async () => {
+    let started = false;
+    route("GET", "/repos/repo-1/conventions", () =>
+      json(started ? page({ running_scan: scan({ id: "s1", status: "running", finished_at: null }) }) : page()),
+    );
+    route("POST", "/repos/repo-1/conventions/extract", () => {
+      started = true;
+      return json({ scan_id: "s1" }, 202);
+    });
+    const { result } = renderHook(
+      () => ({ extract: useExtractConventions("repo-1"), query: useConventions("repo-1") }),
+      { wrapper: wrapperFor(makeClient()) },
+    );
+    await waitFor(() => expect(result.current.query.isSuccess).toBe(true));
+    expect(result.current.query.data?.running_scan).toBeNull();
+
     let out: unknown;
-    await act(async () => { out = await result.current.mutateAsync(); });
+    await act(async () => { out = await result.current.extract.mutateAsync(); });
     expect(out).toEqual({ scan_id: "s1", attached: false });
-    expect(invalidate).toHaveBeenCalledWith({ queryKey: KEY });
+    await waitFor(() => expect(result.current.query.data?.running_scan?.id).toBe("s1"));
   });
 
   it("attaches to the running scan on a 409, with no error and no toast (AC-41)", async () => {
@@ -262,17 +297,46 @@ describe("useCreateSkillFromConventions", () => {
   const body = { name: "s", body: "# s", enabled: true, convention_ids: ["a"], agent_ids: ["ag1"] };
   const skill = { id: "sk1", name: "s", description: "", type: "convention", source: "extracted", body: "# s", enabled: true, version: 1, needs_vetting: false };
 
-  it("posts the payload and refreshes skills, agents, agent-skills and conventions", async () => {
-    route("POST", "/repos/repo-1/conventions/skills", () => json({ skill, linked_agent_ids: ["ag1"] }, 201));
-    const qc = makeClient();
-    const invalidate = vi.spyOn(qc, "invalidateQueries");
-    const { result } = renderHook(() => useCreateSkillFromConventions("repo-1"), { wrapper: wrapperFor(qc) });
+  it("posts the payload and every list it changes (skills, agents, agent-skills, conventions) shows the new state", async () => {
+    // The server's state changes when the skill is created; each list the screens hold must follow.
+    let created = false;
+    route("POST", "/repos/repo-1/conventions/skills", () => {
+      created = true;
+      return json({ skill, linked_agent_ids: ["ag1"] }, 201);
+    });
+    route("GET", "/skills", () => json(created ? [{ ...skill, agent_count: 1 }] : []));
+    route("GET", "/agents", () => json(created ? [{ id: "ag1", name: "Perf Reviewer" }] : []));
+    route("GET", "/agents/ag1/skills", () => json(created ? [{ agent_id: "ag1", skill_id: "sk1", order: 0, enabled: true }] : []));
+    route("GET", "/repos/repo-1/conventions", () =>
+      json(page({ candidates: [candidate("a", { status: "accepted", skills: created ? [{ id: "sk1", name: "s" }] : [] })] })),
+    );
+    const { result } = renderHook(
+      () => ({
+        create: useCreateSkillFromConventions("repo-1"),
+        skills: useSkills(),
+        agents: useAgents(),
+        links: useAgentsSkillLinks(["ag1"]),
+        conventions: useConventions("repo-1"),
+      }),
+      { wrapper: wrapperFor(makeClient()) },
+    );
+    await waitFor(() => {
+      expect(result.current.skills.isSuccess && result.current.agents.isSuccess && result.current.conventions.isSuccess).toBe(true);
+      expect(result.current.links.isPending).toBe(false);
+    });
+    expect(result.current.skills.data).toHaveLength(0);
+
     let out: unknown;
-    await act(async () => { out = await result.current.mutateAsync(body); });
+    await act(async () => { out = await result.current.create.mutateAsync(body); });
     expect(out).toMatchObject({ skill: { id: "sk1" }, linked_agent_ids: ["ag1"] });
-    expect(calls.at(-1)?.body).toEqual(body);
-    const keys = invalidate.mock.calls.map((c) => (c[0] as { queryKey: unknown[] }).queryKey[0]);
-    expect(keys).toEqual(expect.arrayContaining(["skills", "agents", "agent-skills", "conventions"]));
+    expect(calls.find((c) => c.method === "POST")?.body).toEqual(body);
+
+    await waitFor(() => {
+      expect(result.current.skills.data).toHaveLength(1);
+      expect(result.current.agents.data).toHaveLength(1);
+      expect(result.current.links.byAgent.get("ag1")).toHaveLength(1);
+      expect(result.current.conventions.data?.candidates[0]?.skills).toEqual([{ id: "sk1", name: "s" }]);
+    });
   });
 
   it("surfaces a 409 to the caller and stays silent when local", async () => {

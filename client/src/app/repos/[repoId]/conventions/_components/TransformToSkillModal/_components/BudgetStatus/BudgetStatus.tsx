@@ -5,7 +5,7 @@
 "use client";
 
 import { useTranslations } from "next-intl";
-import { formatBytes, type AgentBudget } from "../../../../helpers";
+import { formatBytes, type AgentBudget } from "../../helpers";
 import { s } from "./styles";
 
 export function BudgetStatus({

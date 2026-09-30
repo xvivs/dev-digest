@@ -1,9 +1,9 @@
 /* Pure view-model logic for ConventionsView: which of the page's states to
    render (AC-32) and what the extract error means. */
 import type { ConventionsPage } from "@devdigest/shared";
-import { ApiError } from "@/lib/api";
-import type { TabKey } from "../../constants";
-import { CONFLICT_STATUS, INDEXED_STATUSES, NOT_CLONED_CODE, REPO_BLOCKED_CODES } from "./constants";
+import type { ErrorInfo } from "@/lib/types";
+import { CONFLICT_STATUS, type TabKey } from "../../constants";
+import { INDEXED_STATUSES, NOT_CLONED_CODE, REPO_BLOCKED_CODES } from "./constants";
 
 /**
  * The one state the page renders (AC-32). `allRejected` and `list` share a
@@ -49,8 +49,8 @@ export function isIndexBlocked(status: string | undefined): boolean {
 }
 
 /** True for a 409 `repo_not_indexed` / `repo_not_cloned` (AC-3). */
-export function isRepoBlockedError(err: unknown): boolean {
-  return err instanceof ApiError && err.status === CONFLICT_STATUS && REPO_BLOCKED_CODES.includes(err.code ?? "");
+export function isRepoBlockedError(error: ErrorInfo | null): boolean {
+  return error?.status === CONFLICT_STATUS && REPO_BLOCKED_CODES.includes(error.code ?? "");
 }
 
 /** Which message an empty tab shows: the state-6 message on All, a hint on the others. */
@@ -66,13 +66,13 @@ export function isNotCloned({
   indexReason,
 }: {
   clonePath: string | null | undefined;
-  extractError: unknown;
+  extractError: ErrorInfo | null;
   indexReason: string | undefined;
 }): boolean {
   return (
     clonePath === null ||
     indexReason === NOT_CLONED_CODE ||
-    (extractError instanceof ApiError && extractError.code === NOT_CLONED_CODE)
+    extractError?.code === NOT_CLONED_CODE
   );
 }
 
@@ -81,8 +81,8 @@ export function isIndexed(status: string | undefined): boolean {
   return status !== undefined && INDEXED_STATUSES.includes(status);
 }
 
-/** The message to show for a failed request: the server's own text for an ApiError, else `fallback`. */
-export function errorMessage(err: unknown, fallback: string): string | null {
-  if (!err) return null;
-  return err instanceof ApiError ? err.message : fallback;
+/** The message to show for a failed request: the server's own text when it answered, else `fallback`. */
+export function errorMessage(error: ErrorInfo | null, fallback: string): string | null {
+  if (!error) return null;
+  return error.status !== undefined ? error.message : fallback;
 }

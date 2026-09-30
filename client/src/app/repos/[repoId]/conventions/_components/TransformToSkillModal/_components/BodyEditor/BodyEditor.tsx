@@ -10,7 +10,7 @@ import { Badge, Tabs, Textarea } from "@devdigest/ui";
 import { InvisibleCharSegments } from "@/components/invisible-char-segments";
 import { hasHtmlComment, hasInvisibleChars, splitInvisibleChars } from "@/lib/invisible-chars";
 import { estimateTokens } from "@/lib/tokens";
-import { formatBytes } from "../../../../helpers";
+import { formatBytes } from "../../helpers";
 import { BODY_ROWS, BODY_VIEWS, DEFAULT_BODY_VIEW, type BodyView } from "../../constants";
 import { s } from "./styles";
 

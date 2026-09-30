@@ -1,6 +1,7 @@
 import React from "react";
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { render, screen, cleanup, fireEvent } from "@testing-library/react";
+import { render, screen, cleanup } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { Checkbox } from "./Checkbox";
 
 afterEach(cleanup);
@@ -16,10 +17,11 @@ describe("Checkbox", () => {
     expect(screen.getByRole("checkbox", { name: "On new PR" })).toHaveAttribute("aria-checked", "true");
   });
 
-  it("reports the toggled value", () => {
+  it("reports the toggled value", async () => {
+    const user = userEvent.setup();
     const onChange = vi.fn();
     render(<Checkbox checked={false} onChange={onChange} aria-label="x" />);
-    fireEvent.click(screen.getByRole("checkbox"));
+    await user.click(screen.getByRole("checkbox"));
     expect(onChange).toHaveBeenCalledWith(true);
   });
 });

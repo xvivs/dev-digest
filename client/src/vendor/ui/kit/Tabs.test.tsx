@@ -1,6 +1,7 @@
 import React from "react";
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { render, screen, cleanup, fireEvent } from "@testing-library/react";
+import { render, screen, cleanup } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { Tabs } from "./Tabs";
 
 afterEach(cleanup);
@@ -17,10 +18,11 @@ describe("Tabs", () => {
     expect(screen.getByRole("tab", { name: "Rejected" })).toHaveAttribute("aria-selected", "false");
   });
 
-  it("reports the clicked tab's key", () => {
+  it("reports the clicked tab's key", async () => {
+    const user = userEvent.setup();
     const onChange = vi.fn();
     render(<Tabs tabs={TABS} value="all" onChange={onChange} />);
-    fireEvent.click(screen.getByRole("tab", { name: /^Accepted/ }));
+    await user.click(screen.getByRole("tab", { name: /^Accepted/ }));
     expect(onChange).toHaveBeenCalledWith("accepted");
   });
 

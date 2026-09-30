@@ -1,6 +1,7 @@
 /** ScanHeader — the header line and stats strip of AC-34, and the Re-scan button's states. */
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { screen, cleanup, fireEvent, within } from "@testing-library/react";
+import { screen, cleanup, act, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { renderWithProviders } from "@/test/render";
 import messages from "../../../../../../../messages/en/conventions.json";
 import costMessages from "../../../../../../../messages/en/cost.json";
@@ -68,9 +69,10 @@ describe("ScanHeader", () => {
     expect(screen.queryByRole("group", { name: "Scan statistics" })).not.toBeInTheDocument();
   });
 
-  it("re-scans on click", () => {
+  it("re-scans on click", async () => {
+    const user = userEvent.setup();
     const { onRescan } = renderHeader();
-    fireEvent.click(screen.getByRole("button", { name: "Re-scan" }));
+    await user.click(screen.getByRole("button", { name: "Re-scan" }));
     expect(onRescan).toHaveBeenCalledTimes(1);
   });
 
@@ -117,5 +119,48 @@ describe("ScanHeader", () => {
     expect(screen.getByText(/^Last scan failed/)).toBeInTheDocument();
     expect(screen.queryByText(/Showing results/)).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Re-scan" })).toBeEnabled();
+  });
+});
+
+describe("ScanHeader clock while a scan runs", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const running = scan({ id: "s2", status: "running", started_at: "2026-09-29T09:00:00.000Z", finished_at: null });
+
+  it("keeps 'Scanning… started X ago' counting without any prop change", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-29T09:00:05.000Z"));
+    renderHeader({ runningScan: running, scanning: true });
+    expect(screen.getByText("Scanning… started 5 seconds ago")).toBeInTheDocument();
+
+    act(() => {
+      vi.advanceTimersByTime(60_000);
+    });
+    expect(screen.getByText("Scanning… started 1 minute ago")).toBeInTheDocument();
+  });
+
+  it("does not move the label between two ticks", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-29T09:00:05.000Z"));
+    renderHeader({ runningScan: running, scanning: true });
+    act(() => {
+      vi.advanceTimersByTime(4_000);
+    });
+    expect(screen.getByText("Scanning… started 5 seconds ago")).toBeInTheDocument();
+  });
+
+  it("does not tick when no scan is running", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-29T09:05:00.000Z"));
+    renderHeader({ scan: scan({ finished_at: "2026-09-29T09:00:42.000Z" }) });
+    const label = /^Detected from 84 sample files · last scan 4 minutes ago$/;
+    expect(screen.getByText(label)).toBeInTheDocument();
+
+    act(() => {
+      vi.advanceTimersByTime(600_000);
+    });
+    expect(screen.getByText(label)).toBeInTheDocument();
   });
 });

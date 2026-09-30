@@ -1,5 +1,4 @@
 import { describe, it, expect } from "vitest";
-import { ApiError } from "@/lib/api";
 import { candidate, page, scan } from "../../fixtures";
 import { emptyTabKind, errorMessage, isIndexBlocked, isRepoBlockedError, resolveScreen, type ScreenInput } from "./helpers";
 
@@ -70,10 +69,10 @@ describe("isIndexBlocked", () => {
 
 describe("isRepoBlockedError", () => {
   it("recognises 409 repo_not_indexed and repo_not_cloned only", () => {
-    expect(isRepoBlockedError(new ApiError("x", 409, "repo_not_indexed"))).toBe(true);
-    expect(isRepoBlockedError(new ApiError("x", 409, "repo_not_cloned"))).toBe(true);
-    expect(isRepoBlockedError(new ApiError("x", 409, "scan_running"))).toBe(false);
-    expect(isRepoBlockedError(new ApiError("x", 500, "repo_not_indexed"))).toBe(false);
+    expect(isRepoBlockedError({ message: "x", status: 409, code: "repo_not_indexed" })).toBe(true);
+    expect(isRepoBlockedError({ message: "x", status: 409, code: "repo_not_cloned" })).toBe(true);
+    expect(isRepoBlockedError({ message: "x", status: 409, code: "scan_running" })).toBe(false);
+    expect(isRepoBlockedError({ message: "x", status: 500, code: "repo_not_indexed" })).toBe(false);
     expect(isRepoBlockedError(null)).toBe(false);
   });
 });
@@ -90,14 +89,13 @@ describe("emptyTabKind", () => {
 describe("errorMessage", () => {
   it("is null when there is no error", () => {
     expect(errorMessage(null, "fallback")).toBeNull();
-    expect(errorMessage(undefined, "fallback")).toBeNull();
   });
 
-  it("shows the server text of an ApiError", () => {
-    expect(errorMessage(new ApiError("Clone is locked", 409, "clone_locked"), "fallback")).toBe("Clone is locked");
+  it("shows the server text of an error the API answered with", () => {
+    expect(errorMessage({ message: "Clone is locked", status: 409, code: "clone_locked" }, "fallback")).toBe("Clone is locked");
   });
 
-  it("falls back for any other error", () => {
-    expect(errorMessage(new Error("boom"), "fallback")).toBe("fallback");
+  it("falls back for an error that never reached the API", () => {
+    expect(errorMessage({ message: "boom" }, "fallback")).toBe("fallback");
   });
 });

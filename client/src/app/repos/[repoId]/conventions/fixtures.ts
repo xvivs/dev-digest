@@ -1,6 +1,12 @@
 /* Test fixtures for the Conventions route: valid contract objects with sensible
    defaults, so a test states only what it cares about. Not imported by app code. */
-import type { ConventionCandidate, ConventionScan, ConventionsPage } from "@devdigest/shared";
+import type {
+  ConventionCandidate,
+  ConventionScan,
+  ConventionsPage,
+  CreateSkillFromConventionsResponse,
+  Repo,
+} from "@devdigest/shared";
 
 export function candidate(id: string, over: Partial<ConventionCandidate> = {}): ConventionCandidate {
   return {
@@ -55,4 +61,39 @@ export function scan(over: Partial<ConventionScan> = {}): ConventionScan {
 export function page(over: Partial<ConventionsPage> = {}): ConventionsPage {
   const done = scan();
   return { last_scan: done, running_scan: null, latest_done_scan: done, candidates: [], ...over };
+}
+
+/** The `POST /repos/:id/conventions/skills` answer: a created skill and the agents it was linked to. */
+export function createdSkill(over: Partial<CreateSkillFromConventionsResponse> = {}): CreateSkillFromConventionsResponse {
+  return {
+    skill: {
+      id: "sk-new",
+      name: "payments-api-conventions",
+      description: "",
+      type: "custom",
+      source: "manual",
+      body: "# payments-api-conventions\n",
+      enabled: true,
+      version: 1,
+      needs_vetting: false,
+    },
+    linked_agent_ids: [],
+    ...over,
+  };
+}
+
+/** A repo of the workspace, cloned by default. */
+export function repo(over: Partial<Repo> = {}): Repo {
+  return {
+    id: "repo-1",
+    workspace_id: "ws-1",
+    owner: "acme",
+    name: "payments-api",
+    full_name: "acme/payments-api",
+    default_branch: "main",
+    clone_path: "/clones/x",
+    last_polled_at: null,
+    created_by: null,
+    ...over,
+  };
 }

@@ -13,6 +13,7 @@ import type { ConventionCategory, ConventionStatus } from "@devdigest/shared";
 import { AppShell } from "@/components/app-shell";
 import { RepoNotFound } from "@/components/repo-not-found";
 import {
+  errorInfo,
   useConventions,
   useExtractConventions,
   useRefreshRepo,
@@ -22,8 +23,7 @@ import {
   useUpdateConvention,
 } from "@/lib/hooks";
 import { useActiveRepo, useRepoNotFound } from "@/lib/repo-context";
-import { ApiError } from "@/lib/api";
-import { DEFAULT_TAB, TAB_KEYS, type TabKey } from "../../constants";
+import { DEFAULT_TAB, LOCAL_ERRORS, MAX_SKILL_CONVENTIONS, TAB_KEYS, type TabKey } from "../../constants";
 import {
   acceptedIds,
   effectiveSelection,
@@ -35,7 +35,7 @@ import { ConventionCard } from "../ConventionCard";
 import { NotIndexedState } from "../NotIndexedState";
 import { ScanHeader } from "../ScanHeader";
 import { TransformToSkillModal } from "../TransformToSkillModal";
-import { LOCAL_ERRORS, MAX_SELECTED, SKELETON_CARDS, SKELETON_CARD_HEIGHT } from "./constants";
+import { SKELETON_CARDS, SKELETON_CARD_HEIGHT } from "./constants";
 import { emptyTabKind, errorMessage, isIndexBlocked, isIndexed, isNotCloned, isRepoBlockedError, resolveScreen } from "./helpers";
 import { s } from "./styles";
 
@@ -79,7 +79,8 @@ export function ConventionsView({ repoId }: { repoId: string }) {
   const selection = effectiveSelection(selectedIds, accepted);
   const selectedCandidates = candidates.filter((c) => selection.includes(c.id));
 
-  const repoBlocked = isRepoBlockedError(extract.error);
+  const extractFailure = errorInfo(extract.error);
+  const repoBlocked = isRepoBlockedError(extractFailure);
   const screen = resolveScreen({
     page,
     loading: conventions.isPending && !conventions.isError,
@@ -102,15 +103,15 @@ export function ConventionsView({ repoId }: { repoId: string }) {
   const cloneRepo = () => clone.mutate(repoId, { onSuccess: onRequestAccepted });
   const notCloned = isNotCloned({
     clonePath: activeRepo?.clone_path,
-    extractError: extract.error,
+    extractError: extractFailure,
     indexReason: indexState.data?.reason,
   });
   const indexing = resync.isPending || indexRequested;
   // Accepted but the clone has not shown up yet: keep the button busy while it is polled for.
   const cloning = clone.isPending || (clone.isSuccess && clonePath === null);
   const errorFallback = t("states.notIndexed.errorFallback");
-  const cloneError = errorMessage(clone.error, errorFallback);
-  const indexError = errorMessage(resync.error, errorFallback);
+  const cloneError = errorMessage(errorInfo(clone.error), errorFallback);
+  const indexError = errorMessage(errorInfo(resync.error), errorFallback);
   const decide = (id: string, status: ConventionStatus) => update.mutate({ id, patch: { status } });
   const edit = (id: string, next: { rule: string; category: ConventionCategory }) => {
     const current = candidates.find((c) => c.id === id);
@@ -139,7 +140,7 @@ export function ConventionsView({ repoId }: { repoId: string }) {
       }
       return next;
     });
-  const canCreate = selection.length > 0 && selection.length <= MAX_SELECTED;
+  const canCreate = selection.length > 0 && selection.length <= MAX_SKILL_CONVENTIONS;
 
   if (repoNotFound) {
     return (
@@ -158,8 +159,8 @@ export function ConventionsView({ repoId }: { repoId: string }) {
   const emptyKind = emptyTabKind(screen, tab);
   const failedScan = screen === "failed" ? page?.last_scan : null;
   const showList = screen === "list" || screen === "allRejected" || (screen === "failed" && candidates.length > 0);
-  const extractError = repoBlocked ? null : errorMessage(extract.error, t("extract.errorTitle"));
-  const extractCode = extract.error instanceof ApiError ? knownErrorCode(extract.error.code) ?? knownErrorCode(extractError) : null;
+  const extractError = repoBlocked ? null : errorMessage(extractFailure, t("extract.errorTitle"));
+  const extractCode = extractFailure?.status !== undefined ? knownErrorCode(extractFailure.code) ?? knownErrorCode(extractError) : null;
 
   return (
     <AppShell crumb={crumb}>
@@ -351,8 +352,9 @@ function RawDetails({ raw }: { raw: string }) {
 }
 
 function LoadingCards() {
+  const t = useTranslations("conventions");
   return (
-    <div style={s.skeletons} aria-busy="true">
+    <div style={s.skeletons} role="status" aria-busy="true" aria-label={t("page.loading")}>
       {Array.from({ length: SKELETON_CARDS }).map((_, i) => (
         <Skeleton key={i} height={SKELETON_CARD_HEIGHT} />
       ))}

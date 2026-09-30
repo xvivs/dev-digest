@@ -27,21 +27,24 @@ export const CONFIDENCE_MEDIUM_PCT = 60;
 export const RULE_MIN_LENGTH = 8;
 export const RULE_MAX_LENGTH = 300;
 
-/** Skill-name rule the server enforces (`^[a-z0-9][a-z0-9-]{1,63}$`). */
-export const SKILL_NAME_PATTERN = /^[a-z0-9][a-z0-9-]{1,63}$/;
-export const SKILL_NAME_MAX_LENGTH = 64;
-export const SKILL_NAME_SUFFIX = "-conventions";
-
-/** A snippet enters the skill body with at most this many lines (AC-43). */
-export const SNIPPET_MAX_LINES = 12;
-/** Shortest fence Markdown accepts; a longer one is used when the snippet contains backticks. */
-export const MIN_FENCE_LENGTH = 3;
-/** Longest section heading slug, so a 300-char rule does not become a 300-char heading. */
-export const HEADING_SLUG_MAX_LENGTH = 48;
-
-/** Enabled-skills budget per agent: 24 KB of body text (server `AGENT_SKILLS_BODY_BUDGET_BYTES`). */
-export const AGENT_SKILLS_BUDGET_BYTES = 24576;
-/** "Attach to agents" accepts at most this many agents (AC-45, `agent_ids` max). */
-export const MAX_ATTACHED_AGENTS = 20;
 /** `convention_ids` max on `POST /repos/:id/conventions/skills` (AC-6). */
 export const MAX_SKILL_CONVENTIONS = 50;
+
+/** HTTP statuses the screens branch on. */
+export const CONFLICT_STATUS = 409;
+export const UNPROCESSABLE_STATUS = 422;
+
+/** Failures of these mutations render inline, so the global toast stays silent (ADR 0011). */
+export const LOCAL_ERRORS = { meta: { errorSurface: "local" } } as const;
+
+/** Error codes a failed scan or a blocked extract carries; each has copy in `errors.<code>`. */
+export const KNOWN_ERROR_CODES = [
+  "scan_deadline_exceeded",
+  "empty_sample",
+  "head_moved",
+  "repo_not_indexed",
+  "repo_not_cloned",
+  "repo_not_found",
+  "interrupted",
+] as const;
+export type KnownErrorCode = (typeof KNOWN_ERROR_CODES)[number];

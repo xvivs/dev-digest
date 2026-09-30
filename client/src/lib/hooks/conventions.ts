@@ -14,6 +14,7 @@ import { ConventionCandidate, ConventionsPage, CreateSkillFromConventionsRespons
 import type { CreateSkillFromConventionsBody, UpdateConventionBody } from "@devdigest/shared";
 import { api, ApiError } from "../api";
 import type { MutationHookOptions } from "../query-client";
+import type { ErrorInfo } from "../types";
 
 /** Poll cadence while a scan runs (the job takes tens of seconds, D2). */
 const SCAN_POLL_MS = 2000;
@@ -47,6 +48,16 @@ export interface ExtractConventionsResult {
   scan_id: string;
   /** True when a scan was already running and this call attached to it (AC-41). */
   attached: boolean;
+}
+
+/**
+ * A failed request as plain data (`null` when there is no error), so the
+ * Conventions screens classify errors without importing `ApiError`.
+ */
+export function errorInfo(err: unknown): ErrorInfo | null {
+  if (!err) return null;
+  if (err instanceof ApiError) return { message: err.message, status: err.status, code: err.code, details: err.details };
+  return { message: err instanceof Error ? err.message : "" };
 }
 
 /** The running scan's id out of a 409 `scan_running` error, else null. */

@@ -57,7 +57,7 @@ export function ConventionCard({
 
   return (
     <>
-      <article style={s.card(tone)}>
+      <article style={s.card(tone)} aria-label={candidate.rule}>
         <div style={s.main}>
           <div style={s.titleRow}>
             {selectable && (
