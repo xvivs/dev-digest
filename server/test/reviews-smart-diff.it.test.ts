@@ -128,6 +128,79 @@ d('GET /pulls/:id/smart-diff (Testcontainers pg)', () => {
     expect((await get(foreign.id)).statusCode).toBe(404);
   });
 
+  async function addReview(
+    prId: string,
+    agentId: string | null,
+    createdAt: string,
+    fs: Array<{ file: string; line: number; dismissed?: boolean; accepted?: boolean }>,
+  ) {
+    const [rv] = await pg.handle.db
+      .insert(t.reviews)
+      .values({ workspaceId, prId, agentId, kind: 'review', createdAt: new Date(createdAt) })
+      .returning();
+    if (fs.length > 0) {
+      await pg.handle.db.insert(t.findings).values(
+        fs.map((f) => ({
+          reviewId: rv!.id,
+          file: f.file,
+          startLine: f.line,
+          endLine: f.line,
+          severity: 'WARNING',
+          category: 'bug',
+          title: `t-${f.file}-${f.line}`,
+          rationale: 'r',
+          confidence: 0.8,
+          dismissedAt: f.dismissed ? new Date('2026-01-10T00:00:00Z') : null,
+          acceptedAt: f.accepted ? new Date('2026-01-10T00:00:00Z') : null,
+        })),
+      );
+    }
+  }
+
+  it('AC-8: finding_lines are distinct ascending active lines of the latest review per agent only', async () => {
+    const pr = await makePr(['src/a.ts', 'src/b.ts']);
+    const agent = '11111111-1111-4111-8111-111111111111';
+    const other = '22222222-2222-4222-8222-222222222222';
+    // older review of `agent`: must be ignored entirely
+    await addReview(pr.id, agent, '2026-01-01T00:00:00Z', [{ file: 'src/a.ts', line: 1 }]);
+    await addReview(pr.id, agent, '2026-01-03T00:00:00Z', [
+      { file: 'src/a.ts', line: 9 },
+      { file: 'src/a.ts', line: 4 },
+      { file: 'src/a.ts', line: 7, dismissed: true },
+      { file: 'src/b.ts', line: 2, accepted: true },
+      { file: 'not/in/pr.ts', line: 5 },
+    ]);
+    // a second agent's finding on the same line as the first agent's: still one entry
+    await addReview(pr.id, other, '2026-01-02T00:00:00Z', [{ file: 'src/a.ts', line: 9 }]);
+
+    const body = SmartDiffResponse.parse((await get(pr.id)).json());
+    const files = Object.fromEntries(body.groups.flatMap((g) => g.files).map((f) => [f.path, f.finding_lines]));
+    expect(files).toEqual({ 'src/a.ts': [4, 9], 'src/b.ts': [2] });
+    expect(body.groups.flatMap((g) => g.files).map((f) => f.path)).not.toContain('not/in/pr.ts');
+  });
+
+  it('AC-22/D6: dismissing the last active finding of a file empties its finding_lines; accept keeps it', async () => {
+    const pr = await makePr(['src/a.ts']);
+    await addReview(pr.id, null, '2026-01-01T00:00:00Z', [{ file: 'src/a.ts', line: 3 }]);
+    const [f] = await pg.handle.db
+      .select()
+      .from(t.findings)
+      .innerJoin(t.reviews, eq(t.reviews.id, t.findings.reviewId))
+      .where(eq(t.reviews.prId, pr.id));
+    const id = f!.findings.id;
+    expect((await app.inject({ method: 'POST', url: `/findings/${id}/accept` })).statusCode).toBe(200);
+    const accepted = SmartDiffResponse.parse((await get(pr.id)).json());
+    expect(accepted.groups[0]!.files[0]!.finding_lines).toEqual([3]);
+    expect((await app.inject({ method: 'POST', url: `/findings/${id}/dismiss` })).statusCode).toBe(200);
+    const dismissed = SmartDiffResponse.parse((await get(pr.id)).json());
+    expect(dismissed.groups[0]!.files[0]!.finding_lines).toEqual([]);
+  });
+
+  it('malformed id is rejected by the params schema (422/400), not 500', async () => {
+    const res = await get('not-a-uuid');
+    expect([400, 422]).toContain(res.statusCode);
+  });
+
   it('made no LLM or GitHub call', () => {
     expect(calls).toBe(0);
   });

@@ -17,16 +17,19 @@ const routes: Record<string, Route> = {};
 
 const get = vi.fn(async (path: string, schema?: { parse: (v: unknown) => unknown }) => {
   if (!(path in routes)) throw new Error(`unmocked GET ${path}`);
-  const value = routes[path];
+  const value = await routes[path];
   if (value instanceof Error) throw value;
   return schema ? schema.parse(value) : value;
 });
 const post = vi.fn(async (path: string, _body?: unknown) => {
-  if (path === "/findings/f1/accept") {
+  const m = /^\/findings\/([^/]+)\/(accept|dismiss)$/.exec(path);
+  if (m) {
+    const [, id, action] = m;
+    const stamp = action === "accept" ? { accepted_at: "2026-09-30T10:00:00Z" } : { dismissed_at: "2026-09-30T10:00:00Z" };
     const reviews = routes["/pulls/pr-1/reviews"] as ReviewRecord[];
     routes["/pulls/pr-1/reviews"] = reviews.map((r) => ({
       ...r,
-      findings: r.findings.map((f) => (f.id === "f1" ? { ...f, accepted_at: "2026-09-30T10:00:00Z" } : f)),
+      findings: r.findings.map((f) => (f.id === id ? { ...f, ...stamp } : f)),
     }));
     return { finding: {} };
   }
@@ -123,8 +126,8 @@ function setRoutes(over: Record<string, Route> = {}) {
   });
 }
 
-function renderTab() {
-  return renderWithProviders(<DiffTab prId="pr-1" headSha="sha-1" files={FILES} canComment={false} />, {
+function renderTab(files: PrFile[] = FILES) {
+  return renderWithProviders(<DiffTab prId="pr-1" headSha="sha-1" files={files} canComment={false} />, {
     namespaces: { prReview, diffViewer },
   });
 }
@@ -249,5 +252,198 @@ describe("DiffTab", () => {
     renderTab();
     expect(await screen.findByText("1 finding on files not in this diff")).toBeInTheDocument();
     expect(screen.getByText("Stray")).toBeInTheDocument();
+  });
+
+  it("AC-18/19: the group counter counts files, not findings (2 files / 5 findings -> 2); each file dot counts its own", async () => {
+    const files: PrFile[] = [
+      { path: "src/a.ts", additions: 2, deletions: 1, patch: PATCH },
+      { path: "src/b.ts", additions: 2, deletions: 1, patch: PATCH },
+      { path: "src/c.ts", additions: 2, deletions: 1, patch: PATCH },
+    ];
+    const base = review().findings[0]!;
+    const mk = (id: string, file: string, line: number) => ({ ...base, id, file, start_line: line, end_line: line, title: id });
+    const r = review();
+    r.findings = [mk("f1", "src/a.ts", 1), mk("f2", "src/a.ts", 2), mk("f3", "src/a.ts", 3), mk("f4", "src/b.ts", 2), mk("f5", "src/b.ts", 3)];
+    const sd = smartDiff();
+    sd.groups[0]!.files = files.map((f) => ({ path: f.path, additions: 2, deletions: 1, finding_lines: [] }));
+    sd.groups[1]!.files = [];
+    sd.groups[3]!.files = [];
+    setRoutes({ "/pulls/pr-1/reviews": [r], "/pulls/pr-1/smart-diff": sd });
+    renderTab(files);
+    await screen.findByText("Core logic");
+    const core = sectionOf("Core logic");
+    expect(within(core).getByRole("img", { name: "2 files with findings" })).toBeInTheDocument();
+    expect(within(core).queryByRole("img", { name: "5 files with findings" })).toBeNull();
+    expect(within(core).getByText("3 files")).toBeInTheDocument();
+    expect(within(core).getByRole("img", { name: "3 findings" })).toBeInTheDocument();
+    expect(within(core).getByRole("img", { name: "2 findings" })).toBeInTheDocument();
+    // src/c.ts has no finding -> exactly two file dots
+    expect(within(core).getAllByRole("img", { name: /^\d+ findings?$/ })).toHaveLength(2);
+    // group description comes from the messages
+    expect(within(core).getByText(prReview.smartDiff.coreDescription)).toBeInTheDocument();
+  });
+
+  it("AC-22: Dismiss posts, refetches the reviews, and the finding stops counting and loses its stripe", async () => {
+    const user = userEvent.setup();
+    renderTab();
+    await screen.findByText("Boundary untested");
+    expect(screen.getByTitle("Boundary untested")).toBeInTheDocument(); // the stripe tooltip
+    expect(screen.getByRole("img", { name: "1 finding" })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "1 file with findings" })).toBeInTheDocument();
+
+    const before = get.mock.calls.filter(([p]) => p === "/pulls/pr-1/reviews").length;
+    await user.click(screen.getByRole("button", { name: "Reject" }));
+    expect(post).toHaveBeenCalledWith("/findings/f1/dismiss", undefined);
+    await waitFor(() =>
+      expect(get.mock.calls.filter(([p]) => p === "/pulls/pr-1/reviews").length).toBeGreaterThan(before),
+    );
+
+    expect(await screen.findByText("rejected")).toBeInTheDocument();
+    expect(screen.getByText("Boundary untested")).toBeInTheDocument(); // card stays, muted
+    expect(screen.queryByTitle("Boundary untested")).toBeNull();
+    expect(screen.queryByRole("img", { name: /finding/ })).toBeNull();
+    expect(screen.getByRole("button", { name: "Hide comments & findings (0)" })).toBeInTheDocument();
+  });
+
+  it("an accepted finding still counts and keeps its stripe", async () => {
+    const user = userEvent.setup();
+    renderTab();
+    await screen.findByText("Boundary untested");
+    await user.click(screen.getByRole("button", { name: "Accept" }));
+    expect(await screen.findByText("accepted")).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "1 finding" })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "1 file with findings" })).toBeInTheDocument();
+    expect(screen.getByTitle("Boundary untested")).toBeInTheDocument();
+  });
+
+  it("AC-25: toggling off hides cards, the unmatched-file block and comments; stripes, dots and counters stay", async () => {
+    const r = review();
+    r.findings.push({ ...r.findings[0]!, id: "f2", title: "Stray", file: "old/name.ts" });
+    setRoutes({ "/pulls/pr-1/comments": [comment], "/pulls/pr-1/reviews": [r] });
+    const user = userEvent.setup();
+    renderTab();
+    await screen.findByText("Stray");
+    await user.click(screen.getByRole("button", { name: "Show all (3)" }));
+    expect(await screen.findByText("looks good")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /^Hide comments & findings/ }));
+    expect(screen.queryByText("looks good")).toBeNull();
+    expect(screen.queryByText("Boundary untested")).toBeNull();
+    expect(screen.queryByText("Stray")).toBeNull();
+    expect(screen.queryByText("1 finding on files not in this diff")).toBeNull();
+    expect(screen.getByTitle("Boundary untested")).toBeInTheDocument();
+    expect(screen.getByText("blocker")).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "1 finding" })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "1 file with findings" })).toBeInTheDocument();
+  });
+
+  it("AC-23: a finding outside the patch renders in its file's block and still counts; a finding for a file not in the PR counts nowhere", async () => {
+    const r = review();
+    r.findings = [
+      { ...r.findings[0]!, id: "out", title: "Off patch", start_line: 99, end_line: 99 },
+      { ...r.findings[0]!, id: "gone", title: "Gone file", file: "old/name.ts" },
+    ];
+    setRoutes({ "/pulls/pr-1/reviews": [r] });
+    renderTab();
+    const block = await screen.findByText("1 finding outside the shown lines");
+    expect(within(sectionOf("Core logic")).getByText("Off patch")).toBeInTheDocument();
+    expect(block.closest("section")).toBe(sectionOf("Core logic"));
+    expect(screen.queryByTitle("Off patch")).toBeNull(); // no rendered line, no stripe
+    expect(within(sectionOf("Core logic")).getByRole("img", { name: "1 file with findings" })).toBeInTheDocument();
+    // AC-24: the stray block is after the last group, outside every group
+    const stray = screen.getByText("Gone file");
+    expect(screen.getByText("1 finding on files not in this diff")).toBeInTheDocument();
+    for (const label of ["Core logic", "Tests", "Wiring", "Docs", "Boilerplate"]) {
+      expect(sectionOf(label)).not.toContainElement(stray);
+    }
+    expect(screen.getAllByRole("img", { name: /file with findings|files with findings/ })).toHaveLength(1);
+  });
+
+  it("AC-24: in Original order the unmatched-files block follows the flat list", async () => {
+    const r = review();
+    r.findings.push({ ...r.findings[0]!, id: "f2", title: "Stray", file: "old/name.ts" });
+    setRoutes({ "/pulls/pr-1/reviews": [r] });
+    const user = userEvent.setup();
+    renderTab();
+    await screen.findByText("Core logic");
+    await user.click(screen.getByRole("button", { name: "Original order" }));
+    const title = screen.getByText("1 finding on files not in this diff");
+    const lastPath = screen.getByText("README.md");
+    expect(lastPath.compareDocumentPosition(title) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("AC-14: docs/boilerplate cards collapse and big files collapse; open state follows the path into Original order", async () => {
+    const user = userEvent.setup();
+    const files: PrFile[] = [
+      { path: "src/a.ts", additions: 2, deletions: 1, patch: PATCH },
+      { path: "src/big.ts", additions: 150, deletions: 60, patch: PATCH }, // 210 > AUTO_EXPAND_MAX_LINES
+      { path: "README.md", additions: 1, deletions: 0, patch: PATCH },
+    ];
+    const sd = smartDiff();
+    sd.groups[0]!.files = [
+      { path: "src/a.ts", additions: 2, deletions: 1, finding_lines: [] },
+      { path: "src/big.ts", additions: 150, deletions: 60, finding_lines: [] },
+    ];
+    sd.groups[1]!.files = [];
+    setRoutes({ "/pulls/pr-1/reviews": [], "/pulls/pr-1/smart-diff": sd });
+    renderTab(files);
+    await screen.findByText("Core logic");
+    const core = sectionOf("Core logic");
+    expect(within(core).getByRole("button", { name: /src\/a\.ts/ })).toHaveAttribute("aria-expanded", "true");
+    expect(within(core).getByRole("button", { name: /src\/big\.ts/ })).toHaveAttribute("aria-expanded", "false");
+    expect(within(sectionOf("Docs")).getAllByRole("button")[0]).toHaveAttribute("aria-expanded", "false");
+
+    await user.click(screen.getByRole("button", { name: "Original order" }));
+    expect(screen.getByRole("button", { name: /README\.md/ })).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByRole("button", { name: /src\/big\.ts/ })).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByRole("button", { name: /src\/a\.ts/ })).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("AC-16: a path missing from the smart-diff response is shown in the core group", async () => {
+    const sd = smartDiff();
+    sd.groups[0]!.files = [];
+    setRoutes({ "/pulls/pr-1/smart-diff": sd });
+    renderTab();
+    await screen.findByText("Core logic");
+    expect(within(sectionOf("Core logic")).getByText("src/a.ts")).toBeInTheDocument();
+    expect(within(sectionOf("Core logic")).getByText("1 file")).toBeInTheDocument();
+  });
+
+  it("AC-17: while the smart-diff query loads the flat list shows, with no failure note; groups appear once it resolves", async () => {
+    let release!: (v: SmartDiff) => void;
+    setRoutes({ "/pulls/pr-1/smart-diff": new Promise<SmartDiff>((res) => (release = res)) });
+    renderTab();
+    expect(await screen.findByText("src/a.ts")).toBeInTheDocument();
+    expect(screen.queryByText("Core logic")).toBeNull();
+    expect(screen.queryByText("Couldn’t group files by role; showing the original order.")).toBeNull();
+    release(smartDiff());
+    expect(await screen.findByText("Core logic")).toBeInTheDocument();
+  });
+
+  it("AC-28: clicking the card header collapses it to one line without dismissing the finding", async () => {
+    const user = userEvent.setup();
+    renderTab();
+    await screen.findByText("Needs a test.");
+    await user.click(screen.getByRole("button", { name: /Boundary untested/ }));
+    expect(screen.queryByText("Needs a test.")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Accept" })).toBeNull();
+    expect(screen.getByText("Boundary untested")).toBeInTheDocument();
+    expect(post).not.toHaveBeenCalled();
+    expect(screen.getByRole("img", { name: "1 finding" })).toBeInTheDocument();
+  });
+
+  it("AC-34: HTML in a finding title or rationale is rendered as text, never as elements", async () => {
+    const r = review();
+    r.findings[0] = {
+      ...r.findings[0]!,
+      title: '<img src=x onerror="alert(1)">',
+      rationale: '<script>window.__pwned = 1</script><img src=y onerror="alert(2)"> **bold**',
+    };
+    setRoutes({ "/pulls/pr-1/reviews": [r] });
+    const { container } = renderTab();
+    await screen.findByText('<img src=x onerror="alert(1)">');
+    expect(container.querySelector("img")).toBeNull();
+    expect(container.querySelector("script")).toBeNull();
+    expect((window as unknown as { __pwned?: number }).__pwned).toBeUndefined();
   });
 });
