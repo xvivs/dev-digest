@@ -89,6 +89,8 @@ lives in the engineering-insights skill).
 
 - **An eval suite stuck at `running N-1/N` with one run still `running` and its `jobs` row `failed: Operation timed out after 360000ms` means the job timeout fired and nothing failed the run** — the handler owns run status, and before the fix a JobRunner timeout only freed the queue slot. The suite then stayed open until a reboot and blocked every new suite in the workspace through the one-running-suite index. Fix: the rejected `job.done` calls `EvalsService.timeOutJob`, which fails the run guarded on `status='running'` and counts it once (`server/src/modules/evals/wiring.ts:86`, `server/src/modules/evals/service.ts:364`). A tsx-watch restart also heals it, because boot recovery fails orphans. _(2026-09-29)_
 
+- **After merging `main` into a branch that also added migrations, `pnpm db:migrate` on the branch's dev DB silently skips main's migrations — no error, the tables just never appear** — drizzle's migrator applies only journal entries whose `when` is newer than `max(created_at)` in `drizzle.__drizzle_migrations`; the branch's own migrations were generated later, so main's older `when`s fall below the watermark. Renumber the branch's migrations on top (`drizzle-kit generate [--custom]`, see `server/src/db/migrations/meta/_journal.json` idx 22-24), then repair a DB that keeps its data: delete the branch's old rows from `__drizzle_migrations`, run the migrator on a temp folder holding migrations only up to main's last one, insert rows for the renumbered ones (`hash` = sha256 of the `.sql` file, `created_at` = journal `when`), and prove it with a `pg_dump --schema-only` diff against a DB migrated from scratch. _(2026-09-30)_
+
 ## Session Notes
 
 ### 2026-09-19 — Cost Badge (server) session

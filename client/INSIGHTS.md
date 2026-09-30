@@ -190,6 +190,8 @@ lives in the engineering-insights skill).
 
 - **In a working tree shared with a concurrent agent, `git rm <path>` stages the deletion right away, and a later `git add <other paths> && git commit` ships it with those files, even though you never named it** — `git commit` with no pathspec commits the whole index. That is how the PlaceholderTab deletion landed in the helpers refactor `4bd3ad0`, a commit whose `SkillEditor.tsx` still imports that component. Delete with plain `rm`, stage the deletion only in the commit that removes its last import, and run `git diff --cached --stat` before every commit. _(2026-09-29)_
 
+- **A merge that pairs this branch's `Tabs` (`role="tab"`, `client/src/vendor/ui/kit/Tabs.tsx`) with tests written on `main` fails them with `Unable to find an accessible element with the role "button" and name "…"`** — main's tests still query tab switches as buttons (`SkillEditorView.test.tsx`, `EvalsTab.test.tsx`); the component is fine, only the query needs `getByRole("tab", …)`. Also re-check client mirrors of server rules after such a merge: `restoreResetsVetting` (`VersionsTab/_components/RestoreVersionModal/helpers.ts:11`) had main's `imported`-only rule while the server resets `extracted` too (`server/src/modules/skills/domain.ts:234`), and no unit test caught it — only `skills-versions.it.test.ts`. _(2026-09-30)_
+
 ## Session Notes
 
 - Cost Badge (L01, client half): added `RunCostValue` + `formatCost`/`exactCost`
