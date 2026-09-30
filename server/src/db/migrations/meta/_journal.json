@@ -155,6 +155,27 @@
       "when": 1790689360726,
       "tag": "0021_eval_suites_case_ids",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1790767983884,
+      "tag": "0022_delete_legacy_conventions",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1790768001542,
+      "tag": "0023_add_conventions_extractor",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1790768009307,
+      "tag": "0024_drop_legacy_convention_columns",
+      "breakpoints": true
     }
   ]
 }

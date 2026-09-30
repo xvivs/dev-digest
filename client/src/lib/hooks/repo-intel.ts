@@ -8,6 +8,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
+import type { MutationHookOptions } from "../query-client";
 
 /** Subset of the server's IndexState the badge + completion-poll need (kept
     local — not in @devdigest/shared, since repo-intel types live server-side). */
@@ -38,9 +39,10 @@ export function useRepoIntelStatus(repoId: string | null | undefined, poll = fal
 }
 
 /** POST /repos/:id/resync → fetch latest + incremental reindex (resync, not re-clone). */
-export function useResyncRepoIntel(repoId: string | null | undefined) {
+export function useResyncRepoIntel(repoId: string | null | undefined, options?: MutationHookOptions) {
   const qc = useQueryClient();
   return useMutation({
+    meta: options?.meta,
     mutationFn: () => api.post<{ status: string }>(`/repos/${repoId}/resync`),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["repo-intel-state", repoId] });

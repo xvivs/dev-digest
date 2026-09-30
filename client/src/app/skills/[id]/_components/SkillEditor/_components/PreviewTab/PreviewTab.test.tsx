@@ -31,7 +31,7 @@ describe("PreviewTab", () => {
 
   it("Source view marks an invisible character", () => {
     renderTab("safe​text");
-    fireEvent.click(screen.getByRole("button", { name: "Source" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Source" }));
     const mark = screen.getByTitle("U+200B");
     expect(mark.tagName).toBe("MARK");
     expect(
@@ -41,13 +41,13 @@ describe("PreviewTab", () => {
 
   it("Source view warns about an HTML comment, hidden from Rendered", () => {
     renderTab("visible <!-- hidden instruction -->");
-    fireEvent.click(screen.getByRole("button", { name: "Source" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Source" }));
     expect(screen.getByText("This body contains HTML comments, hidden from the rendered view.")).toBeInTheDocument();
   });
 
   it("shows neither warning for a plain body", () => {
     renderTab("Use when a branch is untested.");
-    fireEvent.click(screen.getByRole("button", { name: "Source" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Source" }));
     expect(screen.queryByText(/invisible or bidirectional/)).not.toBeInTheDocument();
     expect(screen.queryByText(/HTML comments/)).not.toBeInTheDocument();
   });

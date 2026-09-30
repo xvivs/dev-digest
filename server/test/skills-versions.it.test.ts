@@ -8,7 +8,7 @@ import { loadConfig } from '../src/platform/config.js';
 import { seed } from '../src/db/seed.js';
 import * as t from '../src/db/schema.js';
 import { MockGitClient, MockGitHubClient } from '../src/adapters/mocks.js';
-import { SKILL_BODY_MAX } from '../src/modules/skills/constants.js';
+import { SKILL_BODY_MAX } from '../src/modules/_shared/skill-limits.js';
 
 const hasDocker = await dockerAvailable();
 const d = hasDocker ? describe : describe.skip;
@@ -428,7 +428,7 @@ d('skill versions (Testcontainers pg)', () => {
         needsVetting: e!.needsVetting,
         vetted: e!.vettedBodyHash !== null,
       });
-      expect(r!.needsVetting).toBe(source === 'imported');
+      expect(r!.needsVetting).toBe(source === 'imported' || source === 'extracted');
 
       // A restore never enables: an unvetted result cannot be switched on.
       if (r!.needsVetting) {

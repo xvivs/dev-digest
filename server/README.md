@@ -55,7 +55,7 @@ flowchart LR
   tighter per-route caps on expensive endpoints (e.g. `POST /pulls/:id/review`);
   SSE and `/health*` are exempt.
 - Modules are registered statically in `src/modules/index.ts` (one import + one
-  `app.register` each); the engine reaps orphaned `running` runs on boot.
+  `app.register` each); the API process (`server.ts`, via `reapOnBoot`) reaps orphaned `running` runs on boot; see ADR 0020.
 
 ## API map (starter)
 

@@ -6,6 +6,8 @@
 export {
   assemblePrompt,
   wrapUntrusted,
+  neutralizeDelimiters,
+  newPromptNonce,
   type PromptParts,
   type AssembledPrompt,
 } from '@devdigest/reviewer-core';

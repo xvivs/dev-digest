@@ -34,7 +34,7 @@ import type {
 import { AppError } from '../../platform/errors.js';
 import { LLM_CALL_TIMEOUT_MS, LLM_STRUCTURED_MAX_RETRIES } from '../../platform/llm-limits.js';
 import { DEFAULT_BASE_DELAY_MS, DEFAULT_MAX_DELAY_MS, DEFAULT_RETRIES } from '../../platform/resilience.js';
-import type { EvalSuiteView } from '../_shared/eval-suite.js';
+import { isSuiteStale, type EvalSuiteView } from '../_shared/eval-suite.js';
 
 export type { EvalSuiteView };
 
@@ -700,12 +700,7 @@ export function assertWithinBudget(estimateUsd: number, maxUsd: number): void {
 // Staleness (ADR 0017 §7)
 // ---------------------------------------------------------------------------
 
-export function isSuiteStale(
-  suite: Pick<EvalSuiteRecord, 'promptSha256' | 'carrierAgentVersion'>,
-  current: { promptSha256: string | null; carrierVersion: number | null },
-): boolean {
-  return suite.promptSha256 !== current.promptSha256 || suite.carrierAgentVersion !== current.carrierVersion;
-}
+export { isSuiteStale };
 
 // ---------------------------------------------------------------------------
 // Carrier + arms (ADR 0018 §9)

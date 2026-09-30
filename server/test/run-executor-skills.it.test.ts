@@ -15,6 +15,7 @@ import { MockLLMProvider, MockEmbedder, MockGitClient } from '../src/adapters/mo
 import * as t from '../src/db/schema.js';
 import type { Review } from '@devdigest/shared';
 import { estimateTokens } from '@devdigest/reviewer-core';
+import { applySourcePolicy } from '../src/modules/_shared/skill-rules.js';
 import { createHash } from 'node:crypto';
 import { eq, sql } from 'drizzle-orm';
 
@@ -200,6 +201,103 @@ d('ReviewRunExecutor resolves effective skills (Testcontainers pg)', () => {
     expect(String(trace.prompt_assembly.skills ?? '')).not.toContain(globallyDisabledSkill.name);
     expect(String(trace.prompt_assembly.skills ?? '')).not.toContain(unvettedSkill.name);
     await app.close();
+  });
+
+  it('an extracted skill (ADR 0019) reaches the prompt through the hash gate; a tampered one does not', async () => {
+    const app = await appWith(REVIEW_FIXTURE);
+    const { pr, agent } = await setupPr(app);
+
+    // Stored exactly as the conventions module stores it: auto-vetted with sha256(body).
+    const insertExtracted = async (name: string, body: string, tamper: boolean) => {
+      const policy = applySourcePolicy('extracted', body, true);
+      const [row] = await pg.handle.db
+        .insert(t.skills)
+        .values({
+          workspaceId,
+          name,
+          description: '',
+          type: 'convention',
+          source: 'extracted',
+          body: tamper ? `${body} (edited behind the vet)` : body,
+          enabled: policy.enabled,
+          needsVetting: policy.needsVetting,
+          vettedBodyHash: policy.vettedBodyHash,
+          evidenceFiles: ['src/config.ts'],
+        })
+        .returning();
+      return row!;
+    };
+    const vetted = await insertExtracted(`extracted-ok-${Date.now()}`, 'Throw NotFoundError for missing rows.', false);
+    const tampered = await insertExtracted(`extracted-tampered-${Date.now()}`, 'Never log secrets.', true);
+
+    await app.inject({
+      method: 'PUT',
+      url: `/agents/${agent.id}/skills`,
+      payload: {
+        links: [
+          { skill_id: vetted.id, enabled: true },
+          { skill_id: tampered.id, enabled: true },
+        ],
+      },
+    });
+
+    const started = await app.inject({ method: 'POST', url: `/pulls/${pr.id}/review`, payload: { agentId: agent.id } });
+    const runId = started.json().runs[0].run_id;
+    await waitForPrRuns(pg.handle.db, pr.id, { expected: 1 });
+
+    const trace = (await app.inject({ method: 'GET', url: `/runs/${runId}/trace` })).json();
+    const used = trace.prompt_assembly.skills_used as { id: string }[];
+    expect(used.map((s) => s.id)).toEqual([vetted.id]);
+    expect(String(trace.prompt_assembly.skills)).toContain('Throw NotFoundError for missing rows.');
+    expect(String(trace.prompt_assembly.skills)).not.toContain(tampered.name);
+    await app.close();
+  });
+
+  // Invariant every reader relies on (UI trace drawer, waitForPrRuns callers):
+  // once agent_runs.status is terminal, GET /runs/:id/trace already resolves.
+  // A trigger snapshots "does the trace row exist?" at the exact moment the
+  // status flips, so the check is deterministic, not timing-dependent.
+  it('the trace is persisted BEFORE the run turns terminal (done and failed paths)', async () => {
+    const { sql } = pg.handle;
+    await sql.unsafe(`
+      CREATE TABLE IF NOT EXISTS test_terminal_probe (run_id uuid, status text, trace_present boolean);
+      CREATE OR REPLACE FUNCTION test_terminal_probe_fn() RETURNS trigger AS $$
+      BEGIN
+        INSERT INTO test_terminal_probe
+          VALUES (NEW.id, NEW.status, EXISTS (SELECT 1 FROM run_traces WHERE run_id = NEW.id));
+        RETURN NEW;
+      END $$ LANGUAGE plpgsql;
+      DROP TRIGGER IF EXISTS test_terminal_probe_trg ON agent_runs;
+      CREATE TRIGGER test_terminal_probe_trg AFTER UPDATE OF status ON agent_runs
+        FOR EACH ROW WHEN (NEW.status IN ('done', 'failed', 'cancelled') AND OLD.status IS DISTINCT FROM NEW.status)
+        EXECUTE FUNCTION test_terminal_probe_fn();
+    `);
+    try {
+      const runOnce = async (structured: unknown) => {
+        const app = await appWith(structured);
+        const { pr, agent } = await setupPr(app);
+        const started = await app.inject({ method: 'POST', url: `/pulls/${pr.id}/review`, payload: { agentId: agent.id } });
+        const runId = started.json().runs[0].run_id as string;
+        const [run] = await waitForPrRuns(pg.handle.db, pr.id, { expected: 1 });
+        await app.close();
+        return { runId, status: run?.status };
+      };
+      const done = await runOnce(REVIEW_FIXTURE);
+      // A fixture that fails the Review schema makes the mock LLM throw → failure path.
+      const failed = await runOnce({ not: 'a review' });
+      expect(done.status).toBe('done');
+      expect(failed.status).toBe('failed');
+
+      const probes = await sql<{ run_id: string; status: string; trace_present: boolean }[]>`
+        SELECT run_id, status, trace_present FROM test_terminal_probe
+        WHERE run_id IN (${done.runId}, ${failed.runId}) ORDER BY status`;
+      expect(probes.map((p) => [p.run_id, p.status, p.trace_present])).toEqual([
+        [done.runId, 'done', true],
+        [failed.runId, 'failed', true],
+      ]);
+    } finally {
+      await sql.unsafe(`DROP TRIGGER IF EXISTS test_terminal_probe_trg ON agent_runs;`);
+    }
   });
 
   it('vetting an imported skill makes it effective on the NEXT run', async () => {

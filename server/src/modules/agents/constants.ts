@@ -6,9 +6,5 @@ export const INITIAL_AGENT_VERSION = 1;
 /** Default agent description when none is supplied on insert. */
 export const DEFAULT_AGENT_DESCRIPTION = '';
 
-/**
- * SPEC-02 non-functional: enabled-skills budget per agent — 24 KB of body
- * text (≈6k tokens). In map-reduce the skills block repeats per file chunk,
- * so cost scales with files × skills; the budget caps the per-call size.
- */
-export const AGENT_SKILLS_BODY_BUDGET_BYTES = 24576;
+// The skills body budget lives in `_shared/skill-budget.ts`; re-exported for existing importers.
+export { AGENT_SKILLS_BODY_BUDGET_BYTES } from '../_shared/skill-budget.js';

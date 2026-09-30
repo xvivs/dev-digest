@@ -2,18 +2,27 @@
 // pr-self-review: Claude Code PreToolUse hook for Bash.
 //
 // Lets `git push` / `gh pr create` through only when a PASS stamp exists for
-// the current branch diff (.devdigest/self-review/<diffHash>.json). It never
-// runs the review itself: it is a file check, so it stays fast and offline.
+// the branch diff of the repo the command acts on
+// (<toplevel>/.devdigest/self-review/<diffHash>.json). It never runs the
+// review itself: it is a file check, so it stays fast and offline.
 //
 // Exit codes (Claude Code hook contract): 0 = allow, 2 = block; stderr is shown
 // to the agent. Anything that is not a gated command exits 0 untouched. Once a
 // gated command is recognised, every failure blocks (fail-closed).
+//
+// Command recognition (quotes, redirects, pipes, `cd`, `git -C/-c/--git-dir`)
+// lives in shell.mjs.
 
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { isAbsolute, join, resolve } from 'node:path';
 import { DEFAULT_BASE, branchDiff, currentBranch, git, repoRoot, stampLevel, stateDir } from './lib.mjs';
+import { UNKNOWN_DIR, commands, parseGhPrCreate, parseGit } from './shell.mjs';
 
 const HEAD_MOVERS = /^(commit|merge|rebase|cherry-pick|am|pull|reset|revert|checkout|switch|stash|restore|apply)$/;
+// `git push` flags that take a separate value (which is then not the remote).
+const PUSH_OPTS_WITH_VALUE = new Set(['-o', '--push-option', '--receive-pack', '--exec', '--repo']);
+
+let baseCwd;
 
 function block(message) {
   process.stderr.write(`pr-self-review gate: ${message}\n`);
@@ -28,37 +37,57 @@ function readInput() {
   }
 }
 
-// Naive shell split: good enough to find commands; quotes are not parsed, so a
-// quoted "git push" inside e.g. a commit message is treated as a push (blocks,
-// never lets something through).
-function segments(command) {
-  return command
-    .split(/&&|\|\||;|\||\n/)
-    .map((s) => s.trim())
-    .filter(Boolean);
-}
-
-function tokens(segment) {
-  return segment.split(/\s+/).filter(Boolean);
-}
-
-// Returns { kind: 'git', sub, args, dir } | { kind: 'gh-pr-create', args } | null
-function parse(segment) {
-  const t = tokens(segment);
-  let i = 0;
-  while (i < t.length && /^[A-Za-z_][A-Za-z0-9_]*=/.test(t[i])) i++; // env assignments
-  if (t[i] === 'git') {
-    i++;
-    let dir;
-    while (i < t.length && t[i].startsWith('-')) {
-      if (t[i] === '-C') dir = t[++i];
-      else if (t[i] === '-c') i++;
-      i++;
-    }
-    return { kind: 'git', sub: t[i], args: t.slice(i + 1), dir };
+// Returns { kind: 'git', sub, args, target } | { kind: 'gh-pr-create', args, target } | null.
+// `target` describes where the command runs: `-C`/`--git-dir`/`--work-tree` and a
+// preceding `cd <path>` all move it away from the session cwd.
+function classify(cmd) {
+  const g = parseGit(cmd);
+  if (g) {
+    const explicit = g.cdirs.length > 0 || Boolean(g.gitDir) || Boolean(g.workTree) || cmd.cwd !== baseCwd;
+    return { kind: 'git', sub: g.sub, args: g.args, target: { ...g, cwd: cmd.cwd, explicit } };
   }
-  if (t[i] === 'gh' && t[i + 1] === 'pr' && t[i + 2] === 'create') return { kind: 'gh-pr-create', args: t.slice(i + 3) };
+  const h = parseGhPrCreate(cmd);
+  if (h) return { kind: 'gh-pr-create', args: h.args, target: { cwd: cmd.cwd, cdirs: [], explicit: cmd.cwd !== baseCwd } };
   return null;
+}
+
+// The repo root + branch a gated command really acts on. The stamp must come
+// from THAT repo, not from $CLAUDE_PROJECT_DIR, or a push from another worktree
+// would be judged by (or skip) the wrong stamp. { error } when it cannot be pinned down.
+function resolveTarget(t) {
+  const why = t.explicit ? 'Команда працює не в каталозі сесії (`-C` / `--git-dir` / `--work-tree` / `cd`), ' : '';
+  if (t.cwd === UNKNOWN_DIR || t.dynamic)
+    return {
+      error:
+        `${why || 'Каталог команди '}не вдалося визначити статично (змінна, \`cd -\`, підстановка). ` +
+        'Вкажи літеральний шлях, або зайди в каталог окремою командою і запусти без `-C`.',
+    };
+  let dir = t.cwd;
+  for (const c of t.cdirs) dir = isAbsolute(c) ? c : resolve(dir, c);
+  if (t.workTree) dir = isAbsolute(t.workTree) ? t.workTree : resolve(dir, t.workTree);
+  let root;
+  try {
+    root = repoRoot(dir);
+  } catch {
+    if (!t.explicit) return { skip: true }; // not inside a git repo: not ours to gate
+    return { error: `${why}але \`${dir}\` не git-репозиторій або недоступний, штамп перевірити неможливо.` };
+  }
+  if (t.gitDir) {
+    const gd = isAbsolute(t.gitDir) ? t.gitDir : resolve(dir, t.gitDir);
+    try {
+      if (realpathSync(gd) !== realpathSync(git(root, ['rev-parse', '--absolute-git-dir']).trim()))
+        return { error: `\`--git-dir ${t.gitDir}\` вказує не на репозиторій ${root}. Використай \`git -C <шлях>\`.` };
+    } catch {
+      return { error: `не вдалося звірити \`--git-dir ${t.gitDir}\` з ${root}. Використай \`git -C <шлях>\`.` };
+    }
+  }
+  let branch;
+  try {
+    branch = currentBranch(root);
+  } catch (err) {
+    return { error: `не вдалося визначити гілку в ${root}: ${err.message}` };
+  }
+  return { root, branch };
 }
 
 // null = nothing to review in this push; otherwise the reason it must be gated.
@@ -67,7 +96,11 @@ function pushNeedsGate(args, root, branch) {
   if (flags.some((f) => ['--tags', '--delete', '-d', '--dry-run', '-n'].includes(f))) return null;
   if (flags.some((f) => ['--all', '--mirror', '--branches'].includes(f)))
     return { error: '`--all`/`--mirror` пушить інші гілки, для них штампа немає. Пуш по одній гілці.' };
-  const positional = args.filter((a) => !a.startsWith('-'));
+  const positional = [];
+  for (let k = 0; k < args.length; k++) {
+    if (PUSH_OPTS_WITH_VALUE.has(args[k])) k++;
+    else if (!args[k].startsWith('-')) positional.push(args[k]);
+  }
   const refspecs = positional.slice(1); // first positional is the remote
   if (refspecs.length === 0) return { ok: true };
   let pushesCode = false;
@@ -92,58 +125,65 @@ function isTag(root, name) {
   }
 }
 
+function ghHead(args) {
+  const i = args.findIndex((a) => a === '--head' || a === '-H');
+  if (i >= 0) return args[i + 1];
+  return args.find((a) => a.startsWith('--head='))?.slice('--head='.length);
+}
+
 function main() {
   const input = readInput();
   if (input.tool_name !== 'Bash') process.exit(0);
   const command = String(input.tool_input?.command ?? '');
-  if (!/\bgit\b[^\n]*\bpush\b|\bgh\s+pr\s+create\b/.test(command)) process.exit(0);
+  // Cheap pre-filter; the tokenizer decides. Must let `git -C x push` and `gh -R x pr create` through.
+  if (!/\bgit\b[\s\S]*\bpush\b|\bgh\b[\s\S]*\bpr\b[\s\S]*\bcreate\b/.test(command)) process.exit(0);
 
-  const cwd = input.cwd || process.env.CLAUDE_PROJECT_DIR || process.cwd();
-  const parsed = segments(command).map(parse);
-  const gatedAt = parsed.findIndex((p) => p && ((p.kind === 'git' && p.sub === 'push') || p.kind === 'gh-pr-create'));
+  baseCwd = resolve(input.cwd || process.env.CLAUDE_PROJECT_DIR || process.cwd());
+  const simple = commands(command, baseCwd);
+  // eval / xargs / find -exec / source / `bash -c "$VAR"` run something we cannot
+  // see. If push or pr create shows up in what they are given, refuse (fail-closed).
+  const pushText = /\bgit\b[\s\S]*\bpush\b|\bgh\b[\s\S]*\bpr\b[\s\S]*\bcreate\b/;
+  for (const c of simple) {
+    if (!c.indirect) continue;
+    // `source` / dynamic `bash -c` take no inline command: judge the whole line.
+    const text = c.indirect === 'source' || c.indirect === '.' || c.indirect === 'shell-dynamic' ? command : c.words.slice(1).join(' ');
+    if (pushText.test(text))
+      block(
+        `динамічний виклик push/pr create не перевіряється (\`${c.indirect}\`). ` +
+          'Запусти команду напряму: `git push …` / `gh pr create …` без eval, xargs, find -exec, source чи `bash -c "$VAR"`.',
+      );
+  }
+  const parsed = simple.map(classify);
+  const isGated = (p) => p && ((p.kind === 'git' && p.sub === 'push') || p.kind === 'gh-pr-create');
+  const gatedAt = parsed.findIndex(isGated);
   if (gatedAt === -1) process.exit(0);
 
-  let root;
-  try {
-    const dir = parsed[gatedAt].dir;
-    root = repoRoot(dir ? (isAbsolute(dir) ? dir : resolve(cwd, dir)) : cwd);
-  } catch {
-    process.exit(0); // not inside a git repo: not ours to gate
-  }
-  let branch;
-  try {
-    branch = currentBranch(root);
-  } catch (err) {
-    block(`не вдалося визначити гілку: ${err.message}`);
-  }
-
-  let needsGate = false;
-  // git push accepts a PASS of level "checks" or "full"; gh pr create needs "full".
-  // A command chain touching both (rare) is held to "full", the stricter one.
-  let requiredLevel;
+  // One stamp check per distinct repo root. git push accepts a PASS of level
+  // "checks" or "full"; gh pr create needs "full". A chain touching both in the
+  // same repo (rare) is held to "full", the stricter one.
+  const checks = new Map(); // root -> { branch, requiredLevel }
   for (const p of parsed.slice(gatedAt)) {
-    if (!p) continue;
-    if (p.kind === 'git' && p.sub === 'push') {
+    if (!isGated(p)) continue;
+    const target = resolveTarget(p.target);
+    if (target.error) block(target.error);
+    if (target.skip) continue;
+    const { root, branch } = target;
+    let level;
+    if (p.kind === 'git') {
       const r = pushNeedsGate(p.args, root, branch);
       if (r?.error) block(r.error);
-      if (r?.ok) {
-        needsGate = true;
-        requiredLevel ??= 'checks';
-      }
-    }
-    if (p.kind === 'gh-pr-create') {
-      const i = p.args.findIndex((a) => a === '--head' || a === '-H');
-      const head = i >= 0 ? p.args[i + 1] : undefined;
+      if (r?.ok) level = 'checks';
+    } else {
+      const head = ghHead(p.args);
       if (head && head !== branch && !head.endsWith(`:${branch}`))
         block(`\`gh pr create --head ${head}\` відкриває PR не з поточної гілки (${branch}). Зроби checkout цієї гілки і повтори.`);
-      needsGate = true;
-      requiredLevel = 'full';
+      level = 'full';
     }
+    if (!level) continue;
+    const prev = checks.get(root);
+    checks.set(root, { branch, requiredLevel: prev?.requiredLevel === 'full' || level === 'full' ? 'full' : 'checks' });
   }
-  if (!needsGate) process.exit(0);
-  // The exact command to name in a block message: the minimal self-review that
-  // would satisfy what is actually being gated.
-  const suggestedCmd = requiredLevel === 'full' ? '/pr-self-review' : '/pr-self-review --checks-only';
+  if (checks.size === 0) process.exit(0);
 
   // A commit (or anything that moves HEAD) earlier in the same command would be
   // pushed without review: the hook only sees HEAD as it is right now.
@@ -154,18 +194,38 @@ function main() {
         'Розбий на кроки: спершу коміт, потім /pr-self-review, потім push або gh pr create.',
     );
 
+  for (const [root, { branch, requiredLevel }] of checks) verifyStamp(root, branch, requiredLevel);
+  process.exit(0);
+}
+
+// Blocks (exit 2) unless `root` holds a valid PASS stamp of a sufficient level
+// for its current branch diff. Returns normally when the command may go through.
+function verifyStamp(root, branch, requiredLevel) {
+  let sessionRoot;
+  try {
+    sessionRoot = repoRoot(baseCwd);
+  } catch {
+    sessionRoot = undefined;
+  }
+  const other = root !== sessionRoot;
+  const where = other ? ` (репозиторій ${root})` : '';
+  // The exact command to name in a block message: the minimal self-review that
+  // would satisfy what is actually being gated.
+  const suggestedCmd =
+    (requiredLevel === 'full' ? '/pr-self-review' : '/pr-self-review --checks-only') + (other ? ` (запусти з каталогу ${root})` : '');
+
   let diff;
   try {
     diff = branchDiff(root, DEFAULT_BASE);
   } catch (err) {
-    block(err.message);
+    block(`${err.message}${where}`);
   }
-  if (diff.patch.length === 0) process.exit(0); // nothing committed on top of main
+  if (diff.patch.length === 0) return; // nothing committed on top of main
 
   const stampPath = join(stateDir(root), `${diff.diffHash}.json`);
   if (!existsSync(stampPath))
     block(
-      `немає PASS-вердикту для поточного diff гілки ${branch} (diffHash ${diff.diffHash.slice(0, 12)}). ` +
+      `немає PASS-вердикту для поточного diff гілки ${branch}${where} (diffHash ${diff.diffHash.slice(0, 12)}). ` +
         `Запусти ${suggestedCmd} вручну (автовиклик вимкнено). Після PASS повтори цю саму команду.`,
     );
   let stamp;
@@ -185,7 +245,6 @@ function main() {
       `останній self-review — рівень "${stampLevel(stamp)}" (лише детерміновані перевірки), а для gh pr create потрібен повний прогін з лінзами. ` +
         `Запусти ${suggestedCmd}.`,
     );
-  process.exit(0);
 }
 
 try {

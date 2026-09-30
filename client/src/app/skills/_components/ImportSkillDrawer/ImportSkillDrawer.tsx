@@ -24,7 +24,7 @@ import { useCreateSkill } from "@/lib/hooks";
 import { useToast } from "@/lib/toast";
 import { SKILL_TYPE_OPTIONS } from "@/app/skills/constants";
 import { skillEditorHref } from "@/app/skills/helpers";
-import { SkillBodyPreview } from "@/app/skills/_components/SkillBodyPreview";
+import { SkillBodyPreview } from "@/components/skill-body-preview";
 import { DEFAULT_IMPORT_SKILL_TYPE, DRAWER_WIDTH, IMPORT_ACCEPT } from "./constants";
 import {
   ImportParseError,

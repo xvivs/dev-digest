@@ -16,13 +16,11 @@ import type {
   SkillType,
 } from '@devdigest/shared';
 import { AppError, ValidationError } from '../../platform/errors.js';
-import { suiteImpactVerdict, type EvalSuiteView } from '../_shared/eval-suite.js';
-import {
-  INVISIBLE_CHARS_PATTERN,
-  SKILL_BODY_MAX,
-  SKILL_DESCRIPTION_MAX,
-  SKILL_NAME_PATTERN,
-} from './constants.js';
+import { isSuiteStale, suiteImpactVerdict, type EvalSuiteView } from '../_shared/eval-suite.js';
+import { SKILL_BODY_MAX, SKILL_DESCRIPTION_MAX, SKILL_NAME_PATTERN } from '../_shared/skill-limits.js';
+import { containsInvisibleChars } from '../_shared/text-hygiene.js';
+
+export { containsInvisibleChars };
 
 /** What the service reads and writes. Not a Drizzle row, not an HTTP DTO. */
 export interface Skill {
@@ -49,6 +47,48 @@ export interface SkillLatestVerdict {
   stale: boolean;
 }
 
+/** Raw columns of the latest done Full suite for one skill, as the list query reads them. */
+export interface LatestSuiteRaw {
+  /** `results->>'verdict'` straight from jsonb: unvalidated text. */
+  verdict: string | null;
+  /** Carrier's current name; null once the agent is deleted. */
+  carrierName: string | null;
+  /** Carrier name stored on the suite (fallback when the agent is gone). */
+  storedCarrierName: string | null;
+  suitePromptSha256: string | null;
+  suiteCarrierVersion: number | null;
+  /** Carrier's current version; null once the agent is deleted. */
+  carrierVersion: number | null;
+  /** The skill's current prompt hash. */
+  currentPromptSha256: string;
+}
+
+const IMPACT_VERDICTS: Record<ImpactVerdict, true> = {
+  helps: true,
+  neutral: true,
+  hurts: true,
+  indicative: true,
+  unknown: true,
+};
+
+function isImpactVerdict(v: string): v is ImpactVerdict {
+  return Object.hasOwn(IMPACT_VERDICTS, v);
+}
+
+/** Null = no suite, or a stored verdict this build does not know (shown as "no evals"). */
+export function toLatestVerdict(raw: LatestSuiteRaw): SkillLatestVerdict | null {
+  if (raw.verdict === null || raw.suitePromptSha256 === null || raw.suiteCarrierVersion === null) return null;
+  if (!isImpactVerdict(raw.verdict)) return null;
+  return {
+    verdict: raw.verdict,
+    carrierName: raw.carrierName ?? raw.storedCarrierName ?? '',
+    stale: isSuiteStale(
+      { promptSha256: raw.suitePromptSha256, carrierAgentVersion: raw.suiteCarrierVersion },
+      { promptSha256: raw.currentPromptSha256, carrierVersion: raw.carrierVersion },
+    ),
+  };
+}
+
 /** A skill plus how many agents link it, its completed runs over the last
  *  30 days and its latest Full eval verdict (`GET /skills` row). */
 export interface SkillListItem extends Skill {
@@ -65,9 +105,13 @@ export interface NewSkill {
   type: SkillType;
   source: SkillSource;
   body: string;
-  /** Resolved by `applyImportPolicy` — never trusted from the client on import. */
+  /** Resolved by `applySourcePolicy` — never trusted from the client on import. */
   enabled: boolean;
   needsVetting: boolean;
+  /** sha256(body) for an auto-vetted (`extracted`) skill; omitted otherwise. */
+  vettedBodyHash?: string | null;
+  /** Files the rule was extracted from (`extracted` skills). */
+  evidenceFiles?: string[] | null;
 }
 
 /** Fields the API allows a PUT to change (D8: partial body). */
@@ -169,10 +213,6 @@ export function assertRestorableContent(content: Partial<SkillContent>): void {
   }
 }
 
-export function containsInvisibleChars(body: string): boolean {
-  return INVISIBLE_CHARS_PATTERN.test(body);
-}
-
 export class SkillNameTakenError extends AppError {
   constructor(name: string) {
     super('skill_name_taken', `A skill named "${name}" already exists in this workspace`, 409, {
@@ -217,24 +257,13 @@ export class SkillNotVettedError extends AppError {
   }
 }
 
-/**
- * ADR 0012 tiers: a manual skill is trusted on save. An imported skill always
- * starts disabled and unvetted, whatever the request asked for — the caller
- * (service) must never forward a client-supplied `enabled`/`needs_vetting` for
- * an import.
- */
-export function applyImportPolicy(source: SkillSource): { enabled: boolean; needsVetting: boolean } {
-  if (source === 'manual') return { enabled: true, needsVetting: false };
-  return { enabled: false, needsVetting: true };
-}
-
 export interface VettingTransition {
   needsVetting: boolean;
   vettedBodyHash: string | null;
 }
 
 /**
- * ADR 0012: editing the body of an IMPORTED skill resets vetting — the body a
+ * ADR 0012: editing the body of an IMPORTED or EXTRACTED skill resets vetting (ADR 0019) — the body a
  * person vetted is no longer the body that would ship. `bodyChanged` is
  * decided by the caller (it already has old + new body in hand); a manual
  * skill's `needsVetting` never flips true here (manual skills are trusted on
@@ -244,7 +273,7 @@ export function resolveVettingOnBodyEdit(
   existing: Pick<Skill, 'source' | 'needsVetting' | 'vettedBodyHash'>,
   bodyChanged: boolean,
 ): VettingTransition {
-  if (bodyChanged && existing.source === 'imported') {
+  if (bodyChanged && (existing.source === 'imported' || existing.source === 'extracted')) {
     return { needsVetting: true, vettedBodyHash: null };
   }
   return { needsVetting: existing.needsVetting, vettedBodyHash: existing.vettedBodyHash };

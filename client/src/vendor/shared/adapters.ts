@@ -57,19 +57,54 @@ export interface CompletionResult {
  */
 export interface StructuredRequest<T> {
   model: string;
-  schema: z.ZodType<T>;
+  /** Input is `unknown`: a schema may transform (e.g. salvage) raw JSON into `T`. */
+  schema: z.ZodType<T, z.ZodTypeDef, unknown>;
   schemaName: string;
   messages: ChatMessage[];
   temperature?: number;
   maxTokens?: number;
   timeoutMs?: number;
   maxRetries?: number;
+  /** Cancels the call (and any repair attempts); rejects with an AbortError. */
+  signal?: AbortSignal;
   /**
    * OpenRouter session id — groups related generations (e.g. all map-reduce
    * chunks of one review) into a session in the OpenRouter dashboard. Sent as
    * the `session_id` body field; ignored by providers that don't support it.
    */
   sessionId?: string;
+  /**
+   * How the OpenAI-compatible providers ask for JSON. `'json_schema'` (default)
+   * sends the schema with `strict: true`. `'json_object'` sends JSON mode only:
+   * the prompt must describe the shape; the Zod schema still validates and
+   * drives the repair loop. Use it when key order matters — several OpenRouter
+   * upstreams re-sort `json_schema` properties alphabetically, so the model
+   * writes them in that order. Ignored by Anthropic (forced tool use).
+   */
+  responseFormat?: 'json_schema' | 'json_object';
+  /**
+   * OpenRouter: sends `reasoning: { enabled: false }`. A hybrid reasoning
+   * model otherwise spends the `maxTokens` budget on hidden reasoning and
+   * returns no content (`finish_reason: length`). Ignored by other providers.
+   */
+  disableReasoning?: boolean;
+  /**
+   * OpenRouter provider routing, sent as the `provider` body field
+   * (https://openrouter.ai/docs/features/provider-routing). One model id is
+   * served by many upstreams whose latency and output differ a lot; this picks
+   * or excludes them. `sort` turns off load balancing and tries upstreams in
+   * that order; `ignore` / `only` take provider slugs (`deepinfra`,
+   * `deepinfra/fp8`); `allowFallbacks: false` fails instead of falling back
+   * past the allowed set. Ignored by other providers.
+   */
+  providerRouting?: ProviderRouting;
+}
+
+export interface ProviderRouting {
+  sort?: 'throughput' | 'latency' | 'price';
+  ignore?: string[];
+  only?: string[];
+  allowFallbacks?: boolean;
 }
 
 export interface StructuredResult<T> {

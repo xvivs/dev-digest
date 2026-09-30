@@ -7,7 +7,6 @@
  */
 import type { SkillSource, SkillStatsWindow, SkillType } from '@devdigest/shared';
 import {
-  applyImportPolicy,
   assertEnableAllowed,
   assertRestorableContent,
   changedContent,
@@ -26,6 +25,7 @@ import {
   type SkillVersionSnapshot,
   type SkillVersionSummary,
 } from './domain.js';
+import { applySourcePolicy, assertSkillBodyHygiene } from '../_shared/skill-rules.js';
 import type { SkillImpactReader, SkillStatsReader, SkillStore } from './ports.js';
 import { STATS_WINDOW_DAYS } from './constants.js';
 
@@ -55,10 +55,12 @@ export class SkillsService {
   }
 
   /** ADR 0012: an import is always stored disabled + unvetted, whatever the
-   *  request says — `applyImportPolicy` never reads a client-supplied
+   *  request says — `applySourcePolicy` never reads a client-supplied
    *  enabled/needs_vetting because the input type has none. */
   create(workspaceId: string, input: CreateSkillInput): Promise<Skill> {
-    const { enabled, needsVetting } = applyImportPolicy(input.source);
+    assertSkillBodyHygiene(input.body);
+    // `create` only serves manual/imported (route-enforced): requestedEnabled is irrelevant there.
+    const { enabled, needsVetting } = applySourcePolicy(input.source, input.body, false);
     return this.store.insert({
       workspaceId,
       name: input.name,
@@ -80,6 +82,7 @@ export class SkillsService {
    * skill isn't in this workspace (route → 404).
    */
   update(workspaceId: string, id: string, patch: SkillPatch): Promise<Skill | undefined> {
+    if (patch.body !== undefined) assertSkillBodyHygiene(patch.body);
     return this.store.transaction(async (tx) => {
       const existing = await tx.findById(workspaceId, id);
       if (!existing) return undefined;

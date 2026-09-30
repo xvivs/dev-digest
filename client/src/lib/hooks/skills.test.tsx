@@ -17,7 +17,8 @@ vi.mock("../api", () => ({
   },
 }));
 
-import { useRestoreSkillVersion, useSkillStats, useSkillVersion, useSkillVersions, useUpdateSkill } from "./skills";
+import { useAgentSkills } from "./agents";
+import { useRestoreSkillVersion, useSkill, useSkills, useSkillStats, useSkillVersion, useSkillVersions, useUpdateSkill } from "./skills";
 
 const SKILL: Skill = {
   id: "sk1",
@@ -96,6 +97,44 @@ describe("useRestoreSkillVersion", () => {
       expect.arrayContaining([["skill", "sk1"], ["skill-versions", "sk1"], ["skill-stats", "sk1"], ["skills"], ["agent-skills"]]),
     );
     expect(qc.getQueryData(["skill", "sk1"])).toEqual(restored);
+  });
+
+  it("after a restore, every mounted consumer of the skill refetches: detail, versions, stats, list and agent-skills", async () => {
+    post.mockResolvedValue({ skill: { ...SKILL, version: 5 }, restored: true });
+    let serverVersion = 4;
+    get.mockImplementation((path: string) => Promise.resolve(path === "/skills/sk1" ? { ...SKILL, version: serverVersion } : []));
+    const qc = createTestQueryClient();
+    const { result } = renderHook(
+      () => ({
+        detail: useSkill("sk1"),
+        versions: useSkillVersions("sk1"),
+        stats: useSkillStats("sk1", "30d"),
+        list: useSkills(),
+        agentSkills: useAgentSkills("ag1"),
+        restore: useRestoreSkillVersion(),
+      }),
+      { wrapper: wrapperFor(qc) },
+    );
+    const settled = () =>
+      [result.current.detail, result.current.versions, result.current.stats, result.current.list, result.current.agentSkills].every(
+        (q) => q.isSuccess,
+      );
+    await waitFor(() => expect(settled()).toBe(true));
+    get.mockClear();
+    serverVersion = 5;
+
+    await act(async () => {
+      await result.current.restore.mutateAsync({ id: "sk1", version: 2, expectedVersion: 4 });
+    });
+
+    await waitFor(() => {
+      const paths = get.mock.calls.map((c) => c[0] as string);
+      expect(paths).toEqual(
+        expect.arrayContaining(["/skills/sk1/versions", "/skills/sk1/stats?window=30d", "/skills", "/agents/ag1/skills"]),
+      );
+    });
+    await waitFor(() => expect(get.mock.calls.map((c) => c[0] as string)).toContain("/skills/sk1"));
+    expect(result.current.detail.data?.version).toBe(5);
   });
 
   it("forwards meta so the caller can own the error surface (ADR 0011)", async () => {

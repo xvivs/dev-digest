@@ -53,13 +53,24 @@ function newNonce(): string {
   globalThis.crypto.getRandomValues(bytes);
   return [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
+/**
+ * Generate a nonce that occurs in none of `inputs` (ADR 0013). Public so other
+ * prompt builders (e.g. the conventions extractor) fence untrusted text with
+ * the same guarantee as `assemblePrompt`.
+ */
+export function newPromptNonce(inputs: string[]): string {
+  const joined = inputs.join('\u0000');
+  let nonce = newNonce();
+  while (joined.includes(nonce)) nonce = newNonce();
+  return nonce;
+}
 /** A caller-fixed nonce (tests) is validated; a generated one must not occur in any input. */
 function resolveNonce(parts: PromptParts): string {
   if (parts.nonce !== undefined) {
     if (!NONCE_RE.test(parts.nonce)) throw new Error('prompt nonce must match /^[a-z0-9]{8,32}$/');
     return parts.nonce;
   }
-  const inputs = [
+  return newPromptNonce([
     parts.system,
     parts.diff,
     parts.task,
@@ -69,10 +80,7 @@ function resolveNonce(parts: PromptParts): string {
     ...(parts.memory ?? []),
     ...(parts.specs ?? []),
     ...(parts.skills ?? []).flatMap((sk) => [sk.name, sk.body]),
-  ].join('\u0000');
-  let nonce = newNonce();
-  while (inputs.includes(nonce)) nonce = newNonce();
-  return nonce;
+  ].map((x) => x ?? ''));
 }
 
 /** One-line preamble that introduces the skills block in the system message. */

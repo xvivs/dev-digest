@@ -12,7 +12,13 @@ import { LLM_CALL_TIMEOUT_MS, LLM_STRUCTURED_MAX_RETRIES } from '../../platform/
 import { toJsonSchema, parseWithRepair } from '../../platform/structured.js';
 import { estimateCost } from './pricing.js';
 import { ExternalServiceError } from '../../platform/errors.js';
-import { pickCost } from '@devdigest/reviewer-core';
+import {
+  pickCost,
+  sdkRequestOptions,
+  throwIfAborted,
+  withTransientRetry,
+  deadlineFrom,
+} from '@devdigest/reviewer-core';
 
 const DEFAULT_TIMEOUT = LLM_CALL_TIMEOUT_MS;
 const EMBED_MODEL = 'text-embedding-3-small';
@@ -98,22 +104,35 @@ export class OpenAIProvider implements LLMProvider {
     let tokensIn = 0;
     let tokensOut = 0;
     let lastRaw = '';
+    const sdkOpts = sdkRequestOptions(req);
+    const deadlineAt = deadlineFrom(req.timeoutMs);
 
     for (let attempt = 1; attempt <= maxRetries + 1; attempt++) {
-      const res = await withRetry(() =>
+      throwIfAborted(req.signal);
+      const call = () =>
         withTimeout(
           this.client.chat.completions.create({
             model: req.model,
             messages,
             ...tuningParams(req.model, req.temperature, req.maxTokens),
-            response_format: {
-              type: 'json_schema',
-              json_schema: { name: req.schemaName, schema: jsonSchema.schema, strict: true },
-            },
-          }),
+            response_format:
+              req.responseFormat === 'json_object'
+                ? { type: 'json_object' }
+                : {
+                    type: 'json_schema',
+                    json_schema: { name: req.schemaName, schema: jsonSchema.schema, strict: true },
+                  },
+          }, sdkOpts),
           req.timeoutMs ?? DEFAULT_TIMEOUT,
-        ),
-      );
+        );
+      // A caller-owned deadline/signal: deadline-aware transient retry
+      // (SDK retries are 0); otherwise the generic backoff retry.
+      const res = sdkOpts
+        ? await withTransientRetry(call, {
+            ...(req.signal ? { signal: req.signal } : {}),
+            ...(deadlineAt !== undefined ? { deadlineAt } : {}),
+          })
+        : await withRetry(call);
       lastRaw = res.choices?.[0]?.message?.content ?? '';
       tokensIn += res.usage?.prompt_tokens ?? 0;
       tokensOut += res.usage?.completion_tokens ?? 0;

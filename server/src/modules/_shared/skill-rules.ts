@@ -1,0 +1,58 @@
+/**
+ * Skill invariants shared by `skills` (HTTP create/update) and `conventions`
+ * (extracted skills): the zod field schemas and the ADR 0012 / ADR 0019 source
+ * policy. Imported by routes/services, never by a `domain.ts`.
+ */
+import { z } from 'zod';
+import type { SkillSource } from '@devdigest/shared';
+import { ValidationError } from '../../platform/errors.js';
+import { sha256Hex } from './hash.js';
+import { containsInvisibleChars } from './text-hygiene.js';
+import { SKILL_BODY_MAX, SKILL_DESCRIPTION_MAX, SKILL_NAME_PATTERN } from './skill-limits.js';
+
+export { SKILL_BODY_MAX, SKILL_DESCRIPTION_MAX, SKILL_NAME_PATTERN };
+
+export const INVISIBLE_CHARS_MESSAGE =
+  'Body contains disallowed invisible/bidi-control characters (Unicode tags, bidi overrides, zero-width, BOM)';
+
+export const SkillName = z
+  .string()
+  .regex(SKILL_NAME_PATTERN, 'Name must be a lowercase slug: ^[a-z0-9][a-z0-9-]{1,63}$');
+
+export const SkillDescription = z.string().max(SKILL_DESCRIPTION_MAX);
+
+/** Shape only. The invisible-character rule is `assertSkillBodyHygiene`, run by the services. */
+export const SkillBody = z.string().min(1).max(SKILL_BODY_MAX);
+
+/** ADR 0012: reject a body with invisible/bidi-control characters (422 `validation_error`). */
+export function assertSkillBodyHygiene(body: string): void {
+  if (containsInvisibleChars(body)) throw new ValidationError(INVISIBLE_CHARS_MESSAGE);
+}
+
+export interface SourcePolicy {
+  enabled: boolean;
+  needsVetting: boolean;
+  vettedBodyHash: string | null;
+}
+
+/**
+ * Trust tier by source. manual: trusted on save. imported / imported_url /
+ * community: always disabled + unvetted whatever was requested (ADR 0012).
+ * extracted: the person reviewed the full body in the create flow, so it is
+ * auto-vetted with the hash of exactly that body and `enabled` is honoured
+ * (ADR 0019).
+ */
+export function applySourcePolicy(
+  source: SkillSource,
+  body: string,
+  requestedEnabled: boolean,
+): SourcePolicy {
+  switch (source) {
+    case 'manual':
+      return { enabled: true, needsVetting: false, vettedBodyHash: null };
+    case 'extracted':
+      return { enabled: requestedEnabled, needsVetting: false, vettedBodyHash: sha256Hex(body) };
+    default:
+      return { enabled: false, needsVetting: true, vettedBodyHash: null };
+  }
+}

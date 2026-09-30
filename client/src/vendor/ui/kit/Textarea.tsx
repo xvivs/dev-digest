@@ -7,16 +7,23 @@ export function Textarea({
   placeholder,
   rows = 5,
   mono,
+  id,
+  "aria-label": ariaLabel,
 }: {
   value: string;
   onChange?: (v: string) => void;
   placeholder?: string;
   rows?: number;
   mono?: boolean;
+  id?: string;
+  /** Accessible name when no `<label htmlFor={id}>` names it. */
+  "aria-label"?: string;
 }) {
   return (
     <textarea
       className={mono ? "mono" : undefined}
+      id={id}
+      aria-label={ariaLabel}
       value={value}
       rows={rows}
       placeholder={placeholder}

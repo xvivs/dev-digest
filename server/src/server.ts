@@ -4,7 +4,8 @@ import { loadConfig } from './platform/config.js';
 /** Production/dev entrypoint. `pnpm dev` runs `tsx watch src/server.ts`. */
 async function main() {
   const config = loadConfig();
-  const app = await buildApp({ config });
+  // The one real API process: it owns boot-time reaping of orphaned runs.
+  const app = await buildApp({ config, reapOnBoot: true });
 
   // Graceful shutdown: on SIGTERM/SIGINT close the server, which runs the
   // onClose hooks (drains in-flight requests/SSE, closes the postgres pool).

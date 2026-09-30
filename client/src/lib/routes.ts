@@ -6,3 +6,13 @@ import type { Repo } from "@devdigest/shared";
 export function repoPullsHref(repoId: Repo["id"]): string {
   return `/repos/${repoId}/pulls`;
 }
+
+/** A skill's editor (Config tab). For links from other features, e.g. a convention's "in: skill" badge. */
+export function skillHref(skillId: string): string {
+  return `/skills/${encodeURIComponent(skillId)}?tab=config`;
+}
+
+/** An agent's editor opened on its Skills tab. */
+export function agentSkillsHref(agentId: string): string {
+  return `/agents/${encodeURIComponent(agentId)}?tab=skills`;
+}

@@ -2,7 +2,7 @@
 "use client";
 
 import { useRef } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueries, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
 import type { MutationHookOptions } from "../query-client";
 import type {
@@ -106,6 +106,27 @@ export function useAgentSkills(agentId: string | null | undefined) {
     queryFn: () => api.get<AgentSkillLink[]>(`/agents/${agentId}/skills`),
     enabled: !!agentId,
   });
+}
+
+/**
+ * Skill links of several agents at once, keyed by agent id. Shares the
+ * `["agent-skills", id]` cache with `useAgentSkills`, so a save on the agent's
+ * Skills tab (or a conventions → skill create) refreshes both. Agents whose
+ * links have not arrived yet are absent from the map.
+ */
+export function useAgentsSkillLinks(agentIds: readonly string[]) {
+  const results = useQueries({
+    queries: agentIds.map((id) => ({
+      queryKey: ["agent-skills", id],
+      queryFn: () => api.get<AgentSkillLink[]>(`/agents/${id}/skills`),
+    })),
+  });
+  const byAgent = new Map<string, AgentSkillLink[]>();
+  agentIds.forEach((id, i) => {
+    const data = results[i]?.data;
+    if (data) byAgent.set(id, data);
+  });
+  return { byAgent, isPending: results.some((r) => r.isPending) };
 }
 
 export interface SetAgentSkillsInput {

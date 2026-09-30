@@ -15,6 +15,8 @@
 export {
   assemblePrompt,
   wrapUntrusted,
+  neutralizeDelimiters,
+  newPromptNonce,
   type PromptParts,
   type AssembledPrompt,
 } from './prompt.js';
@@ -42,6 +44,9 @@ export {
   reviewPullRequest,
   DEFAULT_MAP_THRESHOLD_LINES,
   DEFAULT_REVIEW_MAX_RETRIES,
+  DEFAULT_REVIEW_CALL_DEADLINE_MS,
+  DEFAULT_REVIEW_TEMPERATURE,
+  ReviewDeadlineError,
   type ReviewInput,
   type ReviewOutcome,
   type ReviewEvent,
@@ -65,3 +70,17 @@ export { OpenRouterProvider, type OpenRouterProviderOptions } from './llm/openro
 // tags the result, so a number is never persisted without saying where it
 // came from. Shared by every LLMProvider (server adapters + OpenRouterProvider).
 export { pickCost } from './llm/cost.js';
+
+// Per-request SDK options + abort guard shared by every LLMProvider (timeout/signal).
+export { sdkRequestOptions, throwIfAborted, type SdkRequestOptions } from './llm/request-options.js';
+
+// Deadline-aware retry for transient LLM errors (429 / 5xx / resets) — replaces
+// SDK retries whenever a request carries signal/timeoutMs.
+export {
+  withTransientRetry,
+  isTransientLlmError,
+  retryAfterMs,
+  abortableSleep,
+  deadlineFrom,
+  type TransientRetryOptions,
+} from './llm/retry.js';

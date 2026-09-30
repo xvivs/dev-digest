@@ -15,6 +15,13 @@ import {
   Settings,
   Repo,
   PrDetail,
+  ConventionCandidate,
+  ConventionsPage,
+  ConventionScan,
+  UpdateConventionBody,
+  CreateSkillFromConventionsBody,
+  CreateSkillFromConventionsResponse,
+  FEATURE_MODELS,
 } from '@devdigest/shared';
 
 /**
@@ -246,5 +253,126 @@ describe('platform DTOs', () => {
         commits: [],
       }),
     ).not.toThrow();
+  });
+});
+
+describe('conventions contracts', () => {
+  const scan = {
+    id: 's1',
+    repo_id: 'r1',
+    status: 'done',
+    commit_sha: 'abc123',
+    error: null,
+    sample_file_count: 12,
+    found_count: 8,
+    verified_count: 6,
+    dropped_count: 2,
+    relocated_count: 1,
+    matched_prior_count: 3,
+    duplicate_count: 0,
+    retry_count: 0,
+    model: 'deepseek/deepseek-v4-flash',
+    tokens_in: 9000,
+    tokens_out: 1200,
+    cost_usd: 0.004,
+    cost_source: 'estimated',
+    started_at: '2026-09-29T10:00:00.000Z',
+    finished_at: '2026-09-29T10:00:40.000Z',
+    duration_ms: 40000,
+  };
+  const candidate = {
+    id: 'c1',
+    repo_id: 'r1',
+    status: 'pending',
+    category: 'error-handling',
+    origin: 'code',
+    rule: 'Throw typed AppError subclasses instead of bare Error.',
+    original_rule: 'Throw typed AppError subclasses instead of bare Error.',
+    edited: false,
+    evidence: [{ path: 'src/a.ts', line_start: 3, line_end: 5, snippet: 'throw new NotFoundError()' }],
+    support_count: 4,
+    counter_count: 0,
+    review_hits: 1,
+    confidence: 0.82,
+    seen_in_latest: true,
+    last_seen_commit_sha: 'abc123',
+    skills: [{ id: 'sk1', name: 'team-conventions' }],
+    created_at: '2026-09-29T10:00:40.000Z',
+  };
+
+  it('ConventionsPage round-trips scan + candidate', () => {
+    expect(ConventionScan.parse(scan).cost_source).toBe('estimated');
+    const page = ConventionsPage.parse({
+      last_scan: scan,
+      running_scan: null,
+      latest_done_scan: scan,
+      candidates: [candidate],
+    });
+    expect(page.candidates[0]?.evidence).toHaveLength(1);
+  });
+
+  it('ConventionCandidate rejects the legacy shape and unknown enums', () => {
+    expect(() =>
+      ConventionCandidate.parse({
+        id: 'c1',
+        rule: 'r',
+        evidence_path: 'a.ts',
+        evidence_snippet: 's',
+        confidence: 0.5,
+        accepted: false,
+      }),
+    ).toThrow();
+    expect(() => ConventionCandidate.parse({ ...candidate, category: 'style' })).toThrow();
+    expect(() => ConventionCandidate.parse({ ...candidate, status: 'done' })).toThrow();
+    expect(() => ConventionCandidate.parse({ ...candidate, confidence: 1.2 })).toThrow();
+  });
+
+  it('UpdateConventionBody rejects an empty body and unknown fields', () => {
+    expect(UpdateConventionBody.safeParse({}).success).toBe(false);
+    expect(UpdateConventionBody.safeParse({ status: 'accepted', extra: 1 }).success).toBe(false);
+    expect(UpdateConventionBody.safeParse({ rule: 'short' }).success).toBe(false);
+    expect(UpdateConventionBody.safeParse({ rule: 'x'.repeat(301) }).success).toBe(false);
+    expect(UpdateConventionBody.safeParse({ category: 'other' }).success).toBe(true);
+    expect(UpdateConventionBody.safeParse({ status: 'rejected', rule: 'x'.repeat(8) }).success).toBe(true);
+  });
+
+  it('CreateSkillFromConventionsBody enforces id list bounds', () => {
+    const ok = { name: 'n', body: 'b', enabled: true, convention_ids: ['c1'], agent_ids: [] };
+    expect(CreateSkillFromConventionsBody.safeParse(ok).success).toBe(true);
+    expect(CreateSkillFromConventionsBody.safeParse({ ...ok, convention_ids: [] }).success).toBe(false);
+    expect(
+      CreateSkillFromConventionsBody.safeParse({
+        ...ok,
+        convention_ids: Array.from({ length: 51 }, (_, i) => `c${i}`),
+      }).success,
+    ).toBe(false);
+    expect(
+      CreateSkillFromConventionsBody.safeParse({
+        ...ok,
+        agent_ids: Array.from({ length: 21 }, (_, i) => `a${i}`),
+      }).success,
+    ).toBe(false);
+  });
+
+  it('CreateSkillFromConventionsResponse embeds the Skill schema', () => {
+    const skill = {
+      id: 'sk1',
+      name: 'team-conventions',
+      description: 'd',
+      type: 'convention',
+      source: 'extracted',
+      body: 'b',
+      enabled: true,
+      version: 1,
+    };
+    expect(
+      CreateSkillFromConventionsResponse.parse({ skill, linked_agent_ids: ['a1'] }).skill.source,
+    ).toBe('extracted');
+  });
+
+  it('FEATURE_MODELS conventions defaults to openrouter deepseek', () => {
+    const m = FEATURE_MODELS.find((f) => f.id === 'conventions');
+    expect(m?.defaultProvider).toBe('openrouter');
+    expect(m?.defaultModel).toBe('deepseek/deepseek-v4-flash');
   });
 });
