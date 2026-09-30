@@ -18,11 +18,11 @@ import { FindingsTab } from "@/app/repos/[repoId]/pulls/[number]/_components/Fin
 import { DiffTab } from "@/app/repos/[repoId]/pulls/[number]/_components/DiffTab";
 import { RunTraceDrawer } from "@/app/repos/[repoId]/pulls/[number]/_components/RunTraceDrawer";
 import { PrDetailSkeleton } from "../PrDetailSkeleton";
+import { CONDENSED_BAR_HEIGHT } from "@/app/repos/[repoId]/pulls/[number]/constants";
 import { RUNS_TAB, type PrTab } from "../../constants";
 import { parseSeverity, parseTab, prDetailHref } from "../../helpers";
 import { s } from "../../styles";
-import { useHeaderCollapse, useStickyOffset } from "./hooks";
-import { s as contentStyles } from "./styles";
+import { useCondensedHeader, useStickyOffset } from "./hooks";
 
 export interface PrDetailContentProps {
   repoId: string;
@@ -43,8 +43,11 @@ export function PrDetailContent({ repoId, number, repoFullName }: PrDetailConten
   const { data: pr, isLoading: detailLoading, isError, error, refetch } = usePullDetail(prId);
   const isLoading = pullsLoading || (prId != null && detailLoading);
   const { data: reviews } = usePrReviews(prId);
-  const { setSource: setHeaderRef, setTarget: setBodyRef } = useStickyOffset();
-  const { mobile, compact, reducedMotion, setCollapseSentinel, setExpandSentinel } = useHeaderCollapse();
+  const { layout, setSentinel } = useCondensedHeader();
+  // Desktop: measured header height. Mobile: the condensed bar's fixed height.
+  const { setSource: setHeaderRef, setTarget: setBodyRef } = useStickyOffset(
+    layout === "desktop" ? undefined : CONDENSED_BAR_HEIGHT,
+  );
 
   // Live run tracking is SERVER-SOURCED (agent_runs status='running'): survives
   // navigation AND reload, and self-clears via polling when runs finish.
@@ -106,20 +109,11 @@ export function PrDetailContent({ repoId, number, repoFullName }: PrDetailConten
         githubUrl={repoFullName ? githubPrUrl(repoFullName, pr.number) : null}
         onSetTab={setTab}
         onRunStart={openRunsTab}
-        mobile={mobile}
-        compact={compact}
-        reducedMotion={reducedMotion}
+        layout={layout}
+        sentinelRef={setSentinel}
       />
 
-      {/* Scroll markers for the mobile header collapse; <main> is their containing block. */}
-      {mobile && (
-        <>
-          <div ref={setCollapseSentinel} aria-hidden="true" style={contentStyles.collapseSentinel} />
-          <div ref={setExpandSentinel} aria-hidden="true" style={contentStyles.expandSentinel} />
-        </>
-      )}
-
-      <div ref={setBodyRef} style={mobile ? contentStyles.bodyUnderHeader : s.body}>
+      <div ref={setBodyRef} style={s.body}>
         {tab === "overview" && prId && <OverviewTab prId={prId} pr={pr} />}
 
         {tab === "findings" && (

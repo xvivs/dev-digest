@@ -2,17 +2,21 @@
 
 import React from "react";
 import { useTranslations } from "next-intl";
-import { Icon, Avatar, Badge, Button, Tabs } from "@devdigest/ui";
+import { Icon, Avatar, Badge, Button, Tabs, usePrefersReducedMotion } from "@devdigest/ui";
 import type { PrDetail } from "@/lib/types";
 import { STATUS_META } from "@/app/repos/[repoId]/pulls/constants";
 import type { PrTab } from "@/app/repos/[repoId]/pulls/[number]/_components/PrDetailView/constants";
+import type { HeaderLayout } from "@/app/repos/[repoId]/pulls/[number]/constants";
 import { RunReviewDropdown } from "../RunReviewDropdown";
+import { CondensedBar } from "./_components/CondensedBar";
 import { isSettledPr } from "./helpers";
 import { s } from "./styles";
 
 export interface PrDetailHeaderProps {
   /** Root element ref (React 19 ref-as-prop); PrDetailContent measures it for sticky offsets. */
   ref?: React.Ref<HTMLDivElement>;
+  /** Ref for the 1px marker at the header's bottom edge (the condensing observer). */
+  sentinelRef?: React.Ref<HTMLDivElement>;
   pr: PrDetail;
   prId: string | null;
   tab: PrTab;
@@ -22,28 +26,16 @@ export interface PrDetailHeaderProps {
   onSetTab: (tab: PrTab) => void;
   /** Fired the moment a review is kicked off (the page switches to the runs tab). */
   onRunStart: () => void;
-  /** Below the md breakpoint: dense layout, icon-only actions. */
-  mobile?: boolean;
-  /** Mobile only: scrolled past the collapse threshold, show the one-row header. */
-  compact?: boolean;
-  /** prefers-reduced-motion: reduce (smooth scroll becomes instant). */
-  reducedMotion?: boolean;
+  /** desktop: sticky header. mobile: header scrolls with the content. condensed: it has scrolled away, the bar is pinned. */
+  layout?: HeaderLayout;
 }
 
-/** Marks regions that hide in compact state, so focus inside one can be rescued. */
-const COLLAPSIBLE_ATTR = "data-pr-header-collapsible";
-
-/** Animated show/hide. `inert` keeps the hidden content out of the tab order and the a11y tree. */
-function Collapsible({ open, children }: { open: boolean; children: React.ReactNode }) {
-  return (
-    <div {...{ [COLLAPSIBLE_ATTR]: "" }} inert={!open} style={{ ...s.collapsible, ...(open ? null : s.collapsibleClosed) }}>
-      <div style={s.collapsibleInner}>{children}</div>
-    </div>
-  );
-}
+/** Marks the full header so focus inside it can follow it into the bar. */
+const FULL_HEADER_ATTR = "data-pr-header-full";
 
 export function PrDetailHeader({
   ref,
+  sentinelRef,
   pr,
   prId,
   tab,
@@ -51,60 +43,29 @@ export function PrDetailHeader({
   githubUrl,
   onSetTab,
   onRunStart,
-  mobile = false,
-  compact = false,
-  reducedMotion = false,
+  layout = "desktop",
 }: PrDetailHeaderProps) {
   const t = useTranslations("prReview");
   const status = STATUS_META[pr.status];
   const settled = isSettledPr(pr.status);
-  const isCompact = mobile && compact;
-  const titleButton = React.useRef<HTMLButtonElement>(null);
+  const reducedMotion = usePrefersReducedMotion();
+  const small = layout !== "desktop";
+  const condensed = layout === "condensed";
+  const barTitle = React.useRef<HTMLButtonElement>(null);
 
-  // Collapsing hides regions; if focus was inside one, hand it to the compact
-  // title instead of dropping it on <body>. Layout effect: it must read
-  // activeElement before the browser's next style pass blurs the hidden node.
+  // When the full header scrolls away with focus inside it, hand focus to the
+  // bar's title instead of dropping it on <body>. Only on the transition, so
+  // nothing is focused on mount. Layout effect: the bar is un-inerted by now.
   React.useLayoutEffect(() => {
-    if (!isCompact) return;
+    if (!condensed) return;
     const active = document.activeElement;
-    if (active instanceof HTMLElement && active.closest(`[${COLLAPSIBLE_ATTR}]`)) titleButton.current?.focus();
-  }, [isCompact]);
+    if (active instanceof HTMLElement && active.closest(`[${FULL_HEADER_ATTR}]`)) barTitle.current?.focus();
+  }, [condensed]);
 
   const scrollToTop = (e: React.MouseEvent<HTMLElement>) =>
     e.currentTarget.closest("main")?.scrollTo({ top: 0, behavior: reducedMotion ? "auto" : "smooth" });
 
-  const meta = (
-    <div style={mobile ? { ...s.meta, ...s.metaMobile } : s.meta}>
-      <span style={s.authorChip}>
-        <Avatar name={pr.author} size={17} />
-        {pr.author}
-      </span>
-      <span style={s.branchChip}>
-        <Icon.GitBranch size={13} style={s.mutedIcon} />
-        <span className="mono" style={mobile ? { ...s.branchMono, ...s.branchMonoMobile } : s.branchMono}>
-          {pr.branch}
-        </span>
-        <Icon.ArrowRight size={11} />
-        <span className="mono" style={mobile ? { ...s.branchMono, ...s.branchMonoMobile } : s.branchMono}>
-          {pr.base}
-        </span>
-      </span>
-      <span className="mono tnum">
-        <span style={s.additions}>+{pr.additions}</span> <span style={s.deletions}>−{pr.deletions}</span>
-      </span>
-      <Badge dot bg="transparent" color={status?.c ?? "var(--text-muted)"}>
-        {status ? t(`list.status.${status.labelKey}`) : pr.status}
-      </Badge>
-    </div>
-  );
-
-  const settledNotice = (
-    <div style={s.staleBanner}>
-      <Icon.AlertTriangle size={13} style={s.warnIcon} />
-      <span>{t("detail.settledNotice", { status: pr.status })}</span>
-    </div>
-  );
-
+  const githubLabel = t("detail.viewOnGithub");
   const tabs = (
     <Tabs
       value={tab}
@@ -120,60 +81,77 @@ export function PrDetailHeader({
     />
   );
 
-  const githubButton = (
-    <Button
-      kind="ghost"
-      size="sm"
-      icon="ExternalLink"
-      disabled={!githubUrl}
-      onClick={() => githubUrl && window.open(githubUrl, "_blank", "noopener,noreferrer")}
-      {...(mobile ? { "aria-label": t("detail.viewOnGithub"), title: t("detail.viewOnGithub") } : null)}
-    >
-      {mobile ? undefined : t("detail.viewOnGithub")}
-    </Button>
-  );
-
   return (
-    <div
-      ref={ref}
-      data-compact={isCompact ? "true" : "false"}
-      style={{ ...s.root, ...(mobile ? s.rootMobile : null), ...(isCompact ? s.rootCompact : null) }}
-    >
-      <div style={{ ...s.titleRow, ...(mobile ? s.titleRowMobile : null), ...(isCompact ? s.titleRowCompact : null) }}>
-        <div style={s.titleCol}>
-          <h1 style={{ ...s.h1, ...(mobile ? s.h1Mobile : null), ...(isCompact ? s.h1Compact : null) }}>
-            {isCompact ? (
-              <button ref={titleButton} type="button" title={pr.title} onClick={scrollToTop} style={s.compactTitleButton}>
-                <span className="mono" style={{ ...s.prNumber, ...s.prNumberMobile }}>
-                  #{pr.number}
+    <>
+      <div ref={ref} {...{ [FULL_HEADER_ATTR]: "" }} style={small ? { ...s.root, ...s.rootScrolling } : s.root}>
+        <div style={s.titleRow}>
+          <div style={s.titleCol}>
+            <h1 style={s.h1}>
+              <span className="mono" style={s.prNumber}>
+                #{pr.number}
+              </span>
+              <span style={s.titleText}>{pr.title}</span>
+            </h1>
+            <div style={s.meta}>
+              <span style={s.authorChip}>
+                <Avatar name={pr.author} size={17} />
+                {pr.author}
+              </span>
+              <span style={s.branchChip}>
+                <Icon.GitBranch size={13} style={s.mutedIcon} />
+                <span className="mono" style={s.branchMono}>
+                  {pr.branch}
                 </span>
-                <span style={s.titleOneLine}>{pr.title}</span>
-              </button>
-            ) : (
-              <>
-                <span className="mono" style={mobile ? { ...s.prNumber, ...s.prNumberMobile } : s.prNumber}>
-                  #{pr.number}
+                <Icon.ArrowRight size={11} />
+                <span className="mono" style={s.branchMono}>
+                  {pr.base}
                 </span>
-                {mobile ? <span style={s.titleClamp}>{pr.title}</span> : pr.title}
-              </>
-            )}
-          </h1>
-          {mobile ? <Collapsible open={!isCompact}>{meta}</Collapsible> : meta}
+              </span>
+              <span className="mono tnum">
+                <span style={s.additions}>+{pr.additions}</span>{" "}
+                <span style={s.deletions}>−{pr.deletions}</span>
+              </span>
+              <Badge dot bg="transparent" color={status?.c ?? "var(--text-muted)"}>
+                {status ? t(`list.status.${status.labelKey}`) : pr.status}
+              </Badge>
+            </div>
+          </div>
+          <div style={s.actions}>
+            <Button
+              kind="ghost"
+              size="sm"
+              icon="ExternalLink"
+              disabled={!githubUrl}
+              onClick={() => githubUrl && window.open(githubUrl, "_blank", "noopener,noreferrer")}
+              {...(small ? { "aria-label": githubLabel, title: githubLabel } : null)}
+            >
+              {small ? <span className="dd-hide-below-md">{githubLabel}</span> : githubLabel}
+            </Button>
+            {prId && <RunReviewDropdown prId={prId} warnMerged={settled} iconOnlyBelowMd={small} onRunStart={onRunStart} />}
+          </div>
         </div>
-        <div style={mobile ? { ...s.actions, ...s.actionsMobile } : s.actions}>
-          {mobile ? (
-            // Plain `hidden` (not inert): the span has no inline display, so the UA rule applies.
-            <span hidden={isCompact} {...{ [COLLAPSIBLE_ATTR]: "" }}>
-              {githubButton}
-            </span>
-          ) : (
-            githubButton
-          )}
-          {prId && <RunReviewDropdown prId={prId} warnMerged={settled} iconOnly={mobile} onRunStart={onRunStart} />}
-        </div>
+        {settled && (
+          <div style={s.staleBanner}>
+            <Icon.AlertTriangle size={13} style={s.warnIcon} />
+            <span>{t("detail.settledNotice", { status: pr.status })}</span>
+          </div>
+        )}
+        {small ? <div style={s.tabsScroll}>{tabs}</div> : tabs}
+        {small && <div ref={sentinelRef} aria-hidden="true" style={s.sentinel} />}
       </div>
-      {settled && (mobile ? <Collapsible open={!isCompact}>{settledNotice}</Collapsible> : settledNotice)}
-      {mobile ? <div style={s.tabsScroll}>{tabs}</div> : tabs}
-    </div>
+      {small && (
+        <CondensedBar
+          visible={condensed}
+          reducedMotion={reducedMotion}
+          number={pr.number}
+          title={pr.title}
+          titleRef={barTitle}
+          onTitleClick={scrollToTop}
+          actions={prId && <RunReviewDropdown prId={prId} warnMerged={settled} iconOnlyBelowMd onRunStart={onRunStart} />}
+        >
+          {tabs}
+        </CondensedBar>
+      )}
+    </>
   );
 }

@@ -85,4 +85,21 @@ describe("RunReviewDropdown", () => {
     openMenu();
     expect(screen.getByText("Already merged — review is informational")).toBeInTheDocument();
   });
+
+  it("iconOnlyBelowMd keeps ONE button: label behind the hide utility, plus aria-label and title", () => {
+    renderDropdown(<RunReviewDropdown prId="pr1" iconOnlyBelowMd />);
+    const buttons = screen.getAllByRole("button");
+    expect(buttons).toHaveLength(1);
+    expect(buttons[0]).toHaveAttribute("aria-label", "Run Review");
+    expect(buttons[0]).toHaveAttribute("title", "Run Review");
+    expect(buttons[0]!.querySelector(".dd-hide-below-md")).toHaveTextContent("Run Review");
+  });
+
+  it("without the prop the trigger is unchanged: plain label, no aria-label/title", () => {
+    renderDropdown(<RunReviewDropdown prId="pr1" />);
+    const button = screen.getByRole("button");
+    expect(button).not.toHaveAttribute("aria-label");
+    expect(button).not.toHaveAttribute("title");
+    expect(button.querySelector(".dd-hide-below-md")).toBeNull();
+  });
 });

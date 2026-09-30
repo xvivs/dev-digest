@@ -1,10 +1,15 @@
 import React from "react";
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { screen, cleanup, fireEvent } from "@testing-library/react";
+import { screen, cleanup, fireEvent, within } from "@testing-library/react";
 import prReview from "@/../messages/en/prReview.json";
 import { renderWithProviders } from "@/test/render";
 import type { PrDetail } from "@/lib/types";
 
+let reduced = false;
+vi.mock("@devdigest/ui", async (orig) => ({
+  ...(await orig<typeof import("@devdigest/ui")>()),
+  usePrefersReducedMotion: () => reduced,
+}));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), replace: vi.fn() }) }));
 vi.mock("@/lib/hooks/agents", () => ({ useAgents: () => ({ data: [] }) }));
 vi.mock("@/lib/hooks/reviews", () => ({ useRunReview: () => ({ mutateAsync: vi.fn(), isPending: false }) }));
@@ -28,7 +33,10 @@ const PR = {
   commits: [],
 } as unknown as PrDetail;
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  reduced = false;
+});
 
 const baseProps: PrDetailHeaderProps = {
   pr: PR,
@@ -50,80 +58,94 @@ function renderHeader(props: Partial<PrDetailHeaderProps> = {}) {
   );
 }
 
+const bar = () => screen.getByTestId("condensed-bar");
+
 describe("PrDetailHeader", () => {
-  it("desktop: text buttons, meta visible, plain title, no compact state", () => {
+  it("desktop: sticky full header, text labels, no bar, no sentinel", () => {
     renderHeader();
     expect(screen.getByRole("button", { name: "View on GitHub" })).toHaveTextContent("View on GitHub");
     expect(screen.getByRole("button", { name: /Run Review/ })).toHaveTextContent("Run Review");
-    expect(screen.getByText("dana")).toBeVisible();
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(`#482${PR.title}`);
-    expect(document.querySelector("[data-compact]")).toHaveAttribute("data-compact", "false");
+    expect(screen.queryByTestId("condensed-bar")).toBeNull();
+    expect(document.querySelector("[data-pr-header-full]")).toHaveStyle({ position: "sticky" });
     expect(document.querySelector("[inert]")).toBeNull();
+    expect(screen.getAllByRole("tablist")).toHaveLength(1);
   });
 
-  it("desktop ignores `compact` (it never collapses)", () => {
-    renderHeader({ compact: true });
-    expect(screen.queryByTitle(PR.title)).toBeNull();
-    expect(document.querySelector("[data-compact]")).toHaveAttribute("data-compact", "false");
-  });
-
-  it("mobile: actions are icon-only with an accessible name and title", () => {
-    renderHeader({ mobile: true });
-    const github = screen.getByRole("button", { name: "View on GitHub" });
+  it("mobile: full header scrolls (not sticky), actions carry aria-label + title, labels use the hide utility", () => {
+    renderHeader({ layout: "mobile" });
+    expect(document.querySelector("[data-pr-header-full]")).toHaveStyle({ position: "static" });
+    const github = screen.getAllByRole("button", { name: "View on GitHub" })[0]!;
     expect(github).toHaveAttribute("title", "View on GitHub");
-    expect(github).toHaveTextContent("");
-    const run = screen.getByRole("button", { name: "Run Review" });
+    expect(github.querySelector(".dd-hide-below-md")).toHaveTextContent("View on GitHub");
+    const run = screen.getAllByRole("button", { name: "Run Review" })[0]!;
     expect(run).toHaveAttribute("title", "Run Review");
-    expect(run).toHaveTextContent("");
+    expect(run.querySelector(".dd-hide-below-md")).not.toBeNull();
     expect(screen.getByRole("heading", { level: 1 })).toBeInTheDocument();
   });
 
-  it("mobile expanded: meta is reachable (not inert)", () => {
-    renderHeader({ mobile: true });
-    expect(screen.getByText("dana").closest("[inert]")).toBeNull();
+  it("mobile, not yet scrolled: the bar is inert, aria-hidden and off-screen; nothing in it is reachable", () => {
+    renderHeader({ layout: "mobile" });
+    expect(bar()).toHaveAttribute("inert");
+    expect(bar()).toHaveAttribute("aria-hidden", "true");
+    expect(bar().style.transform).toBe("translateY(-100%)");
+    expect(screen.queryByRole("button", { name: `#482 ${PR.title}` })).toBeNull(); // hidden from the a11y tree
+    expect(screen.getAllByRole("tablist")).toHaveLength(1);
   });
 
-  it("mobile compact: meta and GitHub action leave the tab order, the title is one button with the full name", () => {
-    renderHeader({ mobile: true, compact: true });
-    expect(screen.getByText("dana").closest("[inert]")).not.toBeNull();
-    expect(screen.getByRole("button", { name: "View on GitHub", hidden: true }).closest("[hidden]")).not.toBeNull();
-    const h1 = screen.getByRole("heading", { level: 1 });
-    const title = screen.getByRole("button", { name: `#482 ${PR.title}` });
-    expect(h1).toContainElement(title);
+  it("condensed: the bar is interactive, names the full title, keeps the primary action and tabs", () => {
+    renderHeader({ layout: "condensed" });
+    expect(bar()).not.toHaveAttribute("inert");
+    expect(bar()).not.toHaveAttribute("aria-hidden", "true");
+    expect(bar().style.transform).toBe("translateY(0)");
+    const title = within(bar()).getByRole("button", { name: `#482 ${PR.title}` });
     expect(title).toHaveAttribute("title", PR.title);
-    // Primary action and tabs stay.
-    expect(screen.getByRole("button", { name: "Run Review" })).toBeVisible();
-    expect(screen.getByRole("tab", { name: "Overview" })).toBeInTheDocument();
+    expect(within(bar()).getByRole("button", { name: "Run Review" })).toBeInTheDocument();
+    expect(within(bar()).getByRole("tab", { name: "Overview" })).toBeInTheDocument();
+    // The bar's tabs drive the same handler.
+    const onSetTab = vi.fn();
+    cleanup();
+    renderHeader({ layout: "condensed", onSetTab });
+    fireEvent.click(within(bar()).getByRole("tab", { name: /Files changed/ }));
+    expect(onSetTab).toHaveBeenCalledWith("diff");
   });
 
-  it("compact title scrolls <main> to top, smooth by default and instant under reduced motion", () => {
+  it("bar title scrolls <main> to top: smooth, or instant under reduced motion", () => {
     const scrollTo = vi.fn();
     Element.prototype.scrollTo = scrollTo;
     const name = `#482 ${PR.title}`;
-    renderHeader({ mobile: true, compact: true });
-    fireEvent.click(screen.getByRole("button", { name }));
+    renderHeader({ layout: "condensed" });
+    fireEvent.click(within(bar()).getByRole("button", { name }));
     expect(scrollTo).toHaveBeenLastCalledWith({ top: 0, behavior: "smooth" });
+    expect(bar().style.transition).not.toBe("none");
     cleanup();
 
-    renderHeader({ mobile: true, compact: true, reducedMotion: true });
-    fireEvent.click(screen.getByRole("button", { name }));
+    reduced = true;
+    renderHeader({ layout: "condensed" });
+    fireEvent.click(within(bar()).getByRole("button", { name }));
     expect(scrollTo).toHaveBeenLastCalledWith({ top: 0, behavior: "auto" });
+    expect(bar().style.transition).toBe("none");
     delete (Element.prototype as Partial<Element>).scrollTo;
   });
 
-  it("moves focus to the compact title when it collapses around the focused GitHub button", () => {
+  it("moves focus from the full header into the bar when it condenses, but never steals focus on mount", () => {
     function Host() {
-      const [compact, setCompact] = React.useState(false);
+      const [layout, setLayout] = React.useState<"mobile" | "condensed">("mobile");
       return (
         <main>
-          <button onClick={() => setCompact(true)}>collapse</button>
-          <PrDetailHeader {...baseProps} mobile compact={compact} />
+          <button onClick={() => setLayout("condensed")}>scroll</button>
+          <PrDetailHeader {...baseProps} layout={layout} />
         </main>
       );
     }
     renderWithProviders(<Host />, { namespaces: { prReview } });
-    screen.getByRole("button", { name: "View on GitHub" }).focus();
-    fireEvent.click(screen.getByRole("button", { name: "collapse" }));
-    expect(screen.getByRole("button", { name: `#482 ${PR.title}` })).toHaveFocus();
+    expect(document.body).toHaveFocus();
+    screen.getAllByRole("button", { name: "View on GitHub" })[0]!.focus();
+    fireEvent.click(screen.getByRole("button", { name: "scroll" }));
+    expect(within(bar()).getByRole("button", { name: `#482 ${PR.title}` })).toHaveFocus();
+
+    cleanup();
+    renderHeader({ layout: "condensed" });
+    expect(document.body).toHaveFocus();
   });
 });

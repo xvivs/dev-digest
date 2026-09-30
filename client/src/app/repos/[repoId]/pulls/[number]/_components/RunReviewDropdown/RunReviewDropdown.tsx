@@ -16,7 +16,7 @@ export function RunReviewDropdown({
   size = "sm",
   kind = "primary",
   warnMerged = false,
-  iconOnly = false,
+  iconOnlyBelowMd = false,
   onRunStart,
   onRunsStarted,
   onRunSettled,
@@ -26,8 +26,8 @@ export function RunReviewDropdown({
   kind?: "primary" | "secondary";
   /** PR is already merged/closed — dim the trigger and warn, but still allow. */
   warnMerged?: boolean;
-  /** Icon-only trigger (mobile header); the label moves to aria-label/title. */
-  iconOnly?: boolean;
+  /** Hide the text label below md (dd-hide-below-md) and expose it as aria-label/title instead. */
+  iconOnlyBelowMd?: boolean;
   /** Fired the moment a run is kicked off (before it completes). */
   onRunStart?: () => void;
   onRunsStarted?: (runIds: string[]) => void;
@@ -96,21 +96,16 @@ export function RunReviewDropdown({
           title={warnMerged ? t("runReview.mergedTooltip") : undefined}
           style={warnMerged ? s.dimmedTrigger : undefined}
         >
-          {iconOnly ? (
-            <Button
-              kind={kind}
-              size={size}
-              iconRight="ChevronDown"
-              icon="Sparkles"
-              loading={run.isPending}
-              aria-label={triggerLabel}
-              title={warnMerged ? undefined : triggerLabel}
-            />
-          ) : (
-            <Button kind={kind} size={size} iconRight="ChevronDown" icon="Sparkles" loading={run.isPending}>
-              {triggerLabel}
-            </Button>
-          )}
+          <Button
+            kind={kind}
+            size={size}
+            iconRight="ChevronDown"
+            icon="Sparkles"
+            loading={run.isPending}
+            {...(iconOnlyBelowMd ? { "aria-label": triggerLabel, title: warnMerged ? undefined : triggerLabel } : null)}
+          >
+            {iconOnlyBelowMd ? <span className="dd-hide-below-md">{triggerLabel}</span> : triggerLabel}
+          </Button>
         </span>
       }
     />
