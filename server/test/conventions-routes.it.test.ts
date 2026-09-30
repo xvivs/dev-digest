@@ -574,7 +574,7 @@ d('conventions routes (Testcontainers pg)', () => {
       .insert(t.conventionScans)
       .values({ workspaceId, repoId: repo.id, status: 'running' })
       .returning();
-    const app = await makeApp();
+    const app = await buildApp({ config: config(), db: pg.handle.db, overrides: { git }, reapOnBoot: true });
     const [row] = await pg.handle.db
       .select()
       .from(t.conventionScans)
