@@ -213,7 +213,7 @@ Step 8 and AC-13/14 are written for (b). They need a one-line change for (a) or 
 - For a file with no patch (binary or oversized), only the bare `path` form is accepted.
 - Ungrounded refs are dropped and counted in `dropped_refs`. A model risk left with zero refs is dropped.
 
-**D10 — Client imports of `@devdigest/shared` stay `import type`** (delegation). Client INSIGHTS (2026-09-29) says value imports now resolve (`next.config.mjs` `extensionAlias`), so opting into ADR 0007 response schemas is a cheap follow-up.
+**D10 — The new brief/blast/history hooks validate responses with ADR 0007 schemas** (v3.1, human decision after the architecture review). Client INSIGHTS (2026-09-29) says value imports of `@devdigest/shared` now resolve (`next.config.mjs` `extensionAlias`), so each hook passes the shared zod contract as the `schema` argument of `api.get`/`api.post` (`client/src/lib/api.ts:56-63`). Other shared imports stay `import type`.
 
 **D11 — Prior PRs data source.**
 
@@ -318,7 +318,7 @@ On-demand path:
 1. `POST /pulls/:id/brief/derive` calls `container.prBrief.requestDerive(ws, prId, 'on_demand')`, which returns `undefined` when the PR is not in this workspace. The route maps that to 404.
 2. The service increments `queued` for the PR, then calls `container.briefJobs.enqueue(workspaceId, 'brief.derive', { workspaceId, prId, trigger, enqueuedAt })`. The payload is the handler's only input (`jobs.ts:65-90`), so it carries the trigger (for the persisted-fallback rule, the attempt cap and logging) and the enqueue time (for the freshness skip). The signature is `enqueue(workspaceId, kind, payload)` (`platform/jobs.ts:65`). On rejection it decrements and rethrows (route → 500).
 3. Per-PR state is `{ queued: number; running?: Promise }`:
-   - `queued` is decremented exactly once per job: by the handler's `finally` when the handler ran (a `started` flag is set on handler **entry**), otherwise by the `done`-settle path;
+   - `queued` is decremented exactly once per job, only when the `done` promise that `enqueue` returns settles. `done` always settles: after the handler, on timeout, or when the pre-handler status update fails (`jobs.ts:77-80`). The handler does not touch `queued`, so no token or `started` flag is needed (AR-2). On timeout `running` stays set until the handler really returns, so `in_flight` stays true;
    - only the owner of `running` clears it;
    - `inFlight = queued > 0 || running != null`.
 4. The handler **never throws**, so no retry spend even if retries were on.
@@ -516,7 +516,7 @@ client/src/app/repos/[repoId]/pulls/[number]/_components/OverviewTab/
   - New risk keys: `brief.risks.{empty,ruleOnly,droppedRefs,cost}`, `brief.risks.kind.<RiskKind>`, `brief.risks.severity.*`.
   - New history keys: `brief.history.{title,unavailable,merged,cached}`, `brief.history.reason.*`.
   - New blast keys: `blast.state.{degraded,unavailable,error}`, `blast.reason.*`, `blast.basedOnIndex`, `blast.truncated`.
-- **Type-only** shared imports (D10).
+- Shared imports are type-only, except the response schemas the hooks pass to `api` (D10).
 
 States. Each block uses early returns:
 
@@ -527,6 +527,8 @@ States. Each block uses early returns:
 | Risks | Skeleton; `in_flight` → "Deriving…" | `risks: []` → `brief.noRisks`; `null` → EmptyState (shares the Derive button); `null` + `last_failure` → failure notice | `rule_only` → note "model unavailable, rule-based only"; `dropped_refs > 0` → muted count | ErrorState + retry |
 | Blast | Skeleton | `unavailable` → EmptyState | `degraded` → banner + partial data; `truncated` → note | ErrorState + retry |
 | Prior PRs | Skeleton | `[]` → `brief.noHistory` | `unavailable` (`no_github` / `fetch_failed`) → muted row, reason text | ErrorState + retry |
+
+`head_moved` → a Refresh PR button that invalidates the PR detail, intent and risks queries (v3.1, PV-2).
 
 UI security: every PR-derived or model-derived string renders as JSX text. No `Markdown`, no `dangerouslySetInnerHTML`, no `href` built from PR-author or model input.
 
@@ -696,9 +698,10 @@ UI security: every PR-derived or model-derived string renders as JSX text. No `M
 - `requestDerive(ws, prId, trigger: BriefTrigger): Promise<{ queued: boolean } | undefined>`, where `ImportTrigger = 'list_sync' | 'poll' | 'detail'` and `BriefTrigger = ImportTrigger | 'on_demand' | 'review_prework'`.
   - The **service** applies `automaticGate` (below) to every trigger except `on_demand`, which bypasses it.
   - **One automatic gate:** a private `automaticGate` in `brief/service.ts` (env flag + workspace `automatic_brief` + `review_intent` provider configured + negative cache + attempt cap). **"Provider configured"** means that `await container.llm(choice.provider)` resolves, where `choice = container.featureModel(ws, 'review_intent')`; a caught `ConfigError` means false. This calls no model (`buildLlm` only reads the key, `container.ts:222-242`), honours `ContainerOverrides.llm` (`container.ts:212-214`), and never reads `secrets` directly. The port is `models.isConfigured(ws)`, adapted in `brief/wiring.ts`, and the gate is called by both `scheduleFor*` and by `requestDerive` for every non-`on_demand` trigger, so `review_prework` also skips when no provider is configured.
-  - **Queued accounting:** besides the handler's `finally`, the service attaches to the `done` promise that `enqueue` returns and decrements `queued` if the job settles and the handler's entry flag (`started`) was never set. The handler sets `started` on **entry**, so a timeout after start never double-decrements. The case is a failure of the pre-handler `jobs` status update (`jobs.ts:77-80`); without this, `in_flight` would stick at true.
+  - **Queued accounting:** the service attaches to the `done` promise that `enqueue` returns and decrements `queued` once when it settles, whatever the outcome. This also covers a failure of the pre-handler `jobs` status update (`jobs.ts:77-80`), where the handler never runs; without it, `in_flight` would stick at true. The handler keeps no queued bookkeeping (AR-2, v3.1).
   - **Rejection policy:** only `on_demand` rethrows an `enqueue` failure (route → 500). For every other trigger, `requestDerive` catches, logs `warn`, rolls back `queued` and resolves `{queued:false}`. A voided call must never reject: Node ≥ 15 kills the process on an unobserved rejection (`platform/jobs.ts:121-127`).
   - `review_prework` reads the negative cache like the import triggers.
+  - **Bounded in-memory state (v3.1):** `failures`, `negative` and `attempts` are keyed by `(prId, head, phase)`. When a key for a new head of a PR is written, entries of that PR with any other head are deleted (a stale head is never read again). Each map is also capped at `BRIEF_STATE_MAX_ENTRIES = 5000`; on overflow the oldest entry by insertion order is dropped. Losing a negative-cache entry costs at most one extra gated derive.
 - `scheduleForRepo(ws, repoId, trigger: ImportTrigger): Promise<void>` and `scheduleForPull(ws, prId, trigger: ImportTrigger): Promise<void>`. Both never reject.
   - The `on_demand` bypass is not representable here.
   - The scheduler's pre-filter is `automaticGate` plus the queued/running skip. It **does not depend on the trigger**. The trigger is only logged.
