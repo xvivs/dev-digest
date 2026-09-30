@@ -33,7 +33,7 @@ export function BlastGraph({ downstream }: { downstream: DownstreamImpact[] }) {
           </text>
         ))}
       </svg>
-      {hidden > 0 && <div style={shared.muted}>+{hidden}</div>}
+      {hidden > 0 && <div style={shared.muted}>{t("graph.more", { count: hidden })}</div>}
     </div>
   );
 }

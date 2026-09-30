@@ -1,8 +1,11 @@
 import type { IntentConfidence, RiskKind, RiskSeverity } from "@devdigest/shared";
 import type { IconName } from "@devdigest/ui";
 
-/** Confidence levels, strongest first (also the badge order). */
-export const CONFIDENCE_ORDER: readonly IntentConfidence[] = ["high", "medium", "low"];
+/** Loading-skeleton heights (px) per card. */
+export const SKELETON_HEIGHT = { intent: 64, brief: 86, blast: 80, list: 40 } as const;
+
+/** Icon sizes (px): section-level notices vs. inline pills. */
+export const ICON_SIZE = { section: 15, inline: 13 } as const;
 
 /** Blast-radius views, in toggle order. */
 export const BLAST_VIEWS = ["tree", "graph"] as const;

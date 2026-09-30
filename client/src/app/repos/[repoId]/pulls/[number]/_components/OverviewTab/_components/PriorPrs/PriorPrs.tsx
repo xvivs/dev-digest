@@ -4,6 +4,7 @@ import React from "react";
 import { useFormatter, useTranslations } from "next-intl";
 import { Badge, Disclosure, DisclosureChevron, ErrorState, Icon, Skeleton } from "@devdigest/ui";
 import { usePrHistory } from "@/lib/hooks";
+import { SKELETON_HEIGHT } from "../../constants";
 import { s as shared } from "../../styles";
 import { s } from "./styles";
 
@@ -16,7 +17,7 @@ export function PriorPrs({ prId }: { prId: string }) {
   let count = 0;
   let body: React.ReactNode;
   if (isLoading) {
-    body = <Skeleton height={40} />;
+    body = <Skeleton height={SKELETON_HEIGHT.list} />;
   } else if (isError || !data) {
     body = <ErrorState title={t("error")} onRetry={() => refetch()} />;
   } else if (data.status === "unavailable") {

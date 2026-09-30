@@ -7,7 +7,7 @@ import type { Risk } from "@devdigest/shared";
 import { useDeriveBrief, usePrRisks } from "@/lib/hooks";
 import { RunCostValue } from "@/components/run-cost-value";
 import { BriefFailureNotice } from "../BriefFailureNotice";
-import { RISK_ICON, RISK_SEVERITY_COLOR } from "../../constants";
+import { RISK_ICON, RISK_SEVERITY_COLOR, ICON_SIZE, SKELETON_HEIGHT} from "../../constants";
 import { splitInlineCode } from "../../helpers";
 import { s as shared } from "../../styles";
 import { s } from "./styles";
@@ -25,7 +25,7 @@ export function RiskAreas({ prId }: { prId: string }) {
     return (
       <section style={shared.card}>
         {heading}
-        <Skeleton height={40} />
+        <Skeleton height={SKELETON_HEIGHT.list} />
       </section>
     );
   }
@@ -102,7 +102,7 @@ export function RiskAreas({ prId }: { prId: string }) {
                   onClick={() => setOpenKey(openKey === k ? null : k)}
                   style={s.pill(tone.c, tone.bg, openKey === k)}
                 >
-                  <PillIcon size={13} aria-hidden="true" />
+                  <PillIcon size={ICON_SIZE.inline} aria-hidden="true" />
                   <span>{r.title}</span>
                   <span style={s.sev}>{t(`risks.severity.${r.severity}`)}</span>
                 </button>

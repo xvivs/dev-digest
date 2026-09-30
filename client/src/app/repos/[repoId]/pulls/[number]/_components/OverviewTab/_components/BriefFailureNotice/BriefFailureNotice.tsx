@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import { Icon } from "@devdigest/ui";
 import type { BriefFailureReason } from "@devdigest/shared";
 import { BriefFailureAction } from "../BriefFailureAction";
+import { ICON_SIZE } from "../../constants";
 import { s as shared } from "../../styles";
 import { s } from "./styles";
 
@@ -25,7 +26,7 @@ export function BriefFailureNotice({
   const t = useTranslations("brief");
   return (
     <div style={shared.notice} role="status">
-      <Icon.AlertTriangle size={15} aria-hidden="true" />
+      <Icon.AlertTriangle size={ICON_SIZE.section} aria-hidden="true" />
       <span style={s.grow}>{t(`failure.${reason}`)}</span>
       <BriefFailureAction prId={prId} reason={reason} deriveLabel={deriveLabel} busy={busy} onDerive={onDerive} />
     </div>

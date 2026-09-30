@@ -6,7 +6,7 @@ import { Badge, Button, EmptyState, ErrorState, SectionLabel, Skeleton } from "@
 import { useDeriveBrief, usePrIntent } from "@/lib/hooks";
 import { RunCostValue } from "@/components/run-cost-value";
 import { BriefFailureNotice } from "../BriefFailureNotice";
-import { CONFIDENCE_COLOR, STALE_COLOR } from "../../constants";
+import { CONFIDENCE_COLOR, STALE_COLOR, SKELETON_HEIGHT } from "../../constants";
 import { s as shared } from "../../styles";
 import { s } from "./styles";
 
@@ -26,7 +26,7 @@ export function IntentCard({ prId }: { prId: string }) {
     return (
       <section style={shared.card}>
         {heading}
-        <Skeleton height={64} />
+        <Skeleton height={SKELETON_HEIGHT.intent} />
       </section>
     );
   }

@@ -7,6 +7,7 @@ import { usePrReviews, usePrRuns } from "@/lib/hooks";
 import { RunCostValue } from "@/components/run-cost-value";
 import { VerdictBanner } from "@/app/repos/[repoId]/pulls/[number]/_components/VerdictBanner";
 import { formatTokenPair, selectLatestBrief } from "../../helpers";
+import { ICON_SIZE, SKELETON_HEIGHT } from "../../constants";
 import { s } from "../../styles";
 
 /**
@@ -31,7 +32,7 @@ export function BriefSection({ prId }: { prId: string }) {
   if (isError) {
     body = <ErrorState title={t("error")} onRetry={retry} />;
   } else if (runs.isLoading || reviews.isLoading) {
-    body = <Skeleton height={86} />;
+    body = <Skeleton height={SKELETON_HEIGHT.brief} />;
   } else if (!brief) {
     body = <EmptyState icon="Sparkles" title={t("noRun")} body={t("unavailableHint")} />;
   } else {
@@ -41,7 +42,7 @@ export function BriefSection({ prId }: { prId: string }) {
       <>
         {newerRun && (
           <div style={s.notice} role="status">
-            <Icon.Info size={15} aria-hidden="true" />
+            <Icon.Info size={ICON_SIZE.section} aria-hidden="true" />
             <span>{t(`newerRun.${newerRun}`)}</span>
           </div>
         )}

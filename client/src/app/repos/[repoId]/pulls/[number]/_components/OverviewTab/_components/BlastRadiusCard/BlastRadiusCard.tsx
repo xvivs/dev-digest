@@ -4,12 +4,20 @@ import React from "react";
 import { useTranslations } from "next-intl";
 import { Badge, EmptyState, ErrorState, Icon, SectionLabel, Skeleton } from "@devdigest/ui";
 import { usePrBlast } from "@/lib/hooks";
-import { BLAST_VIEWS, type BlastView } from "../../constants";
+import { BLAST_VIEWS, ICON_SIZE, SKELETON_HEIGHT, type BlastView } from "../../constants";
 import { blastStats } from "../../helpers";
 import { s as shared } from "../../styles";
 import { BlastTree } from "./_components/BlastTree";
 import { BlastGraph } from "./_components/BlastGraph";
 import { s } from "./styles";
+
+function ViewToggle({ label, active, onSelect }: { label: string; active: boolean; onSelect: () => void }) {
+  return (
+    <button type="button" aria-pressed={active} onClick={onSelect} style={s.toggleBtn(active)}>
+      {label}
+    </button>
+  );
+}
 
 /** Downstream impact of the changed symbols: stats + tree/graph views. */
 export function BlastRadiusCard({ prId }: { prId: string }) {
@@ -24,7 +32,7 @@ export function BlastRadiusCard({ prId }: { prId: string }) {
     return (
       <section style={shared.card}>
         {heading}
-        <Skeleton height={80} />
+        <Skeleton height={SKELETON_HEIGHT.blast} />
       </section>
     );
   }
@@ -74,9 +82,7 @@ export function BlastRadiusCard({ prId }: { prId: string }) {
         right={
           <div style={s.toggle} role="group" aria-label={tb("block.blast")}>
             {BLAST_VIEWS.map((v) => (
-              <button key={v} type="button" aria-pressed={view === v} onClick={() => setView(v)} style={s.toggleBtn(view === v)}>
-                {t(`view.${v}`)}
-              </button>
+              <ViewToggle key={v} label={t(`view.${v}`)} active={view === v} onSelect={() => setView(v)} />
             ))}
           </div>
         }
@@ -86,7 +92,7 @@ export function BlastRadiusCard({ prId }: { prId: string }) {
 
       {data.status === "degraded" && (
         <div style={s.notice} role="status">
-          <Icon.AlertTriangle size={15} aria-hidden="true" />
+          <Icon.AlertTriangle size={ICON_SIZE.section} aria-hidden="true" />
           <span>
             {t("state.degraded")}
             {data.reason ? ` ${t(`reason.${data.reason}`)}` : ""}
