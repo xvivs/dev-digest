@@ -11,7 +11,7 @@ import { Button } from "@devdigest/ui";
 import type { ConventionScan } from "@devdigest/shared";
 import { RunCostValue } from "@/components/run-cost-value";
 import { ScanningSince } from "./_components/ScanningSince";
-import { formatDuration, formatTokenCount } from "./helpers";
+import { formatDuration, formatTokenCount, isJustNow } from "./helpers";
 import { s } from "./styles";
 
 export function ScanHeader({
@@ -42,7 +42,11 @@ export function ScanHeader({
 
   // `now` is explicit: next-intl has no global default here, and this only renders once the
   // scan has loaded on the client, so there is no server/client markup to mismatch.
-  const ago = (s: ConventionScan) => format.relativeTime(new Date(s.finished_at ?? s.started_at), new Date());
+  const ago = (s: ConventionScan) => {
+    const at = new Date(s.finished_at ?? s.started_at);
+    const now = new Date();
+    return isJustNow(at, now) ? t("header.justNow") : format.relativeTime(at, now);
+  };
   const when = scan ? ago(scan) : null;
   const hasScanned = scan !== null || runningScan !== null || failedScan !== null;
   // A running scan has no results yet; a failed one shows the older results, labelled as such.

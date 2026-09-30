@@ -141,6 +141,35 @@ describe("ScanHeader clock while a scan runs", () => {
     expect(screen.getByText("Scanning… started 1 minute ago")).toBeInTheDocument();
   });
 
+  it("never shows a future start: a started_at ahead of the browser clock reads 'just now'", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-29T08:59:54.000Z"));
+    renderHeader({ runningScan: running, scanning: true });
+    expect(screen.getByText("Scanning… started just now")).toBeInTheDocument();
+    expect(screen.queryByText(/ in /)).not.toBeInTheDocument();
+  });
+
+  it("changes the text after 5 s while a scan runs", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-29T09:00:03.000Z"));
+    renderHeader({ runningScan: running, scanning: true });
+    expect(screen.getByText("Scanning… started 3 seconds ago")).toBeInTheDocument();
+    act(() => {
+      vi.advanceTimersByTime(5_000);
+    });
+    expect(screen.getByText("Scanning… started 8 seconds ago")).toBeInTheDocument();
+  });
+
+  it("clamps last scan and failed scan in the future to 'just now'", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-29T08:59:00.000Z"));
+    renderHeader({ scan: scan({ finished_at: "2026-09-29T09:00:00.000Z" }) });
+    expect(screen.getByText("Detected from 84 sample files · last scan just now")).toBeInTheDocument();
+    cleanup();
+    renderHeader({ failedScan: scan({ status: "failed", finished_at: "2026-09-29T09:00:00.000Z" }), scan: null });
+    expect(screen.getByText("Last scan failed just now")).toBeInTheDocument();
+  });
+
   it("does not move the label between two ticks", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-09-29T09:00:05.000Z"));

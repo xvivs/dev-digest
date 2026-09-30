@@ -25,6 +25,7 @@
     "detected": "Detected from {count, plural, one {# sample file} other {# sample files}} · last scan {when}",
     "scanning": "Scanning… started {when}",
     "failed": "Last scan failed {when}",
+    "justNow": "just now",
     "showingFrom": "Showing results from scan of {date}"
   },
   "stats": {

@@ -6,10 +6,13 @@
 
 import { useFormatter, useNow, useTranslations } from "next-intl";
 import { SCANNING_TICK_MS } from "../../constants";
+import { isJustNow } from "../../helpers";
 
 export function ScanningSince({ since }: { /** ISO time the scan started. */ since: string }) {
   const t = useTranslations("conventions");
   const format = useFormatter();
   const now = useNow({ updateInterval: SCANNING_TICK_MS });
-  return <>{t("header.scanning", { when: format.relativeTime(new Date(since), now) })}</>;
+  const at = new Date(since);
+  const when = isJustNow(at, now) ? t("header.justNow") : format.relativeTime(at, now);
+  return <>{t("header.scanning", { when })}</>;
 }
