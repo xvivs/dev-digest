@@ -75,6 +75,10 @@ lives in the engineering-insights skill).
 
 - **After a `JobRunner` handler returns, `enqueue` still awaits two `jobs` row updates (`attempts`, then `status: 'done'`) before `done` resolves — bookkeeping that frees state in the handler but counts on `done` has a window where the work is over and the job is not.** `server/src/platform/jobs.ts:89-108`. The index gate lost a trailing pass in exactly that window (code-review F1); `KeyedGate.settle` now hands the trailing pass to `dispatch` together with a fresh reservation so the key never goes idle in between (`server/src/platform/keyed-gate.ts`, ADR 0025). _(2026-10-01)_
 
+- **Empty `blast.downstream` means "no changed symbols", not "no callers"** — `toBlastRadius` maps over every distinct changed-symbol name and emits a group even with zero callers (`server/src/modules/blast/domain.ts:65`), so the no-callers state must be derived from the caller total, as the client does in `hasNoCallers` (`client/src/app/repos/[repoId]/pulls/[number]/_components/OverviewTab/helpers.ts:118`), never from `downstream.length`. _(2026-10-01)_
+
+- **Any change to the blast status/reason/order mapping or summary text needs a `BLAST_MAPPING_VERSION` bump** — `pr_blast_cache` rows are keyed on the mapping version (`server/src/modules/blast/service.ts:63`, constant at `server/src/modules/blast/constants.ts:6`), so without a bump the cache keeps serving the old shape until the index sha changes. _(2026-10-01)_
+
 ## Tool & Library Notes
 
 - **`pnpm exec <bin>` / `pnpm run <script>` can fail non-interactively with `ERR_PNPM_IGNORED_BUILDS` even when `node_modules` is already correct** — both `pnpm db:generate` and `pnpm exec drizzle-kit generate` refused to run this way, erroring "Run \"pnpm approve-builds\" to pick which dependencies should be allowed to run scripts." Workaround: invoke the wrapper under `node_modules/.bin/` directly with `sh`, e.g. `sh node_modules/.bin/drizzle-kit generate`, `sh node_modules/.bin/tsx src/db/migrate.ts`, `sh node_modules/.bin/vitest run` — bypasses pnpm's pre-flight check entirely. _(2026-09-19)_

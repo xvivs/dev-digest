@@ -124,6 +124,8 @@ lives in the engineering-insights skill).
 
 - **At a real 1440px viewport, each Overview card is only ~500px wide, not ~690px (sidebar plus content max-width), so any one-row header must fit in ~460px of content** — the blast stats row with the Tree/Graph toggle wrapped until stats went to 12px with gap 12 and "cron/jobs" became "cron" (`client/src/app/repos/[repoId]/pulls/[number]/_components/OverviewTab/_components/BlastRadiusCard/styles.ts:5`). The grid is `repeat(auto-fit, minmax(min(340px, 100%), 1fr))` (`OverviewTab/styles.ts:7`). Measure `offsetTop` of the row items via `evaluate_script` rather than eyeballing. _(2026-10-01)_
 
+- **A mutation that starts background index work must call `markOverviewIndexRunStarted` first** — `usePrOverviewReadiness` detects completion only as an `in_flight -> idle` transition against the cached answer (`client/src/lib/hooks/overview.ts:68`); the helper sets `in_flight: true` in the cache (`overview.ts:42`) so a job that finishes before the first poll still triggers the dependent invalidations. _(2026-10-01)_
+
 ## Tool & Library Notes
 
 - In this worktree, `pnpm typecheck` / `pnpm test` / any `pnpm exec …` first
@@ -229,6 +231,8 @@ lives in the engineering-insights skill).
 - **CSS grid `repeat(auto-fill, minmax(280px, 1fr))` overflows containers narrower than 280px — write `minmax(min(280px, 100%), 1fr)`** — fixed in `CARD_GRID_COLS` at `client/src/app/agents/_components/AgentsListView/constants.ts:7`. _(2026-10-01)_
 
 - **A test that opens a `Disclosure` whose body depends on a query must `await findByText` for the body after the click — finding the toggle button does not mean data has loaded** — the header `<button>` renders at once (`client/src/vendor/ui/primitives/Disclosure.tsx:90`) while the body shows a skeleton until the query resolves; `getByText` right after `fireEvent.click` failed in `PriorPrs.test.tsx:30` until switched to `findByText`. The same unmount-when-closed contract (`Disclosure.tsx:99`) makes "absent until opened" assertable with `queryByText`. _(2026-10-01)_
+
+- **Tests asserting a raw `blast.stat.*` string break once the message is ICU plural** — the messages are now `{count, plural, one {symbol} other {symbols}}` (`client/messages/en/blast.json:3`) and only resolve through `t(key, { count })` (`BlastRadiusCard.tsx:129`); match the rendered text, not the message key's raw value. _(2026-10-01)_
 
 ## Session Notes
 
