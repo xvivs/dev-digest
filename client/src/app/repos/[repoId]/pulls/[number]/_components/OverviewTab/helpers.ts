@@ -1,4 +1,5 @@
 import type {
+  BlastReason,
   BlastRadius,
   IntentConfidence,
   DownstreamImpact,
@@ -6,11 +7,13 @@ import type {
   RunSummary,
   Verdict,
 } from "@devdigest/shared";
+import { githubBlobUrl } from "@/lib/github-urls";
 import {
   CONFIDENCE_BADGE_LEVELS,
   GRAPH,
   GRAPH_MAX_CALLERS,
   NEWER_RUN_STATUSES,
+  RESYNC_REASONS,
   type NewerRunStatus,
 } from "./constants";
 
@@ -111,6 +114,27 @@ export function blastStats(blast: BlastRadius | null | undefined): BlastStats {
   return { symbols: blast.changed_symbols.length, callers, endpoints: endpoints.size, crons: crons.size };
 }
 
+/** True when no changed symbol has a caller (including zero changed symbols). */
+export function hasNoCallers(blast: BlastRadius | null | undefined): boolean {
+  return blastStats(blast).callers === 0;
+}
+
+/** GitHub deep-link to a caller's line at the indexed sha; null (render plain text) when the repo or sha is unknown. */
+export function blastCallerHref(
+  repoFullName: string | null | undefined,
+  sourceSha: string | null | undefined,
+  file: string,
+  line: number,
+): string | null {
+  if (!repoFullName || !sourceSha) return null;
+  return githubBlobUrl(repoFullName, sourceSha, file, line);
+}
+
+/** A Resync only helps a degraded answer whose reason a fresh index run can fix. */
+export function canResyncBlast(status: string, reason: BlastReason | null | undefined): boolean {
+  return status === "degraded" && !!reason && RESYNC_REASONS.includes(reason);
+}
+
 export interface TextSegment {
   text: string;
   code: boolean;
@@ -141,14 +165,14 @@ export interface BlastGraphLayout {
   height: number;
   symbols: { label: string; y: number }[];
   /** Drawn callers (at most GRAPH_MAX_CALLERS); `fromY` is the y of the symbol that calls it. */
-  callers: { label: string; y: number; fromY: number }[];
+  callers: { label: string; file: string; line: number; y: number; fromY: number }[];
   /** Callers beyond GRAPH_MAX_CALLERS that are not drawn. */
   hidden: number;
 }
 
 /** Pure layout of the blast graph in viewBox units; null when there is no caller to draw. */
 export function blastGraphLayout(downstream: readonly DownstreamImpact[]): BlastGraphLayout | null {
-  const edges = downstream.flatMap((d, si) => d.callers.map((c) => ({ from: si, label: `${c.name}:${c.line}` })));
+  const edges = downstream.flatMap((d, si) => d.callers.map((c) => ({ from: si, file: c.file, line: c.line, label: `${c.name}:${c.line}` })));
   if (edges.length === 0) return null;
   const shown = edges.slice(0, GRAPH_MAX_CALLERS);
   const rows = Math.max(downstream.length, shown.length);
@@ -156,7 +180,7 @@ export function blastGraphLayout(downstream: readonly DownstreamImpact[]): Blast
   return {
     height: rows * GRAPH.rowHeight + GRAPH.pad * 2,
     symbols: downstream.map((d, i) => ({ label: d.symbol, y: rowY(i) })),
-    callers: shown.map((e, i) => ({ label: e.label, y: rowY(i), fromY: rowY(e.from) })),
+    callers: shown.map((e, i) => ({ label: e.label, file: e.file, line: e.line, y: rowY(i), fromY: rowY(e.from) })),
     hidden: edges.length - shown.length,
   };
 }

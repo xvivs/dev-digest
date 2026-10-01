@@ -63,7 +63,7 @@ function stubApi() {
 describe("OverviewTab", () => {
   it("renders the intent in typographic quotes with both scope lists", async () => {
     stubApi();
-    renderWithProviders(<OverviewTab prId="p1" />, { namespaces });
+    renderWithProviders(<OverviewTab prId="p1" repoId="r1" repoFullName="acme/widgets" />, { namespaces });
     expect(await screen.findByText("“Add rate limiting”")).toBeInTheDocument();
     expect(screen.getByText(brief.intent.inScope)).toBeInTheDocument();
     expect(screen.getByText(brief.intent.outOfScope)).toBeInTheDocument();
@@ -73,7 +73,7 @@ describe("OverviewTab", () => {
 
   it("renders no PR brief section for a PR without runs", async () => {
     stubApi();
-    renderWithProviders(<OverviewTab prId="p1" />, { namespaces });
+    renderWithProviders(<OverviewTab prId="p1" repoId="r1" repoFullName="acme/widgets" />, { namespaces });
     await screen.findByText(/Add rate limiting/);
     expect(screen.queryByText(brief.section)).toBeNull();
   });
@@ -86,7 +86,7 @@ describe("OverviewTab", () => {
       stubApi();
       api.reply("GET", "/pulls/p1/risks", { risks: RISKS_RECORD, stale: true, in_flight: false, last_failure: HEAD_MOVED });
       api.reply("GET", "/pulls/p1/overview/readiness", readiness({ brief: { risks: "stale", risks_failure: HEAD_MOVED }, blocked_by: "head_moved" }));
-      renderWithProviders(<OverviewTab prId="p1" />, { namespaces });
+      renderWithProviders(<OverviewTab prId="p1" repoId="r1" repoFullName="acme/widgets" />, { namespaces });
       await screen.findByRole("button", { name: /Auth surface touched/ });
       const buttons = await screen.findAllByRole("button", { name: REFRESH });
       expect(buttons).toHaveLength(1);
@@ -102,7 +102,7 @@ describe("OverviewTab", () => {
       stubApi();
       api.reply("GET", "/pulls/p1/risks", { risks: null, stale: false, in_flight: false, last_failure: HEAD_MOVED });
       api.reply("GET", "/pulls/p1/overview/readiness", readiness({ brief: { risks: "missing", risks_failure: HEAD_MOVED }, blocked_by: "head_moved" }));
-      renderWithProviders(<OverviewTab prId="p1" />, { namespaces });
+      renderWithProviders(<OverviewTab prId="p1" repoId="r1" repoFullName="acme/widgets" />, { namespaces });
       await screen.findByText("“Add rate limiting”");
       expect(await screen.findAllByRole("button", { name: REFRESH })).toHaveLength(1);
     });
@@ -116,7 +116,7 @@ describe("OverviewTab", () => {
         "/pulls/p1/overview/readiness",
         readiness({ brief: { intent: "missing", risks: "stale", intent_failure: HEAD_MOVED, risks_failure: HEAD_MOVED }, blocked_by: "head_moved" }),
       );
-      renderWithProviders(<OverviewTab prId="p1" />, { namespaces });
+      renderWithProviders(<OverviewTab prId="p1" repoId="r1" repoFullName="acme/widgets" />, { namespaces });
       await screen.findByRole("button", { name: /Auth surface touched/ });
       await waitFor(() => expect(screen.getAllByRole("button", { name: REFRESH })).toHaveLength(2));
       const [first, second] = screen.getAllByRole("button", { name: REFRESH });

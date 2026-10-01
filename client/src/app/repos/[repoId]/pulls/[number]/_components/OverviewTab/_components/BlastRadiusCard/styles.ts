@@ -29,7 +29,9 @@ export const s = {
     background: active ? "var(--bg-hover)" : "transparent",
     color: active ? "var(--text-primary)" : "var(--text-muted)",
   }),
-  notice: { ...shared.notice, marginBottom: 12 } satisfies CSSProperties,
+  degradedRow: { display: "flex", alignItems: "center", flexWrap: "wrap", gap: 8, marginBottom: 12 } satisfies CSSProperties,
+  /** Long reasons wrap inside the ~460px card instead of overflowing. */
+  degradedBadge: { whiteSpace: "normal" } satisfies CSSProperties,
   truncated: { ...shared.muted, marginBottom: 10 } satisfies CSSProperties,
   basedOn: { ...shared.muted, marginTop: 12 } satisfies CSSProperties,
 } as const;

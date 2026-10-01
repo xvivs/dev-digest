@@ -1,17 +1,17 @@
 {
   "stat": {
-    "symbols": "symbols",
-    "callers": "callers",
-    "endpoints": "endpoints",
-    "crons": "cron"
+    "symbols": "{count, plural, one {symbol} other {symbols}}",
+    "callers": "{count, plural, one {caller} other {callers}}",
+    "endpoints": "{count, plural, one {endpoint} other {endpoints}}",
+    "crons": "{count, plural, one {cron} other {crons}}"
   },
   "view": {
     "tree": "tree",
     "graph": "graph"
   },
   "scrollRegion": "Blast radius details",
-  "callerCount": "{count} callers",
-  "noDownstream": "{count} changed symbol(s), no downstream callers found.",
+  "callerCount": "{count, plural, one {# caller} other {# callers}}",
+  "noDownstream": "{count, plural, one {# changed symbol} other {# changed symbols}}, no downstream callers found.",
   "graph": {
     "empty": "No downstream callers to graph.",
     "ariaLabel": "Blast radius graph",
@@ -26,8 +26,13 @@
     "index_partial": "The code index is partial.",
     "no_index": "The repository is not indexed yet.",
     "flag_off": "Blast radius is turned off.",
-    "no_changed_files": "This PR has no changed files."
+    "no_changed_files": "This PR has no changed files.",
+    "index_failed": "The last indexing run failed.",
+    "repo_too_large": "The repository is too large to index fully.",
+    "no_data": "No index data is available for this repository yet."
   },
   "basedOnIndex": "Based on index {sha}",
-  "truncated": "Some callers were left out to keep the list short."
+  "truncated": "Some callers were left out to keep the list short.",
+  "resync": "Resync",
+  "resyncing": "Resyncing…"
 }

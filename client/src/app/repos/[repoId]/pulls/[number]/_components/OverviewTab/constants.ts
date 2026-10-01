@@ -1,4 +1,4 @@
-import type { IntentConfidence, RiskKind, RiskSeverity } from "@devdigest/shared";
+import type { BlastReason, IntentConfidence, RiskKind, RiskSeverity } from "@devdigest/shared";
 import type { IconName } from "@devdigest/ui";
 
 /** Loading-skeleton heights (px) per card. */
@@ -18,6 +18,25 @@ export const BLAST_STAT_ICON = {
   endpoints: "Globe",
   crons: "Clock",
 } as const satisfies Record<string, IconName>;
+
+/** Every blast `reason`; each needs a `reason.<value>` string in blast.json. Local tuple: the client imports only types from shared. */
+export const BLAST_REASONS = [
+  "index_partial",
+  "no_index",
+  "flag_off",
+  "no_changed_files",
+  "index_failed",
+  "repo_too_large",
+  "no_data",
+] as const satisfies readonly BlastReason[];
+
+// Compile-time exhaustiveness: fails when BlastReason gains a value missing from BLAST_REASONS.
+type _MissingBlastReason = Exclude<BlastReason, (typeof BLAST_REASONS)[number]>;
+const _blastReasonsExhaustive: [_MissingBlastReason] extends [never] ? true : never = true;
+void _blastReasonsExhaustive;
+
+/** Degraded reasons a resync can fix (flag_off / repo_too_large it cannot). */
+export const RESYNC_REASONS: readonly BlastReason[] = ["index_partial", "index_failed", "no_index", "no_data"];
 
 /** Callers drawn in the SVG graph; the rest collapse into "+N more". */
 export const GRAPH_MAX_CALLERS = 8;
