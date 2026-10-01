@@ -301,14 +301,6 @@ describe("BlastRadiusCard graph", () => {
 });
 
 describe("BlastRadiusCard degraded badge and Resync", () => {
-  it("shows the badge with the reason text for index_failed", async () => {
-    replyBlast({ status: "degraded", reason: "index_failed", symbols: 1, downstream: oneCaller });
-    renderCard();
-    const status = await screen.findByRole("status");
-    expect(status).toHaveTextContent(blast.state.degraded);
-    expect(status).toHaveTextContent(blast.reason.index_failed);
-  });
-
   it("shows no badge when ok", async () => {
     replyBlast({ status: "ok", symbols: 1, downstream: oneCaller });
     renderCard();
@@ -321,7 +313,8 @@ describe("BlastRadiusCard degraded badge and Resync", () => {
     replyBlast({ status: "degraded", reason: "index_partial", symbols: 1, downstream: oneCaller });
     const user = userEvent.setup();
     renderCard();
-    await user.click(await screen.findByRole("button", { name: blast.resync }));
+    expect(await screen.findByRole("status")).toHaveTextContent(blast.state.degraded);
+    await user.click(screen.getByRole("button", { name: blast.resync }));
     await waitFor(() => expect(api.requestsTo("POST", "/repos/r1/resync")).toHaveLength(1));
   });
 

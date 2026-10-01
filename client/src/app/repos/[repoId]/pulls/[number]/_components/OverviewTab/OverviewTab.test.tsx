@@ -151,13 +151,17 @@ describe("Resync from the Blast radius card", () => {
     stubApi();
     let resynced = false;
     let indexFresh = false;
+    let releaseJob!: () => void;
+    const jobDone = new Promise<void>((r) => {
+      releaseJob = r;
+    });
     api.route("POST", "/repos/r1/resync", () => {
       resynced = true;
       return json({ status: "queued" }, 202);
     });
     api.route("GET", "/pulls/p1/overview/readiness", async () => {
       if (resynced) {
-        await new Promise((r) => setTimeout(r, 30));
+        await jobDone;
         indexFresh = true;
       }
       return json(readiness());
@@ -169,6 +173,8 @@ describe("Resync from the Blast radius card", () => {
     expect(await screen.findByRole("status")).toHaveTextContent(blast.reason.index_partial);
 
     await user.click(screen.getByRole("button", { name: blast.resync }));
+    await waitFor(() => expect(api.requestsTo("POST", "/repos/r1/resync")).toHaveLength(1));
+    releaseJob();
 
     await waitFor(() => expect(screen.queryByRole("status")).not.toBeInTheDocument());
     expect(screen.queryByRole("button", { name: blast.resync })).not.toBeInTheDocument();
