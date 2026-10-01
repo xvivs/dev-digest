@@ -102,6 +102,7 @@ export function toSmartDiffReview(input: {
  * the whole diff and never withhold a security/correctness finding.
  */
 export function taskLine(pull: PullRow): string {
+  // Single source of the per-run task prompt shared by every agent run.
   return (
     `Review pull request #${pull.number} "${pull.title}" by ${pull.author}. ` +
     `Report only the distinct, high-value findings you can defend, each citing an exact ` +
