@@ -23,7 +23,7 @@ describe("PriorPrs", () => {
       computed_at: null,
     });
     renderWithProviders(<PriorPrs prId="p1" />, { namespaces: { brief } });
-    const toggle = await screen.findByRole("button", { name: /Prior PRs touching these files/ });
+    const toggle = await screen.findByRole("button", { name: brief.history.title });
     expect(toggle).toHaveAttribute("aria-expanded", "false");
     expect(screen.queryByText("Tighten limiter")).toBeNull();
 

@@ -55,6 +55,6 @@ describe("OverviewTab", () => {
     stubApi();
     renderWithProviders(<OverviewTab prId="p1" />, { namespaces });
     await screen.findByText(/Add rate limiting/);
-    expect(screen.queryByText("PR brief")).toBeNull();
+    expect(screen.queryByText(brief.section)).toBeNull();
   });
 });
