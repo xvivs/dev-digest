@@ -2,6 +2,7 @@ import PQueue from 'p-queue';
 import { eq } from 'drizzle-orm';
 import type { Db } from '../db/client.js';
 import * as t from '../db/schema.js';
+import { NoJobHandlerError } from './errors.js';
 import { withTimeout, withRetry } from './resilience.js';
 
 /**
@@ -32,9 +33,15 @@ export interface JobLogger {
   warn(obj: Record<string, unknown>, msg: string): void;
 }
 
-/** Strip `user:password@` from any URL in a message so a token never reaches logs or the jobs row. */
+/**
+ * Strip `user:password@` from any URL, `Bearer <token>` headers and `sk-…` API
+ * keys from a message so a secret never reaches logs, the jobs row or agent_runs.error.
+ */
 export function redactCredentials(message: string): string {
-  return message.replace(/(https?:\/\/)[^/\s@]+@/gi, '$1***@');
+  return message
+    .replace(/(https?:\/\/)[^/\s@]+@/gi, '$1***@')
+    .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]+/gi, 'Bearer ***')
+    .replace(/\bsk-[A-Za-z0-9_-]{8,}/g, 'sk-***');
 }
 
 export class JobRunner {
@@ -69,7 +76,7 @@ export class JobRunner {
     opts: { timeoutMs?: number } = {},
   ): Promise<EnqueuedJob> {
     const handler = this.handlers.get(kind);
-    if (!handler) throw new Error(`No job handler registered for kind '${kind}'`);
+    if (!handler) throw new NoJobHandlerError(kind);
 
     const [row] = await this.db
       .insert(t.jobs)

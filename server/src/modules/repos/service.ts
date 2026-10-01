@@ -1,6 +1,6 @@
 import type { Container } from '../../platform/container.js';
 import { type Repo } from '@devdigest/shared';
-import { NotFoundError } from '../../platform/errors.js';
+import { NotFoundError, NoJobHandlerError } from '../../platform/errors.js';
 import { KeyedGate } from '../../platform/keyed-gate.js';
 import type { RepoRepository } from './repository.js';
 import { parseRepoUrl, withGitHubToken, toRepoDto, cloneUrlFor, classifyCloneFailure } from './helpers.js';
@@ -101,9 +101,13 @@ export class RepoService implements RepoCloneFacade {
           repoId,
           before.clonePath === null ? 'index' : 'refresh',
         );
-      } catch {
+      } catch (err) {
         // Index follow-up miss — the clone has already succeeded. The user can
         // hit Resync or Prepare overview to retry.
+        this.container.logger?.warn(
+          { err: err instanceof Error ? err.message : String(err), repoId },
+          'index follow-up after clone failed; clone kept',
+        );
       }
     }
   }
@@ -189,8 +193,10 @@ export class RepoService implements RepoCloneFacade {
         name: repo.name,
         url: cloneUrlFor(repo.fullName),
       });
-    } catch {
-      return { queued: false, reason: 'no_handler' };
+    } catch (err) {
+      // Only a missing handler is "no_handler"; DB / queue errors propagate.
+      if (err instanceof NoJobHandlerError) return { queued: false, reason: 'no_handler' };
+      throw err;
     }
   }
 

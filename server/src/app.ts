@@ -180,8 +180,14 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
       return;
     }
     app.log.error(err);
-    const e = err as { statusCode?: number; message?: string };
-    reply.status(e.statusCode ?? 500).send({
+    // Fastify errors carry `statusCode`; Octokit's RequestError carries the
+    // HTTP code in `status`.
+    const e = err as { statusCode?: number; status?: unknown; message?: string };
+    const upstream =
+      typeof e.status === 'number' && Number.isInteger(e.status) && e.status >= 400 && e.status <= 599
+        ? e.status
+        : undefined;
+    reply.status(e.statusCode ?? upstream ?? 500).send({
       error: { code: 'internal_error', message: e.message ?? 'Internal error' },
     });
   });

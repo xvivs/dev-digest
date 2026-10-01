@@ -36,6 +36,14 @@ export class ExternalServiceError extends AppError {
 
 export class ConfigError extends AppError {
   constructor(message: string, details?: unknown) {
-    super('config_error', message, 500, details);
+    super('config_error', message, 424, details);
+  }
+}
+
+/** Thrown by `JobRunner.enqueue` when no handler is registered for the job kind. */
+export class NoJobHandlerError extends Error {
+  constructor(public readonly kind: string) {
+    super(`No job handler registered for kind '${kind}'`);
+    this.name = 'NoJobHandlerError';
   }
 }

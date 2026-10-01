@@ -169,6 +169,7 @@ d('boot-time run reaping (Testcontainers pg)', () => {
     const app = await buildApp({ config: config(), db: pg.handle.db, reapOnBoot: true });
     const [row] = await pg.handle.db.select().from(t.agentRuns).where(eq(t.agentRuns.id, orphan!.id));
     expect(row!.status).toBe('failed');
+    expect(row!.error).toBe('Interrupted by server restart');
     await app.close();
   });
 });

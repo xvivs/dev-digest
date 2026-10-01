@@ -162,12 +162,15 @@ export async function lockRunStatus(db: Db | DbTx, runId: string): Promise<strin
   return row ? row.status : undefined;
 }
 
+/** Error text on runs reaped at boot; the MCP layer classifies by this exact string. */
+export const REAPED_RUN_ERROR = 'Interrupted by server restart';
+
 /** On boot: any run still 'running' is orphaned (its process died / restarted),
  *  so mark it failed. Prevents permanently stuck "running" runs in the UI. */
 export async function reapStaleRunningRuns(db: Db | DbTx): Promise<number> {
   const rows = await db
     .update(t.agentRuns)
-    .set({ status: 'failed' })
+    .set({ status: 'failed', error: sql`COALESCE(${t.agentRuns.error}, ${REAPED_RUN_ERROR})` })
     .where(eq(t.agentRuns.status, 'running'))
     .returning({ id: t.agentRuns.id });
   return rows.length;
