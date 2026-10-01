@@ -6,7 +6,10 @@ import { renderWithProviders } from "@/test/render";
 import type { PrFile, PrReviewComment } from "@/lib/types";
 import diffViewerMessages from "../../../../messages/en/diffViewer.json";
 import type { DiffCommentApi } from "../comments";
-import type { DiffFindingApi, DiffFindingCardProps } from "../findings";
+import type { DiffFindingApi } from "../findings";
+// The real card DiffTab plugs in (it only needs the prReview messages).
+import { DiffFindingCard } from "@/app/repos/[repoId]/pulls/[number]/_components/DiffTab/_components/DiffFindingCard";
+import prReviewMessages from "../../../../messages/en/prReview.json";
 import { DiffViewer } from "./DiffViewer";
 
 const FILE: PrFile = {
@@ -38,7 +41,7 @@ function commenting(comments: PrReviewComment[]): DiffCommentApi {
 }
 
 function renderViewer(ui: React.ReactElement) {
-  return renderWithProviders(ui, { namespaces: { diffViewer: diffViewerMessages } });
+  return renderWithProviders(ui, { namespaces: { diffViewer: diffViewerMessages, prReview: prReviewMessages } });
 }
 
 describe("DiffViewer", () => {
@@ -112,25 +115,14 @@ describe("DiffViewer", () => {
       } as FindingRecord;
     }
 
-    function StubCard({ finding: f, onAction }: DiffFindingCardProps) {
-      return (
-        <div data-testid={`card-${f.id}`}>
-          <span>{f.title}</span>
-          <button type="button" onClick={() => onAction("accept")}>
-            Accept
-          </button>
-        </div>
-      );
-    }
-
     function api(findings: FindingRecord[], over: Partial<DiffFindingApi> = {}): DiffFindingApi {
-      return { findings, show: true, Card: StubCard, onAction: vi.fn(), pendingId: null, ...over };
+      return { findings, show: true, Card: DiffFindingCard, onAction: vi.fn(), pendingId: null, ...over };
     }
 
     it("renders the card right after the row of its start line, with a severity label", () => {
       // Anchored on the MIDDLE line so "right after" is pinned on both sides.
       renderViewer(<DiffViewer files={[FILE]} findings={api([finding({ start_line: 2, end_line: 2 })])} />);
-      const card = screen.getByTestId("card-f1");
+      const card = screen.getByText("Boundary untested");
       const after = (a: Node, b: Node) => !!(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
       expect(after(screen.getByText("const b = 3;"), card)).toBe(true);
       expect(after(card, screen.getByText("const c = 4;"))).toBe(true);
@@ -153,7 +145,7 @@ describe("DiffViewer", () => {
     it("puts a finding on a line that is not rendered into the end-of-file block", () => {
       renderViewer(<DiffViewer files={[FILE]} findings={api([finding({ start_line: 99, end_line: 99 })])} />);
       expect(screen.getByText("1 finding outside the shown lines")).toBeInTheDocument();
-      expect(screen.getByTestId("card-f1")).toBeInTheDocument();
+      expect(screen.getByText("Boundary untested")).toBeInTheDocument();
     });
 
     it("still shows the block when the file has no patch", () => {
@@ -164,7 +156,7 @@ describe("DiffViewer", () => {
 
     it("hides cards when show is false but keeps the dot and the label", () => {
       renderViewer(<DiffViewer files={[FILE]} findings={api([finding({})], { show: false })} />);
-      expect(screen.queryByTestId("card-f1")).not.toBeInTheDocument();
+      expect(screen.queryByText("Boundary untested")).not.toBeInTheDocument();
       expect(screen.getByRole("img", { name: "1 finding" })).toBeInTheDocument();
       expect(screen.getByText("blocker")).toBeInTheDocument();
     });

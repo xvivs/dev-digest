@@ -5,7 +5,7 @@ import { useTranslations } from "next-intl";
 import { Icon, Avatar, Badge, Button, usePrefersReducedMotion } from "@devdigest/ui";
 import type { PrDetail } from "@/lib/types";
 import { STATUS_META } from "@/app/repos/[repoId]/pulls/constants";
-import type { PrTab } from "@/app/repos/[repoId]/pulls/[number]/_components/PrDetailView/constants";
+import type { PrTab } from "@/app/repos/[repoId]/pulls/[number]/constants";
 import { RunReviewDropdown } from "../RunReviewDropdown";
 import { CondensedBar } from "./_components/CondensedBar";
 import { HeaderTabs } from "./_components/HeaderTabs";

@@ -4,7 +4,7 @@
 
 import React from "react";
 import { Tabs } from "@devdigest/ui";
-import type { PrTab } from "@/app/repos/[repoId]/pulls/[number]/_components/PrDetailView/constants";
+import type { PrTab } from "@/app/repos/[repoId]/pulls/[number]/constants";
 
 export interface HeaderTabsProps {
   ariaLabel: string;

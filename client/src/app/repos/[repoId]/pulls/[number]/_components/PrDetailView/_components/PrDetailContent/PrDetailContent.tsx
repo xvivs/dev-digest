@@ -18,8 +18,7 @@ import { FindingsTab } from "@/app/repos/[repoId]/pulls/[number]/_components/Fin
 import { DiffTab } from "@/app/repos/[repoId]/pulls/[number]/_components/DiffTab";
 import { RunTraceDrawer } from "@/app/repos/[repoId]/pulls/[number]/_components/RunTraceDrawer";
 import { PrDetailSkeleton } from "../PrDetailSkeleton";
-import { CONDENSED_BAR_HEIGHT, MOBILE_QUERY } from "@/app/repos/[repoId]/pulls/[number]/constants";
-import { RUNS_TAB, type PrTab } from "../../constants";
+import { CONDENSED_BAR_HEIGHT, MOBILE_QUERY, RUNS_TAB, type PrTab } from "@/app/repos/[repoId]/pulls/[number]/constants";
 import { parseSeverity, parseTab, prDetailHref } from "../../helpers";
 import { s } from "../../styles";
 import { useMediaQuery, useStickyOffset } from "./hooks";

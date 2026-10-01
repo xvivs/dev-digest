@@ -22,20 +22,21 @@ export function SmartDiffGroup({
   children?: React.ReactNode;
 }) {
   const t = useTranslations("prReview");
+  const labelId = React.useId();
   const meta = ROLE_META[group.role];
   const count = t("smartDiff.filesCount", { count: group.files.length });
 
   const label = (
     <>
       <span aria-hidden="true" style={squareFor(meta.color)} />
-      <span style={s.label}>{t(meta.labelKey)}</span>
+      <span id={labelId} style={s.label}>{t(meta.labelKey)}</span>
       <span style={s.desc}>{t(meta.descKey)}</span>
     </>
   );
 
   if (group.isEmpty) {
     return (
-      <section style={s.wrapper}>
+      <section role="region" aria-labelledby={labelId} style={s.wrapper}>
         <div style={s.headerEmpty}>
           {label}
           <span style={s.right}>
@@ -49,7 +50,7 @@ export function SmartDiffGroup({
   }
 
   return (
-    <section style={s.wrapper}>
+    <section role="region" aria-labelledby={labelId} style={s.wrapper}>
       <Disclosure
         defaultOpen={!COLLAPSED_ROLES.has(group.role)}
         headerStyle={s.header}

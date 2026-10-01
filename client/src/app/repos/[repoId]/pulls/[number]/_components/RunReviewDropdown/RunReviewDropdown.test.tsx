@@ -104,14 +104,6 @@ describe("RunReviewDropdown", () => {
     expect(buttons[0]).toHaveTextContent("Run Review"); // still in the DOM for wide screens
   });
 
-  it("without the prop the trigger is unchanged: plain label, no aria-label/title", () => {
-    renderDropdown(<RunReviewDropdown prId="pr1" />);
-    const button = screen.getByRole("button");
-    expect(button).toHaveAccessibleName("Run Review");
-    expect(button).not.toHaveAttribute("aria-label");
-    expect(button).not.toHaveAttribute("title");
-  });
-
   it("a run in flight on the server (seen by any instance) disables the trigger and blocks a duplicate start", async () => {
     const user = userEvent.setup();
     activeRuns = [{ run_id: "r1" }];

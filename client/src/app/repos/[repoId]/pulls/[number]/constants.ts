@@ -1,3 +1,10 @@
+/** Tabs of the PR detail screen; the active one lives in `?tab=`. */
+export const PR_TABS = ["overview", "findings", "diff"] as const;
+export type PrTab = (typeof PR_TABS)[number];
+export const DEFAULT_TAB: PrTab = "overview";
+/** Tab a freshly started review switches to. */
+export const RUNS_TAB: PrTab = "findings";
+
 /** CSS variable carrying the measured height of the sticky PR header. Written
  *  by PrDetailContent (useStickyOffset), read by DiffTab's sticky group headers. */
 export const PR_HEADER_OFFSET_VAR = "--pr-header-h";

@@ -139,10 +139,11 @@ afterEach(() => {
   post.mockClear();
 });
 
-const sectionOf = (label: string) => screen.getByText(label).closest("section")!;
+// Each role group is a labelled region.
+const sectionOf = (label: string) => screen.getByRole("region", { name: label });
 
 describe("DiffTab", () => {
-  it("groups by role in the fixed order, mutes empty groups, and keeps docs collapsed", async () => {
+  it("groups by role in the fixed order, mutes empty groups, keeps docs collapsed; the order toggle flips to the flat list and back", async () => {
     renderTab();
     await screen.findByText("Core logic");
     const labels = ["Core logic", "Tests", "Wiring", "Docs", "Boilerplate"].map((l) => screen.getByText(l));
@@ -160,23 +161,18 @@ describe("DiffTab", () => {
 
     expect(within(sectionOf("Core logic")).getByRole("img", { name: "1 file with findings" })).toBeInTheDocument();
     expect(within(sectionOf("Tests")).queryByRole("img", { name: /with findings/ })).toBeNull();
-  });
 
-  it("switches to Original order (flat, pr.files order) and back", async () => {
+    // Order toggle: flat list in pr.files order, then back to the groups.
     const user = userEvent.setup();
-    renderTab();
-    await screen.findByText("Core logic");
     const smart = screen.getByRole("button", { name: "Smart order" });
     const original = screen.getByRole("button", { name: "Original order" });
     expect(smart).toHaveAttribute("aria-pressed", "true");
-
     await user.click(original);
     expect(original).toHaveAttribute("aria-pressed", "true");
     expect(smart).toHaveAttribute("aria-pressed", "false");
     expect(screen.queryByText("Core logic")).not.toBeInTheDocument();
     const paths = screen.getAllByText(/^(src\/a\.ts|src\/a\.test\.ts|README\.md)$/).map((n) => n.textContent);
     expect(paths).toEqual(["src/a.ts", "src/a.test.ts", "README.md"]);
-
     await user.click(smart);
     expect(await screen.findByText("Core logic")).toBeInTheDocument();
   });
@@ -197,6 +193,10 @@ describe("DiffTab", () => {
       expect(get.mock.calls.filter(([p]) => p === "/pulls/pr-1/reviews").length).toBeGreaterThan(before),
     );
     expect(await screen.findByText("accepted")).toBeInTheDocument();
+    // an accepted finding still counts and keeps its stripe
+    expect(screen.getByRole("img", { name: "1 finding" })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "1 file with findings" })).toBeInTheDocument();
+    expect(screen.getByTitle("Boundary untested")).toBeInTheDocument();
   });
 
   it("says the review has not run, shows no counter, then updates without a remount", async () => {
@@ -238,21 +238,20 @@ describe("DiffTab", () => {
     expect(screen.getByRole("button", { name: "Show comments & findings (2)" })).toBeInTheDocument();
   });
 
-  it("without comments the untouched toggle already shows findings, and the first click hides them", async () => {
-    const user = userEvent.setup();
-    renderTab();
-    await screen.findByText("Boundary untested");
-    await user.click(await screen.findByRole("button", { name: "Hide comments & findings (1)" }));
-    expect(screen.queryByText("Boundary untested")).not.toBeInTheDocument();
-  });
-
-  it("puts a finding on a path outside the PR in a block after the groups", async () => {
+  it("puts a finding on a path outside the PR in a block after the groups (and after the flat list in Original order)", async () => {
     const r = review();
     r.findings.push({ ...r.findings[0]!, id: "f2", title: "Stray", file: "old/name.ts" });
     setRoutes({ "/pulls/pr-1/reviews": [r] });
     renderTab();
     expect(await screen.findByText("1 finding on files not in this diff")).toBeInTheDocument();
     expect(screen.getByText("Stray")).toBeInTheDocument();
+
+    // AC-24: in Original order the block follows the flat list
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Original order" }));
+    const title = screen.getByText("1 finding on files not in this diff");
+    const lastPath = screen.getByText("README.md");
+    expect(lastPath.compareDocumentPosition(title) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it("AC-18/19: the group counter counts files, not findings (2 files / 5 findings -> 2); each file dot counts its own", async () => {
@@ -306,17 +305,6 @@ describe("DiffTab", () => {
     expect(screen.getByRole("button", { name: "Hide comments & findings (0)" })).toBeInTheDocument();
   });
 
-  it("an accepted finding still counts and keeps its stripe", async () => {
-    const user = userEvent.setup();
-    renderTab();
-    await screen.findByText("Boundary untested");
-    await user.click(screen.getByRole("button", { name: "Accept" }));
-    expect(await screen.findByText("accepted")).toBeInTheDocument();
-    expect(screen.getByRole("img", { name: "1 finding" })).toBeInTheDocument();
-    expect(screen.getByRole("img", { name: "1 file with findings" })).toBeInTheDocument();
-    expect(screen.getByTitle("Boundary untested")).toBeInTheDocument();
-  });
-
   it("AC-25: toggling off hides cards, the unmatched-file block and comments; stripes, dots and counters stay", async () => {
     const r = review();
     r.findings.push({ ...r.findings[0]!, id: "f2", title: "Stray", file: "old/name.ts" });
@@ -348,7 +336,7 @@ describe("DiffTab", () => {
     renderTab();
     const block = await screen.findByText("1 finding outside the shown lines");
     expect(within(sectionOf("Core logic")).getByText("Off patch")).toBeInTheDocument();
-    expect(block.closest("section")).toBe(sectionOf("Core logic"));
+    expect(sectionOf("Core logic")).toContainElement(block);
     expect(screen.queryByTitle("Off patch")).toBeNull(); // no rendered line, no stripe
     expect(within(sectionOf("Core logic")).getByRole("img", { name: "1 file with findings" })).toBeInTheDocument();
     // AC-24: the stray block is after the last group, outside every group
@@ -358,19 +346,6 @@ describe("DiffTab", () => {
       expect(sectionOf(label)).not.toContainElement(stray);
     }
     expect(screen.getAllByRole("img", { name: /file with findings|files with findings/ })).toHaveLength(1);
-  });
-
-  it("AC-24: in Original order the unmatched-files block follows the flat list", async () => {
-    const r = review();
-    r.findings.push({ ...r.findings[0]!, id: "f2", title: "Stray", file: "old/name.ts" });
-    setRoutes({ "/pulls/pr-1/reviews": [r] });
-    const user = userEvent.setup();
-    renderTab();
-    await screen.findByText("Core logic");
-    await user.click(screen.getByRole("button", { name: "Original order" }));
-    const title = screen.getByText("1 finding on files not in this diff");
-    const lastPath = screen.getByText("README.md");
-    expect(lastPath.compareDocumentPosition(title) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it("AC-14: docs/boilerplate cards collapse and big files collapse; Original order drops the role-based collapse (size rule only)", async () => {
@@ -422,7 +397,7 @@ describe("DiffTab", () => {
     expect(await screen.findByText("Core logic")).toBeInTheDocument();
   });
 
-  it("AC-28: clicking the card header collapses it to one line without dismissing the finding", async () => {
+  it("AC-28: clicking the card header collapses it without dismissing; the untouched toggle then hides findings on first click", async () => {
     const user = userEvent.setup();
     renderTab();
     await screen.findByText("Needs a test.");
@@ -432,6 +407,10 @@ describe("DiffTab", () => {
     expect(screen.getByText("Boundary untested")).toBeInTheDocument();
     expect(post).not.toHaveBeenCalled();
     expect(screen.getByRole("img", { name: "1 finding" })).toBeInTheDocument();
+
+    // Without comments the untouched toggle already shows findings; the first click hides them.
+    await user.click(await screen.findByRole("button", { name: "Hide comments & findings (1)" }));
+    expect(screen.queryByText("Boundary untested")).not.toBeInTheDocument();
   });
 
   it("AC-34: HTML in a finding title or rationale is rendered as text, never as elements", async () => {

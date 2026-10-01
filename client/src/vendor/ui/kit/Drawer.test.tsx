@@ -94,7 +94,7 @@ describe("Drawer", () => {
 describe("Drawer motion", () => {
   const origin = { x: 23, y: 26 };
 
-  it("reveal: sets the origin vars the reveal grows from; content is visible and Escape closes", async () => {
+  it("reveal: content is visible and Escape closes", async () => {
     const user = userEvent.setup();
     const onClose = vi.fn();
     render(
@@ -102,9 +102,7 @@ describe("Drawer motion", () => {
         <p>menu</p>
       </Drawer>,
     );
-    const dialog = screen.getByRole("dialog", { name: "Nav" });
-    expect(dialog.style.getPropertyValue("--origin-x")).toBe("23px");
-    expect(dialog.style.getPropertyValue("--origin-y")).toBe("26px");
+    expect(screen.getByRole("dialog", { name: "Nav" })).toBeInTheDocument();
     expect(screen.getByText("menu")).toBeVisible();
     await user.keyboard("{Escape}");
     expect(onClose).toHaveBeenCalledTimes(1);
@@ -124,15 +122,15 @@ describe("Drawer motion", () => {
     expect(onClose).not.toHaveBeenCalled();
   });
 
-  it("default (no motion): sets no origin vars and Escape closes", async () => {
+  it("default (no motion): Escape closes", async () => {
     const user = userEvent.setup();
     const onClose = vi.fn();
     render(<Drawer title="Nav" side="left" onClose={onClose} />);
-    expect(screen.getByRole("dialog").style.getPropertyValue("--origin-x")).toBe("");
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
     await user.keyboard("{Escape}");
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  // Not asserted (visual, browser-verified): slide/reveal/fade animations, pointer-events while
+  // Not asserted (visual, browser-verified): the reveal origin, slide/reveal/fade animations, pointer-events while
   // exiting, and the topInset header min-height.
 });

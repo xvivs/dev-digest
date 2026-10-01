@@ -12,11 +12,24 @@ vi.mock("@devdigest/ui", async (orig) => ({
   usePrefersReducedMotion: () => reduced,
 }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), replace: vi.fn() }) }));
-vi.mock("@/lib/hooks/agents", () => ({ useAgents: () => ({ data: [] }) }));
-vi.mock("@/lib/hooks/reviews", () => ({
-  useRunReview: () => ({ mutateAsync: vi.fn(), isPending: false }),
-  usePrActiveRuns: () => ({ data: [] }),
-}));
+// Real hooks + a real QueryClient; only the network boundary is faked.
+const routes: Record<string, unknown> = { "/agents": [], "/pulls/pr-uuid/runs/active": [] };
+vi.mock("@/lib/api", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/api")>();
+  return {
+    ...actual,
+    api: {
+      get: async (path: string) => {
+        if (!(path in routes)) throw new Error(`unmocked GET ${path}`);
+        return routes[path];
+      },
+      post: vi.fn(),
+      put: vi.fn(),
+      patch: vi.fn(),
+      del: vi.fn(),
+    },
+  };
+});
 
 import { PrDetailHeader, type PrDetailHeaderProps } from "./PrDetailHeader";
 
@@ -64,6 +77,7 @@ function renderHeader(props: Partial<PrDetailHeaderProps> = {}) {
 
 const TITLE = `#482 ${PR.title}`;
 const CONDENSED_TABS = { name: "PR sections (condensed)" };
+// Kept deliberately: inert/aria-hidden are an a11y contract (a hidden bar was once keyboard-reachable).
 // The bar is `inert` + aria-hidden while hidden, so it is only in the a11y tree
 // (and only reachable by role) when shown. `hidden: true` reaches it either way.
 const barTitle = () => screen.getByRole("button", { name: TITLE, hidden: true });
