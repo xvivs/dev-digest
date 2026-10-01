@@ -306,6 +306,7 @@ export class ReviewRunExecutor {
         onEvent: (e) => runLog.event(e.kind, e.msg, e.data),
         checkCancelled: throwIfCancelled,
         signal: cancelSignal,
+        callDeadlineMs: this.container.config.reviewCallDeadlineMs,
         // OpenRouter-only upstream routing (the other adapters ignore it).
         // Reasoning is left on — see the note under REVIEW_PROVIDER_ROUTING.
         ...(agent.provider === 'openrouter' ? { providerRouting: REVIEW_PROVIDER_ROUTING } : {}),

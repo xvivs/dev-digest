@@ -2,6 +2,7 @@ import 'dotenv/config';
 import { z } from 'zod';
 import { homedir } from 'node:os';
 import { join, isAbsolute, resolve } from 'node:path';
+import { DEFAULT_REVIEW_CALL_DEADLINE_MS } from '@devdigest/reviewer-core';
 
 /**
  * Central, zod-validated environment config. Loaded once at startup.
@@ -34,6 +35,12 @@ const EnvSchema = z.object({
   // whose estimate is above it is refused before anything runs.
   // Empty (`EVAL_MAX_BUDGET_USD=`) falls through to the default, like LOG_LEVEL.
   EVAL_MAX_BUDGET_USD: z.preprocess((v) => (v === '' ? undefined : v), z.coerce.number().positive().default(5)),
+  // Wall-clock deadline (ms) for ONE review LLM call. Empty falls through to the
+  // reviewer-core default, like EVAL_MAX_BUDGET_USD.
+  REVIEW_CALL_DEADLINE_MS: z.preprocess(
+    (v) => (v === '' ? undefined : v),
+    z.coerce.number().int().positive().default(DEFAULT_REVIEW_CALL_DEADLINE_MS),
+  ),
   API_PORT: z.coerce.number().int().default(3001),
   WEB_PORT: z.coerce.number().int().default(3000),
   DEVDIGEST_CLONE_DIR: z.string().optional(),
@@ -69,6 +76,8 @@ export type AppConfig = {
   repoIntelEnabled: boolean;
   /** ADR 0018: max estimate (USD) of one eval suite. Default 5. */
   evalMaxBudgetUsd: number;
+  /** Deadline (ms) for one review LLM call. Default 900_000 (15 min). */
+  reviewCallDeadlineMs: number;
   /**
    * Hard kill-switch for automatic (import-time) PR brief derivation. Defaults
    * to `NODE_ENV !== 'test'`; set AUTO_BRIEF=true|false to override. The
@@ -94,6 +103,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     embeddingsEnabled: parsed.EMBEDDINGS_ENABLED === 'true',
     repoIntelEnabled: parsed.REPO_INTEL_ENABLED !== 'false',
     evalMaxBudgetUsd: parsed.EVAL_MAX_BUDGET_USD,
+    reviewCallDeadlineMs: parsed.REVIEW_CALL_DEADLINE_MS,
     autoBriefEnabled:
       parsed.AUTO_BRIEF === undefined || parsed.AUTO_BRIEF === ''
         ? parsed.NODE_ENV !== 'test'

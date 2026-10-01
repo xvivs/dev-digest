@@ -100,6 +100,7 @@ flowchart TB
 | `REPO_INTEL_ENABLED` | `true` | repo skeleton + callers in the prompt; `false` → ripgrep-only |
 | `DEVDIGEST_CLONE_DIR` | `./clones` | imported-repo checkouts (git-ignored) |
 | `EVAL_MAX_BUDGET_USD` | `5` | cap on one eval suite's pre-run estimate; above it the suite is refused (ADR 0018) |
+| `REVIEW_CALL_DEADLINE_MS` | `900000` | wall-clock deadline (ms, positive int) for one review LLM call; invalid value fails boot |
 | `LOG_LEVEL` | `info` (`silent` in test) | pino level |
 | `NODE_ENV` | `development` | `test` → silent logs + global rate-limit disabled |
 
