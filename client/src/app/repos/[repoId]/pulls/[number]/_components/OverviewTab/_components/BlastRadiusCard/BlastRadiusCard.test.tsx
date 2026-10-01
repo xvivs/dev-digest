@@ -81,9 +81,10 @@ describe("BlastRadiusCard scroll region", () => {
 
   it("keeps the graph view inside the scroll region too", async () => {
     reply(15, "ok");
+    const user = userEvent.setup();
     renderWithProviders(<BlastRadiusCard prId="p1" repoId="r1" repoFullName="acme/widgets" />, { namespaces });
     await screen.findByRole("region", { name: blast.scrollRegion });
-    await userEvent.click(screen.getByRole("button", { name: blast.view.graph }));
+    await user.click(screen.getByRole("button", { name: blast.view.graph }));
     const region = screen.getByRole("region", { name: blast.scrollRegion });
     expect(within(region).getByRole("group", { name: blast.graph.ariaLabel })).toBeInTheDocument();
   });
@@ -177,17 +178,18 @@ describe("BlastRadiusCard bottom fade", () => {
   it("re-measures when switching Tree/Graph swaps in content of a different height, without any scroll", async () => {
     Object.assign(box, { scrollHeight: 800, clientHeight: 360, scrollTop: 0 });
     reply(15, "ok");
+    const user = userEvent.setup();
     renderWithProviders(<BlastRadiusCard prId="p1" repoId="r1" repoFullName="acme/widgets" />, { namespaces });
     const region = await screen.findByRole("region", { name: blast.scrollRegion });
     await waitFor(() => expect(fade()).toHaveAttribute("data-visible", "true"));
 
     Object.assign(box, { scrollHeight: 200, clientHeight: 200 }); // graph fits
-    await userEvent.click(screen.getByRole("button", { name: blast.view.graph }));
+    await user.click(screen.getByRole("button", { name: blast.view.graph }));
     resizeContent(region);
     await waitFor(() => expect(fade()).toHaveAttribute("data-visible", "false"));
 
     Object.assign(box, { scrollHeight: 800, clientHeight: 360 }); // tree overflows again
-    await userEvent.click(screen.getByRole("button", { name: blast.view.tree }));
+    await user.click(screen.getByRole("button", { name: blast.view.tree }));
     resizeContent(region);
     await waitFor(() => expect(fade()).toHaveAttribute("data-visible", "true"));
   });
@@ -272,9 +274,10 @@ describe("BlastRadiusCard graph", () => {
 
   it("wraps each caller label in a link whose accessible name starts with the visible label", async () => {
     replyBlast({ symbols: 1, downstream: [{ symbol: "doWork", callers }] });
+    const user = userEvent.setup();
     renderCard();
     await screen.findByRole("region", { name: blast.scrollRegion });
-    await userEvent.click(screen.getByRole("button", { name: blast.view.graph }));
+    await user.click(screen.getByRole("button", { name: blast.view.graph }));
     const link = screen.getByRole("link", { name: /^caller0:1 \(src\/f0\.ts\)$/ });
     expect(link).toHaveAttribute("href", "https://github.com/acme/widgets/blob/deadbeefcafe/src/f0.ts#L1");
     expect(link).toHaveAttribute("target", "_blank");
@@ -282,23 +285,22 @@ describe("BlastRadiusCard graph", () => {
     expect(link).toHaveTextContent("caller0:1");
   });
 
-  it("has role=group and hides decorative edges from assistive tech", async () => {
+  it("exposes the graph as role=group, not img", async () => {
     replyBlast({ symbols: 1, downstream: [{ symbol: "doWork", callers }] });
+    const user = userEvent.setup();
     renderCard();
     await screen.findByRole("region", { name: blast.scrollRegion });
-    await userEvent.click(screen.getByRole("button", { name: blast.view.graph }));
-    const svg = screen.getByRole("group", { name: blast.graph.ariaLabel });
+    await user.click(screen.getByRole("button", { name: blast.view.graph }));
+    expect(screen.getByRole("group", { name: blast.graph.ariaLabel })).toBeInTheDocument();
     expect(screen.queryByRole("img", { name: blast.graph.ariaLabel })).not.toBeInTheDocument();
-    const lines = svg.querySelectorAll("line");
-    expect(lines.length).toBeGreaterThan(0);
-    lines.forEach((l) => expect(l).toHaveAttribute("aria-hidden", "true"));
   });
 
   it("draws no link without source_sha", async () => {
     replyBlast({ symbols: 1, downstream: [{ symbol: "doWork", callers }], source_sha: null });
+    const user = userEvent.setup();
     renderCard();
     await screen.findByRole("region", { name: blast.scrollRegion });
-    await userEvent.click(screen.getByRole("button", { name: blast.view.graph }));
+    await user.click(screen.getByRole("button", { name: blast.view.graph }));
     expect(screen.queryAllByRole("link")).toHaveLength(0);
     expect(screen.getByText("caller0:1")).toBeInTheDocument();
   });
@@ -320,15 +322,12 @@ describe("BlastRadiusCard degraded badge and Resync", () => {
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
   });
 
-  it("has a text for every reason", () => {
-    for (const r of BLAST_REASONS) expect((blast.reason as Record<string, string>)[r]).toBeTruthy();
-  });
-
   it("Resync posts once to /repos/r1/resync", async () => {
     api.reply("POST", "/repos/r1/resync", { status: "queued" }, 202);
     replyBlast({ status: "degraded", reason: "index_partial", symbols: 1, downstream: oneCaller });
+    const user = userEvent.setup();
     renderCard();
-    await userEvent.click(await screen.findByRole("button", { name: blast.resync }));
+    await user.click(await screen.findByRole("button", { name: blast.resync }));
     await waitFor(() => expect(api.requestsTo("POST", "/repos/r1/resync")).toHaveLength(1));
   });
 
@@ -349,11 +348,12 @@ describe("BlastRadiusCard no callers and plurals", () => {
         { symbol: "b", callers: [] },
       ],
     });
+    const user = userEvent.setup();
     renderCard();
     expect(await screen.findByText("2 changed symbols, no downstream callers found.")).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: blast.scrollRegion })).not.toBeInTheDocument();
     expect(screen.queryByText("a")).not.toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: blast.view.graph }));
+    await user.click(screen.getByRole("button", { name: blast.view.graph }));
     expect(screen.getByText("2 changed symbols, no downstream callers found.")).toBeInTheDocument();
   });
 

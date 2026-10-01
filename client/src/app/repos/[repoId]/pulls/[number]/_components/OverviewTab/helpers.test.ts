@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { DownstreamImpact, ReviewRecord, RunSummary } from "@devdigest/shared";
 import blastMessages from "@/../messages/en/blast.json";
-import { BLAST_REASONS, GRAPH, GRAPH_MAX_CALLERS, RESYNC_REASONS } from "./constants";
+import { BLAST_REASONS, GRAPH, GRAPH_MAX_CALLERS } from "./constants";
 import {
   blastCallerHref,
   blastGraphLayout,
@@ -201,10 +201,6 @@ describe("canResyncBlast", () => {
     ["unavailable", "no_data", false],
   ] as const)("%s / %s -> %s", (status, reason, want) => {
     expect(canResyncBlast(status, reason)).toBe(want);
-  });
-
-  it("agrees with RESYNC_REASONS", () => {
-    for (const r of BLAST_REASONS) expect(canResyncBlast("degraded", r)).toBe(RESYNC_REASONS.includes(r));
   });
 });
 

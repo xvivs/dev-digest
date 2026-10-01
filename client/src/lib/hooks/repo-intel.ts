@@ -9,6 +9,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
 import type { MutationHookOptions } from "../query-client";
+import { prBlastKey } from "./brief";
 import { markOverviewIndexRunStarted } from "./overview";
 
 /** Subset of the server's IndexState the badge + completion-poll need (kept
@@ -54,7 +55,7 @@ export function useResyncRepoIntel(
       qc.invalidateQueries({ queryKey: ["repo-intel-state", repoId] });
       if (options?.prId) {
         markOverviewIndexRunStarted(qc, options.prId);
-        qc.invalidateQueries({ queryKey: ["pr-blast", options.prId] });
+        qc.invalidateQueries({ queryKey: prBlastKey(options.prId) });
       }
     },
   });

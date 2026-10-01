@@ -8,6 +8,7 @@
 import { useLayoutEffect, useRef } from "react";
 import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { api } from "../api";
+import { prBlastKey } from "./brief";
 import type { MutationHookOptions } from "../query-client";
 import {
   PrepareOverviewResponse,
@@ -27,7 +28,7 @@ export type OnReadiness = (prev: PrOverviewReadiness | undefined, next: PrOvervi
 function invalidateAfterPrepare(qc: QueryClient, prId: string, repoId: string): void {
   qc.invalidateQueries({ queryKey: ["pr-intent", prId] });
   qc.invalidateQueries({ queryKey: ["pr-risks", prId] });
-  qc.invalidateQueries({ queryKey: ["pr-blast", prId] });
+  qc.invalidateQueries({ queryKey: prBlastKey(prId) });
   qc.invalidateQueries({ queryKey: ["repo-intel-state", repoId] });
   // A clone changes `clone_path` on the repo list.
   qc.invalidateQueries({ queryKey: ["repos"] });

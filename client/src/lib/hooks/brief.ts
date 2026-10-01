@@ -72,9 +72,11 @@ export function useRefreshPullForBrief(prId: string | null | undefined) {
   };
 }
 
+export const prBlastKey = (prId: string | null | undefined) => ["pr-blast", prId] as const;
+
 export function usePrBlast(prId: string | null | undefined) {
   return useQuery({
-    queryKey: ["pr-blast", prId],
+    queryKey: prBlastKey(prId),
     queryFn: () => api.get<PrBlastResponse>(`/pulls/${prId}/blast`, PrBlastResponse),
     enabled: !!prId,
     staleTime: BLAST_STALE_TIME_MS,
