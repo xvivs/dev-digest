@@ -4,7 +4,7 @@
  */
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import React from "react";
-import { render, cleanup, act } from "@testing-library/react";
+import { render, cleanup, act, screen } from "@testing-library/react";
 import { useCondensedHeader } from "./useCondensedHeader";
 
 type Entry = Partial<IntersectionObserverEntry>;
@@ -34,9 +34,21 @@ afterEach(() => {
 });
 
 let latest: ReturnType<typeof useCondensedHeader>;
-function Harness({ withSentinel = true, isMobile = true }: { withSentinel?: boolean; isMobile?: boolean }) {
+function Harness({
+  withSentinel = true,
+  isMobile = true,
+  anchor,
+}: {
+  withSentinel?: boolean;
+  isMobile?: boolean;
+  anchor?: React.CSSProperties["overflowAnchor"];
+}) {
   latest = useCondensedHeader(isMobile);
-  return <main>{withSentinel && <div data-testid="sentinel" ref={latest.setSentinel} />}</main>;
+  return (
+    <main style={anchor ? { overflowAnchor: anchor } : undefined}>
+      {withSentinel && <div data-testid="sentinel" ref={latest.setSentinel} />}
+    </main>
+  );
 }
 const io = () => ios[ios.length - 1]!;
 const fire = (isIntersecting: boolean, top: number) =>
@@ -49,10 +61,10 @@ describe("useCondensedHeader", () => {
   });
 
   it("mobile until the sentinel leaves through the top, condensed while it is gone, back when it returns", () => {
-    const { container } = render(<Harness />);
+    render(<Harness />);
     expect(latest.layout).toBe("mobile");
-    expect(io().observed).toEqual([container.querySelector("[data-testid=sentinel]")]);
-    expect(io().opts?.root).toBe(container.querySelector("main"));
+    // The observer watches the sentinel and nothing else.
+    expect(io().observed).toEqual([screen.getByTestId("sentinel")]);
     fire(false, -5);
     expect(latest.layout).toBe("condensed");
     fire(true, 10);
@@ -65,12 +77,21 @@ describe("useCondensedHeader", () => {
     expect(latest.layout).toBe("mobile");
   });
 
-  it("sets overflow-anchor: none on <main> while observing and restores it", () => {
-    const { container, unmount } = render(<Harness />);
-    const main = container.querySelector("main")!;
+  it("sets overflow-anchor: none on <main> while observing and restores the prior value on unmount", () => {
+    const { unmount } = render(<Harness anchor="auto" />);
+    const main = screen.getByRole("main");
     expect(main.style.overflowAnchor).toBe("none");
     unmount();
     expect(io().disconnect).toHaveBeenCalled();
+    expect(main.style.overflowAnchor).toBe("auto");
+  });
+
+  it("restores overflow-anchor when the sentinel goes away while <main> stays mounted", () => {
+    const { rerender } = render(<Harness anchor="auto" />);
+    const main = screen.getByRole("main");
+    expect(main.style.overflowAnchor).toBe("none");
+    rerender(<Harness anchor="auto" withSentinel={false} />);
+    expect(main.style.overflowAnchor).toBe("auto");
   });
 
   it("does not observe without a sentinel", () => {

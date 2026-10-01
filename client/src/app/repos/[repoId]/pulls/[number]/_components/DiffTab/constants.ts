@@ -21,3 +21,9 @@ export const FALLBACK_ROLE: SmartDiffRole = "core";
 
 export const ORDER_MODES = ["smart", "original"] as const;
 export type OrderMode = (typeof ORDER_MODES)[number];
+
+/** `prReview` message key of each order mode's button label. */
+export const ORDER_LABEL_KEY: Record<OrderMode, string> = {
+  smart: "smartDiff.smartOrder",
+  original: "smartDiff.originalOrder",
+};

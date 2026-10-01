@@ -143,17 +143,16 @@ const sectionOf = (label: string) => screen.getByText(label).closest("section")!
 
 describe("DiffTab", () => {
   it("groups by role in the fixed order, mutes empty groups, and keeps docs collapsed", async () => {
-    const { container } = renderTab();
+    renderTab();
     await screen.findByText("Core logic");
-    const text = container.textContent ?? "";
-    const order = ["Core logic", "Tests", "Wiring", "Docs", "Boilerplate"].map((l) => text.indexOf(l));
-    expect(order.every((i) => i >= 0)).toBe(true);
-    expect([...order].sort((a, b) => a - b)).toEqual(order);
+    const labels = ["Core logic", "Tests", "Wiring", "Docs", "Boilerplate"].map((l) => screen.getByText(l));
+    labels.slice(1).forEach((label, i) => {
+      expect(labels[i]!.compareDocumentPosition(label) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
 
     const wiring = sectionOf("Wiring");
     expect(within(wiring).getByText("0 files")).toBeInTheDocument();
-    expect(wiring.querySelector("[aria-expanded]")).toBeNull();
-    expect(wiring.querySelector("button")).toBeNull();
+    expect(within(wiring).queryByRole("button")).toBeNull(); // no toggle, so no aria-expanded either
 
     const docsToggle = within(sectionOf("Docs")).getAllByRole("button")[0]!;
     expect(docsToggle).toHaveAttribute("aria-expanded", "false");
@@ -186,8 +185,10 @@ describe("DiffTab", () => {
     const user = userEvent.setup();
     renderTab();
     const card = await screen.findByText("Boundary untested");
-    const row = within(sectionOf("Core logic")).getByText("const c = 4;").closest("div")!.parentElement!;
-    expect(row).toContainElement(card);
+    const core = within(sectionOf("Core logic"));
+    expect(core.getByText("Boundary untested")).toBe(card);
+    // the card sits under its line (3 = "const c = 4;"), inside the core group
+    expect(core.getByText("const c = 4;").compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 
     const before = get.mock.calls.filter(([p]) => p === "/pulls/pr-1/reviews").length;
     await user.click(screen.getByRole("button", { name: "Accept" }));
@@ -443,7 +444,9 @@ describe("DiffTab", () => {
     setRoutes({ "/pulls/pr-1/reviews": [r] });
     const { container } = renderTab();
     await screen.findByText('<img src=x onerror="alert(1)">');
-    expect(container.querySelector("img")).toBeNull();
+    // No <img> element was created (role=img counters are spans, not IMG tags).
+    expect(screen.queryAllByRole("img").filter((el) => el.tagName === "IMG")).toHaveLength(0);
+    // <script> has no role; a DOM scan is the only way to prove none was injected.
     expect(container.querySelector("script")).toBeNull();
     expect((window as unknown as { __pwned?: number }).__pwned).toBeUndefined();
   });

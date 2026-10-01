@@ -22,8 +22,11 @@ export type PrFileRow = typeof t.prFiles.$inferSelect;
 import * as reviewRepo from './repository/review.repo.js';
 import * as runRepo from './repository/run.repo.js';
 import * as pullRepo from './repository/pull.repo.js';
+import { toSmartDiffFile, toSmartDiffReview } from './helpers.js';
+import type { SmartDiffFileInput, SmartDiffReviewInput } from './domain.js';
+import type { SmartDiffSource } from './ports.js';
 
-export class ReviewRepository {
+export class ReviewRepository implements SmartDiffSource {
   constructor(private db: Db | DbTx) {}
 
   /**
@@ -47,6 +50,20 @@ export class ReviewRepository {
 
   getPrFiles(prId: string): Promise<PrFileRow[]> {
     return pullRepo.getPrFiles(this.db, prId);
+  }
+
+  // ---- smart-diff reads (SmartDiffSource): rows leave here as domain inputs --
+
+  async pullExists(workspaceId: string, prId: string): Promise<boolean> {
+    return (await this.getPull(workspaceId, prId)) !== undefined;
+  }
+
+  async getSmartDiffFiles(prId: string): Promise<SmartDiffFileInput[]> {
+    return (await this.getPrFiles(prId)).map(toSmartDiffFile);
+  }
+
+  async getSmartDiffReviews(prId: string): Promise<SmartDiffReviewInput[]> {
+    return (await this.reviewsForPull(prId)).map(toSmartDiffReview);
   }
 
   getPrCommits(prId: string): Promise<(typeof t.prCommits.$inferSelect)[]> {

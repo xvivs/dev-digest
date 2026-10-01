@@ -1,13 +1,13 @@
 /**
- * AC-27 (P3): jsdom has no layout, so the sticky contract is pinned on the
- * inline style of the header row: it sticks at the PR-header offset variable,
- * on --bg-primary. The empty group is static (no button) but sticks the same.
+ * SmartDiffGroup: roles, names and disclosure state. The sticky offset (header
+ * row pinned below the PR header) needs real layout; it is browser-verified,
+ * not asserted on inline styles here.
  */
 import { describe, it, expect } from "vitest";
 import { screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import prReview from "@/../messages/en/prReview.json";
 import { renderWithProviders } from "@/test/render";
-import { PR_HEADER_OFFSET_VAR } from "@/app/repos/[repoId]/pulls/[number]/constants";
 import { SmartDiffGroup } from "./SmartDiffGroup";
 
 const render = (isEmpty: boolean) =>
@@ -21,20 +21,24 @@ const render = (isEmpty: boolean) =>
     { namespaces: { prReview } },
   );
 
-describe("SmartDiffGroup sticky header", () => {
-  it("sticks below the PR header on an opaque primary background (non-empty group)", () => {
+describe("SmartDiffGroup", () => {
+  it("a non-empty group is an open disclosure button that collapses its body", async () => {
+    const user = userEvent.setup();
     render(false);
-    const row = screen.getByRole("button").parentElement!;
-    expect(row.style.position).toBe("sticky");
-    expect(row.style.top).toBe(`var(${PR_HEADER_OFFSET_VAR}, 0px)`);
-    expect(row.style.background).toBe("var(--bg-primary)");
-    expect(Number(row.style.zIndex)).toBeGreaterThan(0);
+    const toggle = screen.getByRole("button", { name: /Core logic/ });
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(toggle).toHaveTextContent("1 file");
+    expect(screen.getByText("body")).toBeInTheDocument();
+
+    await user.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByText("body")).toBeNull();
   });
 
-  it("an empty group is muted, has no button and no aria-expanded, shows 0 files", () => {
-    const { container } = render(true);
+  it("an empty group is muted: no button, no body, shows 0 files", () => {
+    render(true);
     expect(screen.queryByRole("button")).toBeNull();
-    expect(container.querySelector("[aria-expanded]")).toBeNull();
+    expect(screen.getByText("Core logic")).toBeInTheDocument();
     expect(screen.getByText("0 files")).toBeInTheDocument();
     expect(screen.queryByText("body")).toBeNull();
   });

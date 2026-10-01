@@ -7,6 +7,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, openEventStream } from "../api";
 import { notify } from "../toast";
 import type { MutationHookOptions } from "../query-client";
+import { SmartDiffResponse } from "@devdigest/shared";
 import type {
   FindingActionKind,
   PrReviewComment,
@@ -15,7 +16,6 @@ import type {
   RunEvent,
   RunSummary,
 } from "@devdigest/shared";
-import { SmartDiffResponse } from "@devdigest/shared/contracts/review-api";
 
 /** Poll interval while a PR has a run in flight (active runs + run history). */
 const RUN_POLL_INTERVAL_MS = 4000;

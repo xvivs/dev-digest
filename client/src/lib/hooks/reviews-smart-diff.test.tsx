@@ -9,13 +9,19 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import type { SmartDiff } from "@devdigest/shared";
 import { createTestQueryClient } from "@/test/render";
 
+// The fake parses through the schema the hook passes (ADR 0007), so a fixture
+// that drifts from the contract fails here instead of sailing through.
+type Schema = { parse: (v: unknown) => unknown };
 const pending: Array<{ path: string; resolve: (v: SmartDiff) => void }> = [];
 const get = vi.fn(
-  (path: string) => new Promise<SmartDiff>((resolve) => pending.push({ path, resolve })),
+  (path: string, schema?: Schema) =>
+    new Promise<SmartDiff>((resolve) => pending.push({ path, resolve })).then((v) =>
+      schema ? schema.parse(v) : v,
+    ),
 );
 vi.mock("@/lib/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api")>();
-  return { ...actual, api: { ...actual.api, get: (p: string) => get(p) } };
+  return { ...actual, api: { ...actual.api, get: (p: string, schema?: Schema) => get(p, schema) } };
 });
 
 import { usePrSmartDiff } from "./reviews";
@@ -59,7 +65,6 @@ describe("usePrSmartDiff", () => {
     await waitFor(() => expect(pending).toHaveLength(2));
     expect(pending[1]!.path).toBe("/pulls/pr-1/smart-diff");
     expect(result.current.data?.groups[0]?.files[0]?.path).toBe("first.ts"); // placeholder
-    expect(result.current.isPlaceholderData).toBe(true);
 
     pending[1]!.resolve(sd("second.ts"));
     await waitFor(() => expect(result.current.data?.groups[0]?.files[0]?.path).toBe("second.ts"));
@@ -74,6 +79,14 @@ describe("usePrSmartDiff", () => {
     rerender({ prId: "pr-2", sha: "a" });
     await waitFor(() => expect(pending).toHaveLength(2));
     expect(pending[1]!.path).toBe("/pulls/pr-2/smart-diff");
+    expect(result.current.data).toBeUndefined();
+  });
+
+  it("rejects a response that breaks the contract instead of exposing it", async () => {
+    const { result } = setup({ prId: "pr-1", sha: "a" });
+    await waitFor(() => expect(pending).toHaveLength(1));
+    pending[0]!.resolve({ groups: "nope" } as unknown as SmartDiff);
+    await waitFor(() => expect(result.current.isError).toBe(true));
     expect(result.current.data).toBeUndefined();
   });
 

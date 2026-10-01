@@ -3,13 +3,8 @@
 
 import React from "react";
 import { useTranslations } from "next-intl";
-import { ORDER_MODES, type OrderMode } from "../../constants";
+import { ORDER_LABEL_KEY, ORDER_MODES, type OrderMode } from "../../constants";
 import { s, segmentFor } from "./styles";
-
-const LABEL_KEY: Record<OrderMode, string> = {
-  smart: "smartDiff.smartOrder",
-  original: "smartDiff.originalOrder",
-};
 
 export function OrderToggle({
   mode,
@@ -35,7 +30,7 @@ export function OrderToggle({
             onClick={() => onChange(m)}
             style={segmentFor(mode === m, disabled)}
           >
-            {t(LABEL_KEY[m])}
+            {t(ORDER_LABEL_KEY[m])}
           </button>
         );
       })}

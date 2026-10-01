@@ -96,3 +96,8 @@ export const s = {
   deletions: { color: "var(--code-del-text)" } satisfies CSSProperties,
   warnIcon: { color: "var(--warn)", flexShrink: 0 } satisfies CSSProperties,
 } as const;
+
+/** Header root: sticky on desktop, scrolls away with the content below md. */
+export function rootFor(scrolling: boolean): CSSProperties {
+  return scrolling ? { ...s.root, ...s.rootScrolling } : s.root;
+}

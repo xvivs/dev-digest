@@ -1,13 +1,12 @@
 import type { Container } from '../../platform/container.js';
-import type { FindingActionKind, RunTrace, SmartDiff } from '@devdigest/shared';
+import type { FindingActionKind, RunTrace } from '@devdigest/shared';
 import { AppError, NotFoundError } from '../../platform/errors.js';
 import type { AgentRow } from '../../db/rows.js';
 import { ReviewRepository } from './repository.js';
 import { type ReviewDto, type ReviewDtoFinding } from './helpers.js';
 import { ReviewRunExecutor, type Logger } from './run-executor.js';
 import { actOnFinding as actOnFindingImpl } from './findings.js';
-import { reviewToDto, toSmartDiffFile, toSmartDiffReview } from './helpers.js';
-import { buildSmartDiff } from './domain.js';
+import { reviewToDto } from './helpers.js';
 import { cancelRun as cancelRunImpl } from './run-cancel.js';
 
 // Re-export DTO types + converters for backward-compatible imports from
@@ -161,17 +160,6 @@ export class ReviewService {
     return rows.map(({ review, findings }) =>
       reviewToDto(review, findings, review.agentId ? names.get(review.agentId) : null),
     );
-  }
-
-  /** Files grouped by role with finding lines; reads persisted data only. */
-  async smartDiff(workspaceId: string, prId: string): Promise<SmartDiff | undefined> {
-    const pull = await this.repo.getPull(workspaceId, prId);
-    if (!pull) return undefined;
-    const [files, reviews] = await Promise.all([
-      this.repo.getPrFiles(prId),
-      this.repo.reviewsForPull(prId),
-    ]);
-    return buildSmartDiff(files.map(toSmartDiffFile), reviews.map(toSmartDiffReview));
   }
 
   async getRunTrace(runId: string): Promise<RunTrace | undefined> {

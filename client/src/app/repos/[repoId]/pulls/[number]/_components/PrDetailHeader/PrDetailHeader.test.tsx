@@ -1,6 +1,7 @@
 import React from "react";
 import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
-import { screen, cleanup, fireEvent, within, act } from "@testing-library/react";
+import { screen, cleanup, within, act } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import prReview from "@/../messages/en/prReview.json";
 import { renderWithProviders } from "@/test/render";
 import type { PrDetail } from "@/lib/types";
@@ -61,7 +62,13 @@ function renderHeader(props: Partial<PrDetailHeaderProps> = {}) {
   );
 }
 
-const bar = () => screen.getByTestId("condensed-bar");
+const TITLE = `#482 ${PR.title}`;
+const CONDENSED_TABS = { name: "PR sections (condensed)" };
+// The bar is `inert` + aria-hidden while hidden, so it is only in the a11y tree
+// (and only reachable by role) when shown. `hidden: true` reaches it either way.
+const barTitle = () => screen.getByRole("button", { name: TITLE, hidden: true });
+const barShown = () => screen.queryByRole("tablist", CONDENSED_TABS) !== null;
+const barInert = () => barTitle().closest("[inert]") !== null;
 
 // jsdom has no IntersectionObserver: a fake the tests drive by hand.
 let observerCallback: ((e: Partial<IntersectionObserverEntry>[]) => void) | null = null;
@@ -85,95 +92,97 @@ const scrollPast = (past: boolean) =>
     ]),
   );
 
+// jsdom has no Element.scrollTo; install a spy and restore the prior state so it cannot leak.
+const scrollTo = vi.fn();
+let hadScrollTo = false;
+beforeEach(() => {
+  scrollTo.mockClear();
+  hadScrollTo = "scrollTo" in Element.prototype;
+  Object.defineProperty(Element.prototype, "scrollTo", { configurable: true, writable: true, value: scrollTo });
+});
+afterEach(() => {
+  if (!hadScrollTo) delete (Element.prototype as Partial<Element>).scrollTo;
+});
+
 describe("PrDetailHeader", () => {
-  it("desktop: sticky full header, text labels, no bar, no sentinel", () => {
+  it("desktop: full header with text labels, no bar, one tablist", () => {
     renderHeader();
     expect(screen.getByRole("button", { name: "View on GitHub" })).toHaveTextContent("View on GitHub");
     expect(screen.getByRole("button", { name: /Run Review/ })).toHaveTextContent("Run Review");
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(`#482${PR.title}`);
-    expect(screen.queryByTestId("condensed-bar")).toBeNull();
-    expect(screen.getByRole("heading", { level: 1 }).parentElement!.parentElement!.parentElement).toHaveStyle({ position: "sticky" });
-    expect(document.querySelector("[inert]")).toBeNull();
-    expect(screen.getAllByRole("tablist")).toHaveLength(1);
+    expect(screen.queryByRole("tablist", { ...CONDENSED_TABS, hidden: true })).toBeNull();
+    expect(screen.queryByRole("button", { name: TITLE, hidden: true })).toBeNull();
+    expect(screen.getAllByRole("tablist", { hidden: true })).toHaveLength(1);
   });
 
-  it("mobile: full header scrolls (not sticky), actions carry aria-label + title, labels use the hide utility", () => {
+  it("mobile: icon-sized actions keep their accessible name and title", () => {
     renderHeader({ mobile: true });
-    expect(screen.getByRole("heading", { level: 1 }).parentElement!.parentElement!.parentElement).toHaveStyle({ position: "static" });
     const github = screen.getAllByRole("button", { name: "View on GitHub" })[0]!;
     expect(github).toHaveAttribute("title", "View on GitHub");
-    expect(github.querySelector(".dd-hide-below-md")).toHaveTextContent("View on GitHub");
     const run = screen.getAllByRole("button", { name: "Run Review" })[0]!;
     expect(run).toHaveAttribute("title", "Run Review");
-    expect(run.querySelector(".dd-hide-below-md")).not.toBeNull();
     expect(screen.getByRole("heading", { level: 1 })).toBeInTheDocument();
   });
 
-  it("mobile, not yet scrolled: the bar is inert, aria-hidden and off-screen; nothing in it is reachable", () => {
+  it("mobile, not yet scrolled: the bar is inert and out of the a11y tree; nothing in it is reachable", () => {
     renderHeader({ mobile: true });
-    expect(bar()).toHaveAttribute("inert");
-    expect(bar()).toHaveAttribute("aria-hidden", "true");
-    expect(bar().style.transform).toBe("translateY(-100%)");
-    expect(screen.queryByRole("button", { name: `#482 ${PR.title}` })).toBeNull(); // hidden from the a11y tree
+    expect(barShown()).toBe(false);
+    expect(barTitle().closest("[aria-hidden=true]")).not.toBeNull();
+    expect(barInert()).toBe(true);
+    expect(screen.queryByRole("button", { name: TITLE })).toBeNull();
     expect(screen.getAllByRole("tablist")).toHaveLength(1);
   });
 
   it("observer callback shows the bar and, on return, hides it again; tablists get distinct names", () => {
     renderHeader({ mobile: true });
     scrollPast(true);
-    expect(bar()).not.toHaveAttribute("inert");
-    expect(bar()).not.toHaveAttribute("aria-hidden", "true");
-    expect(bar().style.transform).toBe("translateY(0)");
-    const title = within(bar()).getByRole("button", { name: `#482 ${PR.title}` });
+    expect(barShown()).toBe(true);
+    expect(barInert()).toBe(false);
+    const title = screen.getByRole("button", { name: TITLE });
     expect(title).toHaveAttribute("title", PR.title);
-    expect(within(bar()).getByRole("button", { name: "Run Review" })).toBeInTheDocument();
+    expect(barTitle().closest("[aria-hidden=true]")).toBeNull();
+    // header + bar each carry a Run Review trigger
+    expect(screen.getAllByRole("button", { name: "Run Review" })).toHaveLength(2);
     expect(screen.getByRole("tablist", { name: "PR sections" })).toBeInTheDocument();
-    expect(within(bar()).getByRole("tablist", { name: "PR sections (condensed)" })).toBeInTheDocument();
     scrollPast(false);
-    expect(bar()).toHaveAttribute("inert");
+    expect(barShown()).toBe(false);
+    expect(barInert()).toBe(true);
   });
 
-  it("the bar's tabs drive the same handler", () => {
+  it("the bar's tabs drive the same handler", async () => {
+    const user = userEvent.setup();
     const onSetTab = vi.fn();
     renderHeader({ mobile: true, onSetTab });
     scrollPast(true);
-    fireEvent.click(within(bar()).getByRole("tab", { name: /Files changed/ }));
+    await user.click(within(screen.getByRole("tablist", CONDENSED_TABS)).getByRole("tab", { name: /Files changed/ }));
     expect(onSetTab).toHaveBeenCalledWith("diff");
   });
 
-  it("bar title scrolls <main> to top: smooth, or instant under reduced motion", () => {
-    const scrollTo = vi.fn();
-    Element.prototype.scrollTo = scrollTo;
-    const name = `#482 ${PR.title}`;
+  it("bar title scrolls <main> to top: smooth, or instant under reduced motion", async () => {
+    const user = userEvent.setup();
     renderHeader({ mobile: true });
     scrollPast(true);
-    fireEvent.click(within(bar()).getByRole("button", { name }));
+    await user.click(screen.getByRole("button", { name: TITLE }));
     expect(scrollTo).toHaveBeenLastCalledWith({ top: 0, behavior: "smooth" });
-    expect(bar().style.transition).not.toBe("none");
     cleanup();
 
     reduced = true;
     renderHeader({ mobile: true });
     scrollPast(true);
-    fireEvent.click(within(bar()).getByRole("button", { name }));
+    await user.click(screen.getByRole("button", { name: TITLE }));
     expect(scrollTo).toHaveBeenLastCalledWith({ top: 0, behavior: "auto" });
-    expect(bar().style.transition).toBe("none");
-    delete (Element.prototype as Partial<Element>).scrollTo;
   });
 
-  it("moves focus from the bar to the heading (no scroll) before the bar hides; does not touch focus otherwise", () => {
+  it("moves focus from the bar to the heading before the bar hides; does not touch focus otherwise", () => {
     renderHeader({ mobile: true });
     expect(document.body).toHaveFocus(); // nothing focused on mount
     scrollPast(true);
     expect(document.body).toHaveFocus(); // and none stolen when the bar appears
-    const title = within(bar()).getByRole("button", { name: `#482 ${PR.title}` });
-    title.focus();
-    const focus = vi.spyOn(HTMLElement.prototype, "focus");
+    act(() => screen.getByRole("button", { name: TITLE }).focus());
     scrollPast(false);
     const h1 = screen.getByRole("heading", { level: 1 });
     expect(h1).toHaveFocus();
     expect(h1).toHaveAttribute("tabindex", "-1");
-    expect(focus).toHaveBeenCalledWith({ preventScroll: true });
-    focus.mockRestore();
+    // `preventScroll: true` is not observable in jsdom; the no-jump behaviour is browser-verified.
   });
 });

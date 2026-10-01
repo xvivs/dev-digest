@@ -19,7 +19,7 @@ import {
   useFindingAction,
 } from "@/lib/hooks";
 import { notify } from "@/lib/toast";
-import { COLLAPSED_ROLES, type OrderMode } from "./constants";
+import type { OrderMode } from "./constants";
 import {
   countFilesWithFindings,
   groupFilesByRole,
@@ -27,6 +27,7 @@ import {
   summarize,
   toggleLabel,
   unmatchedFileFindings,
+  collapsedPathsFor,
 } from "./helpers";
 import { s } from "./styles";
 import { DiffFindingCard } from "./_components/DiffFindingCard";
@@ -67,13 +68,7 @@ export function DiffTab({ prId, headSha, files, canComment }: DiffTabProps) {
     () => (smartDiff.data ? groupFilesByRole(files, smartDiff.data) : null),
     [files, smartDiff.data],
   );
-  const collapsedPaths = React.useMemo(
-    () =>
-      new Set(
-        (groups ?? []).filter((g) => COLLAPSED_ROLES.has(g.role)).flatMap((g) => g.files.map((f) => f.path)),
-      ),
-    [groups],
-  );
+  const collapsedPaths = React.useMemo(() => collapsedPathsFor(groups ?? []), [groups]);
   const groupingFailed = smartDiff.isError;
   const activeMode: OrderMode = groupingFailed ? "original" : mode;
   const grouped = activeMode === "smart" && groups !== null;

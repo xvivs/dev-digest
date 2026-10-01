@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { SmartDiffRole } from "@devdigest/shared/contracts/brief";
 import type { FindingRecord, PrFile, ReviewRecord, SmartDiff } from "@devdigest/shared";
 import {
+  collapsedPathsFor,
   countFilesWithFindings,
   groupFilesByRole,
   selectDiffFindings,
@@ -139,5 +140,29 @@ describe("toggleLabel", () => {
   it("only dismissed findings still render the button, counted as 0", () => {
     const r = toggleLabel(null, { commentCount: 0, findingCount: 1, activeFindingCount: 0 });
     expect(r).toMatchObject({ visible: true, count: 0, key: "hideCommentsAndFindings" });
+  });
+});
+
+describe("collapsedPathsFor", () => {
+  const group = (role: SmartDiffRole, paths: string[]) => ({
+    role,
+    files: paths.map((p) => file(p)),
+    isEmpty: paths.length === 0,
+  });
+
+  it("collects the paths of docs and boilerplate groups only", () => {
+    const paths = collapsedPathsFor([
+      group("core", ["a.ts"]),
+      group("tests", ["a.test.ts"]),
+      group("wiring", ["w.ts"]),
+      group("docs", ["README.md", "docs/x.md"]),
+      group("boilerplate", ["pnpm-lock.yaml"]),
+    ]);
+    expect([...paths].sort()).toEqual(["README.md", "docs/x.md", "pnpm-lock.yaml"]);
+  });
+
+  it("is empty when there are no groups or only expanded roles", () => {
+    expect(collapsedPathsFor([]).size).toBe(0);
+    expect(collapsedPathsFor([group("core", ["a.ts"]), group("docs", [])]).size).toBe(0);
   });
 });

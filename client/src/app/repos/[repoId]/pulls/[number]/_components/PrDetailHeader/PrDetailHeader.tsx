@@ -2,15 +2,16 @@
 
 import React from "react";
 import { useTranslations } from "next-intl";
-import { Icon, Avatar, Badge, Button, Tabs, usePrefersReducedMotion } from "@devdigest/ui";
+import { Icon, Avatar, Badge, Button, usePrefersReducedMotion } from "@devdigest/ui";
 import type { PrDetail } from "@/lib/types";
 import { STATUS_META } from "@/app/repos/[repoId]/pulls/constants";
 import type { PrTab } from "@/app/repos/[repoId]/pulls/[number]/_components/PrDetailView/constants";
 import { RunReviewDropdown } from "../RunReviewDropdown";
 import { CondensedBar } from "./_components/CondensedBar";
+import { HeaderTabs } from "./_components/HeaderTabs";
 import { useCondensedHeader } from "./hooks";
 import { isSettledPr } from "./helpers";
-import { s } from "./styles";
+import { rootFor, s } from "./styles";
 
 export interface PrDetailHeaderProps {
   /** Root element ref (React 19 ref-as-prop); PrDetailContent measures it for sticky offsets. */
@@ -70,23 +71,12 @@ export function PrDetailHeader({
     { key: "findings", label: t("detail.tabs.findings"), icon: "Activity", count: findingsCount || undefined },
     { key: "diff", label: t("detail.tabs.diff"), icon: "Code", count: pr.files_count },
   ] as const;
-  // Two tablists can exist (full header + bar): distinct names tell them apart.
-  const tabsFor = (ariaLabel: string) => (
-    <Tabs
-      value={tab}
-      // Tabs is a generic string-keyed primitive; the keys below are always
-      // one of PR_TABS, so the cast back to PrTab is safe.
-      onChange={(k) => onSetTab(k as PrTab)}
-      pad="0"
-      ariaLabel={ariaLabel}
-      tabs={[...tabDefs]}
-    />
-  );
-  const tabs = tabsFor(t("detail.tabs.label"));
+  const tabsList = [...tabDefs];
+  const tabs = <HeaderTabs ariaLabel={t("detail.tabs.label")} tab={tab} onSetTab={onSetTab} tabs={tabsList} />;
 
   return (
     <>
-      <div ref={ref} style={small ? { ...s.root, ...s.rootScrolling } : s.root}>
+      <div ref={ref} style={rootFor(small)}>
         <div style={s.titleRow}>
           <div style={s.titleCol}>
             <h1 ref={titleHeading} tabIndex={-1} style={s.h1}>
@@ -152,7 +142,7 @@ export function PrDetailHeader({
           onTitleClick={scrollToTop}
           actions={prId && <RunReviewDropdown prId={prId} warnMerged={settled} iconOnlyBelowMd onRunStart={onRunStart} />}
         >
-          {tabsFor(t("detail.tabs.labelCondensed"))}
+          <HeaderTabs ariaLabel={t("detail.tabs.labelCondensed")} tab={tab} onSetTab={onSetTab} tabs={tabsList} />
         </CondensedBar>
       )}
     </>

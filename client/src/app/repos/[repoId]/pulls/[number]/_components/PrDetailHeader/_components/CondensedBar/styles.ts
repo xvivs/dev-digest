@@ -78,3 +78,8 @@ export const s = {
     whiteSpace: "nowrap",
   } satisfies CSSProperties,
 } as const;
+
+/** The bar's style: slid away while hidden, no transition under reduced motion. */
+export function barFor(visible: boolean, reducedMotion: boolean): CSSProperties {
+  return { ...s.bar, ...(visible ? null : s.hidden), ...(reducedMotion ? s.instant : null) };
+}

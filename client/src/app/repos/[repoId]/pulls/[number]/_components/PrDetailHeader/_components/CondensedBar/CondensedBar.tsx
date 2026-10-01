@@ -4,7 +4,7 @@
 "use client";
 
 import React from "react";
-import { s } from "./styles";
+import { barFor, s } from "./styles";
 
 export interface CondensedBarProps {
   /** Bar root (React 19 ref-as-prop): the header checks whether focus is inside before hiding it. */
@@ -35,10 +35,9 @@ export function CondensedBar({
     <div style={s.anchor}>
       <div
         ref={ref}
-        data-testid="condensed-bar"
         inert={!visible}
         aria-hidden={!visible}
-        style={{ ...s.bar, ...(visible ? null : s.hidden), ...(reducedMotion ? s.instant : null) }}
+        style={barFor(visible, reducedMotion)}
       >
         <div style={s.row}>
           <button type="button" title={title} onClick={onTitleClick} style={s.titleButton}>

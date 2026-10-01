@@ -18,7 +18,9 @@ export function useStickyOffset(fixedHeight?: number): {
   const target = React.useRef<HTMLElement | null>(null);
   const observer = React.useRef<ResizeObserver | null>(null);
   const fixed = React.useRef(fixedHeight);
-  fixed.current = fixedHeight;
+  React.useLayoutEffect(() => {
+    fixed.current = fixedHeight;
+  });
 
   // Re-attach whenever either node appears, changes or goes away.
   const attach = React.useCallback(() => {

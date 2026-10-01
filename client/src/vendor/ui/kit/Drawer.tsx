@@ -66,6 +66,7 @@ export function Drawer({
   return (
     <div style={{ position: "fixed", inset: 0, display: "flex", justifyContent: left ? "flex-start" : "flex-end", zIndex: 50 }}>
       <div
+        data-testid="drawer-backdrop"
         onClick={onClose}
         style={{
           position: "absolute",

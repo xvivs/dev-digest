@@ -1,9 +1,9 @@
 /* Pure domain helpers for DiffTab: which findings count, grouping files by
    role, counters, the shared visibility toggle. No React. */
-import { SmartDiffRole } from "@devdigest/shared/contracts/brief";
+import { SmartDiffRole } from "@devdigest/shared";
 import type { FindingRecord, PrFile, ReviewRecord, SmartDiff } from "@devdigest/shared";
 import { findingsForFile, isActiveFinding } from "@/components/diff-viewer";
-import { FALLBACK_ROLE } from "./constants";
+import { COLLAPSED_ROLES, FALLBACK_ROLE } from "./constants";
 
 /**
  * Client copy of server `selectLatestPerAgent` (`server/src/modules/reviews/domain.ts`);
@@ -36,6 +36,11 @@ export function groupFilesByRole(files: readonly PrFile[], smartDiff: SmartDiff)
     const inRole = files.filter((f) => (roleByPath.get(f.path) ?? FALLBACK_ROLE) === role);
     return { role, files: inRole, isEmpty: inRole.length === 0 };
   });
+}
+
+/** Paths of every file in a group whose role starts collapsed (docs, boilerplate). */
+export function collapsedPathsFor(groups: readonly RoleGroup[]): Set<string> {
+  return new Set(groups.filter((g) => COLLAPSED_ROLES.has(g.role)).flatMap((g) => g.files.map((f) => f.path)));
 }
 
 /** Files of `files` with at least one active finding. */

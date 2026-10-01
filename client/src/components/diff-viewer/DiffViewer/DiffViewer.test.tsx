@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { fireEvent, screen, within } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { FindingRecord } from "@devdigest/shared";
 import { renderWithProviders } from "@/test/render";
@@ -47,13 +47,14 @@ describe("DiffViewer", () => {
     expect(screen.getByText("No changed files.")).toBeInTheDocument();
   });
 
-  it("toggles a file from its header button, which reports aria-expanded", () => {
+  it("toggles a file from its header button, which reports aria-expanded", async () => {
+    const user = userEvent.setup();
     renderViewer(<DiffViewer files={[FILE]} />);
     const header = screen.getByRole("button", { name: /src\/config\.ts/ });
     expect(header).toHaveAttribute("aria-expanded", "true");
     expect(screen.getByText("const c = 4;")).toBeInTheDocument();
 
-    fireEvent.click(header);
+    await user.click(header);
 
     expect(header).toHaveAttribute("aria-expanded", "false");
     expect(screen.queryByText("const c = 4;")).not.toBeInTheDocument();
@@ -127,11 +128,14 @@ describe("DiffViewer", () => {
     }
 
     it("renders the card right after the row of its start line, with a severity label", () => {
-      renderViewer(<DiffViewer files={[FILE]} findings={api([finding({})])} />);
+      // Anchored on the MIDDLE line so "right after" is pinned on both sides.
+      renderViewer(<DiffViewer files={[FILE]} findings={api([finding({ start_line: 2, end_line: 2 })])} />);
       const card = screen.getByTestId("card-f1");
-      const row = screen.getByText("const c = 4;").closest("div")!.parentElement!;
-      expect(row).toContainElement(card);
-      expect(within(row).getByText("blocker")).toBeInTheDocument();
+      const after = (a: Node, b: Node) => !!(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+      expect(after(screen.getByText("const b = 3;"), card)).toBe(true);
+      expect(after(card, screen.getByText("const c = 4;"))).toBe(true);
+      expect(after(screen.getByText("const b = 3;"), screen.getByText("blocker"))).toBe(true);
+      expect(after(screen.getByText("blocker"), screen.getByText("const c = 4;"))).toBe(true);
     });
 
     it("marks the file header with a finding dot next to the unchanged comment counter", () => {

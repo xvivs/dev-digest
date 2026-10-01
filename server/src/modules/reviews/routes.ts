@@ -6,6 +6,7 @@ import { getContext } from '../_shared/context.js';
 import { IdParams } from '../_shared/schemas.js';
 import { NotFoundError } from '../../platform/errors.js';
 import { ReviewService } from './service.js';
+import { buildSmartDiffService } from './wiring.js';
 
 /**
  * reviews module.
@@ -21,6 +22,7 @@ export default async function reviewsRoutes(appBase: FastifyInstance) {
   const app = appBase.withTypeProvider<ZodTypeProvider>();
   const { container } = app;
   const service = new ReviewService(container);
+  const smartDiff = buildSmartDiffService(container);
 
   // ---- Run a review (manual trigger) -------------------------------
   // Tight per-route limit: each call can fan out to expensive LLM runs.
@@ -137,7 +139,7 @@ export default async function reviewsRoutes(appBase: FastifyInstance) {
     { schema: { params: IdParams, response: { 200: SmartDiffResponse } } },
     async (req) => {
       const { workspaceId } = await getContext(container, req);
-      const result = await service.smartDiff(workspaceId, req.params.id);
+      const result = await smartDiff.getForPull(workspaceId, req.params.id);
       if (!result) throw new NotFoundError('Pull request not found');
       return result;
     },
