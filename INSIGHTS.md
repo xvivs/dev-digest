@@ -63,6 +63,10 @@ lives in the engineering-insights skill).
 
 - **`mcp__chrome-devtools__emulate` with a 390x844 mobile viewport does get under the 500px `resize_page` floor: `document.documentElement.scrollWidth` and `innerWidth` both read 390** — this answers the "untested" part of the 500px-floor note above (chrome-devtools MCP, PR Overview QA). Use `emulate` for phone widths; note in the report that it is emulation, not a real window. _(2026-10-01)_
 
+- **MCP SDK 1.31 `Client.callTool` validates `structuredContent` against `outputSchema` only for tools it has seen via `listTools`** — `mcp/node_modules/@modelcontextprotocol/sdk/dist/esm/client/index.js:485-493` looks the schema up from the cached tool list, so an in-memory contract test must call `listTools()` first or output-schema drift passes silently. _(2026-10-01)_
+
+- **`claude -p` loads the project `.mcp.json` without the approval prompt, and `--allowedTools` only auto-approves — it does not restrict** — the L04 acceptance run `claude -p "<prompt>" --allowedTools "mcp__devdigest__list_agents,…" --output-format stream-json --verbose` reported `devdigest: connected` in the init event, went `ToolSearch → list_agents → run_agent_on_pr → get_findings`, then also called `Bash`. For a strictly scoped headless check add `--disallowedTools`. Claude Code 2.1.286. _(2026-10-01)_
+
 ## Recurring Errors & Fixes
 
 - **`./scripts/dev.sh` cannot complete on this machine: it dies at `applying migrations`, hitting both known blockers in sequence.** First `pnpm db:migrate` exits 1 on `[ERR_PNPM_IGNORED_BUILDS]` (the preflight-install issue above) — and `--config.strict-dep-builds=false` / `npm_config_*` env vars do NOT help, because the preflight `pnpm install` is spawned as a separate process that ignores the outer invocation's flags; only an `.npmrc`/`package.json` config or `pnpm approve-builds` would. Second, even bypassing pnpm, `tsx src/db/migrate.ts` fails with `42701 column "cost_usd" of relation "agent_runs" already exists`. Working bring-up that needs no file changes: `docker start devdigest-postgres`, then `server/node_modules/.bin/tsx src/db/seed.ts` (seed alone — skip migrate, the shared DB is already ahead), then `server/node_modules/.bin/tsx watch src/server.ts` and `client/node_modules/.bin/next dev -p 3000`. Verified: `/health`, `/repos`, `/workspace`, `/agents`, `/settings` all 200. _(2026-09-20)_
@@ -90,6 +94,10 @@ lives in the engineering-insights skill).
 
 - **The pr-self-review `client-tests` lens flags `async-wait-before-absence-assert` on "section not rendered" tests even when the component renders its heading during loading, so the absence can only be true after the query resolved; its cited line numbers can also be off by 100+ lines** — seen on `OverviewTab.test.tsx` (run `f9f389ec2272`). `BriefSection.tsx:32` returns null only on `runs.isSuccess && length === 0`, and the heading renders with the skeleton. Before "fixing" such a MEDIUM, read the component's loading branch. If it renders the asserted element while loading, the finding is a false positive: record that in the PR's Self-review block instead of adding waits. Locate the finding by its quoted code, not its line number (`:174`/`:64` did not exist in `PriorPrs.test.tsx`/`OverviewTab.test.tsx`). _(2026-10-01)_
 
+- **`tsc` runs out of memory in `mcp/` when tsconfig `paths` maps `zod/*` (the reviewer-core pattern) alongside `@modelcontextprotocol/sdk@1.31.0`; map only bare `zod`** — the SDK's own `zod/v3`/`zod/v4` subpath imports must resolve through zod's exports map, so `mcp/tsconfig.json:24` maps `"zod"` alone and `mcp/vitest.config.ts:15` aliases `/^zod$/` (a plain `zod` alias in vitest would also catch the subpaths, and without any alias the vendored shared files load a second zod instance). _(2026-10-01)_
+
+- **A stdio MCP server launched via `pnpm start` breaks the protocol: pnpm prints its `> pkg@ start` banner to stdout** — Claude Code reads stdout as JSON-RPC only, so `.mcp.json:8` execs `./node_modules/.bin/tsx src/index.ts` directly through `sh -c`; `pnpm start`/`pnpm inspect` in `mcp/package.json` are for humans only. Smoke-check: pipe `initialize` + `tools/list` into the launcher and assert every stdout line parses as JSON. _(2026-10-01)_
+
 ## Session Notes
 
 ### 2026-09-19 — repo-wide session
@@ -113,6 +121,9 @@ Audited the 16 dev agents against a README proposal: roster and chains were alre
 
 ### 2026-09-30 — PR Overview session (root)
 Implemented specs/04-pr-overview.md end to end with implementer, reviewers, test-writers and three pr-self-review rounds, and opened PR #11 with the mobile nav drawer (client/specs/01). Responsive design, the repo-UUID crumb flash and pnpm IGNORED_BUILDS went to issues #10, #9 and #8. A parallel Smart Diff session switched branches in the shared worktree, so the PR was finished from a separate worktree.
+
+### 2026-10-01 — mcp session
+L04: added the standalone `mcp/` stdio server (SDK 1.31.0, thin HTTP client over a 7-call allowlist) with five tools, spec `specs/07-devdigest-mcp.md` and ADR 0026. Inspector CLI and a live `claude -p` run against PR #3 passed all four DoD items (Security Reviewer: 0 CRITICAL, 1 WARNING). Left: real `get_blast_radius` (homework), `rationale_truncated` flag, API binding to 127.0.0.1 (OQ-1).
 
 ## Open Questions
 
