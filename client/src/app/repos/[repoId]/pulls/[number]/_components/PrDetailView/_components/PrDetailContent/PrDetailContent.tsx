@@ -112,7 +112,7 @@ export function PrDetailContent({ repoId, number, repoFullName }: PrDetailConten
       />
 
       <div ref={setBodyRef} style={s.body}>
-        {tab === "overview" && prId && <OverviewTab prId={prId} pr={pr} />}
+        {tab === "overview" && prId && <OverviewTab prId={prId} />}
 
         {tab === "findings" && (
           <FindingsTab

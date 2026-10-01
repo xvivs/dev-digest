@@ -143,7 +143,8 @@ describe("PrDetailView", () => {
     search = new URLSearchParams("tab=overview");
     const user = userEvent.setup();
     renderView();
-    expect(await screen.findByText("Adds a token bucket.")).toBeInTheDocument();
+    // The Overview tab is up once its Intent block heading renders.
+    expect(await screen.findByText(brief.block.intent)).toBeInTheDocument();
     await waitFor(() => expect(gets("/pulls/pr-uuid/runs/active")).toBeGreaterThan(0));
     const before = {
       active: gets("/pulls/pr-uuid/runs/active"),

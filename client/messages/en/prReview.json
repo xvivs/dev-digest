@@ -166,9 +166,6 @@
       "diff": "Files changed"
     }
   },
-  "overview": {
-    "description": "Description"
-  },
   "findingsTab": {
     "liveReview": "Live review",
     "cancel": "Cancel",

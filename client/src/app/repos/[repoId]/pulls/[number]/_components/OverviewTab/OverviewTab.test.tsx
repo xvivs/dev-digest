@@ -41,22 +41,16 @@ function stubApi() {
 }
 
 describe("OverviewTab", () => {
-  it("shows the PR description below the grid when set", async () => {
+  it("takes no PR body and renders no Description block", async () => {
     stubApi();
-    renderWithProviders(<OverviewTab prId="p1" pr={{ body: "Fixes the flood of requests" }} />, { namespaces });
-    expect(await screen.findByText("Fixes the flood of requests")).toBeInTheDocument();
-  });
-
-  it("omits the description when the body is empty", async () => {
-    stubApi();
-    renderWithProviders(<OverviewTab prId="p1" pr={{ body: "" }} />, { namespaces });
+    renderWithProviders(<OverviewTab prId="p1" />, { namespaces });
     await screen.findByText(/Add rate limiting/);
-    expect(screen.queryByText(prReview.overview.description)).toBeNull();
+    expect(screen.queryByText("Description")).toBeNull();
   });
 
   it("renders the intent in typographic quotes with both scope lists", async () => {
     stubApi();
-    renderWithProviders(<OverviewTab prId="p1" pr={{ body: null }} />, { namespaces });
+    renderWithProviders(<OverviewTab prId="p1" />, { namespaces });
     expect(await screen.findByText("“Add rate limiting”")).toBeInTheDocument();
     expect(screen.getByText(brief.intent.inScope)).toBeInTheDocument();
     expect(screen.getByText(brief.intent.outOfScope)).toBeInTheDocument();
@@ -66,7 +60,7 @@ describe("OverviewTab", () => {
 
   it("renders no PR brief section for a PR without runs", async () => {
     stubApi();
-    renderWithProviders(<OverviewTab prId="p1" pr={{ body: null }} />, { namespaces });
+    renderWithProviders(<OverviewTab prId="p1" />, { namespaces });
     await screen.findByText(/Add rate limiting/);
     expect(screen.queryByText("PR brief")).toBeNull();
   });

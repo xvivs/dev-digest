@@ -17,7 +17,7 @@ Layout and styling as in the design (research "Design structure"), plus the five
 Server/API/shared-contract changes; narrow-viewport redesign (INSIGHTS.md:281, issue #10); changing `SectionLabel` (12px/mb14 vs design 11px/mb12, shared primitive); the VerdictBanner internals; page padding.
 
 ### Decisions (binding, from the user)
-1. Two cards in a `1fr 1fr` grid, gap 16: left = Intent, divider, Risk areas; right = Blast radius, divider, Prior PRs. Card radius 8. Description (`pr.body`) stays below the grid.
+1. Two cards in a `1fr 1fr` grid, gap 16: left = Intent, divider, Risk areas; right = Blast radius, divider, Prior PRs. Card radius 8. Description (`pr.body`) is removed (user decision after review; not in the design).
 2. Intent per design: italic 14px quote in typographic quotes, no accent bar; In/Out of scope in a 2-column grid with `Check`/`X` headers, "·" bullets, out-of-scope muted.
 3. Confidence badge only for `low` and `medium`; compact.
 4. Sources, Links not read, Derivation cost go into a closed `Disclosure` titled "Details". `Disclosure` exists in `@devdigest/ui` (`src/vendor/ui/primitives/Disclosure.tsx`, already used by `PriorPrs`); no new primitive.
@@ -48,7 +48,7 @@ Server/API/shared-contract changes; narrow-viewport redesign (INSIGHTS.md:281, i
 - **AC-10.** Risk pills shall be border-only, radius 6, 12px/500, with the severity colour on the icon only; the severity shall remain available as visually hidden text.
 - **AC-11.** The Blast radius header shall show inline stats (icon, bold number, label) and the tree/graph toggle in one row, the toggle right-aligned with surface background.
 - **AC-12.** Prior PRs shall render inside the right card as a bordered (radius 7) Disclosure titled "Prior PRs touching these files" in 12.5px/600 non-uppercase text with a count badge, closed by default.
-- **AC-13.** `pr.body`, when present, shall still render below the grid.
+- **AC-13.** (revised by user, 2026-10-01) The Overview tab shall not render the PR description (`pr.body`); it is absent from the design.
 
 ## Change sites
 
@@ -98,7 +98,7 @@ Behaviour-only RTL via `renderWithProviders` (`src/test/render.tsx`) with `names
 | 8 | same | RTL | "Details" button has `aria-expanded=false`; "Sources" text absent; click -> Sources visible; intent cost text scoped with `within` |
 | 10 | `OT/_components/RiskAreas/RiskAreas.test.tsx` | RTL | high-severity risk: pill present and the text "High" is in the document (severity not colour-only) |
 | 12 | `OT/_components/PriorPrs/PriorPrs.test.tsx` | RTL | Disclosure button `aria-expanded=false`, title "Prior PRs touching these files", history items absent until click |
-| 13 | `OT/OverviewTab.test.tsx` | RTL | `pr.body` text present when set, absent when empty |
+| 13 | `OT/OverviewTab.test.tsx` | RTL | no Description block rendered (OverviewTab no longer receives `pr`, so `pr.body` cannot reach it) |
 | 6,7 | same | RTL | quote text appears wrapped in “ ”; both scope headings and items render |
 | 5 (pure) | `OT/helpers.test.ts` | unit | `shouldShowConfidenceBadge` for high/medium/low |
 
