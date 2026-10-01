@@ -1,3 +1,4 @@
+// Blast radius demo touch: nothing imports this file, so its symbols have no callers.
 /**
  * A failing `git clone` (seeded fake repo `acme/payments-api` does not exist on
  * GitHub) must not become an unhandled rejection: `RepoService.add/refresh`
