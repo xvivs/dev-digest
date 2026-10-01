@@ -37,13 +37,13 @@ function BlastSymbol({ impact }: { impact: DownstreamImpact }) {
           {(impact.endpoints_affected.length > 0 || impact.crons_affected.length > 0) && (
             <div style={s.chips}>
               {impact.endpoints_affected.map((e, j) => (
-                <span key={`e-${j}-${e}`} style={s.chip("var(--accent-text)", "var(--accent-bg)")}>
+                <span key={`e-${j}-${e}`} style={s.chipEndpoint}>
                   <Icon.Globe size={ICON_SIZE.inline} aria-hidden="true" />
                   {e}
                 </span>
               ))}
               {impact.crons_affected.map((c, j) => (
-                <span key={`c-${j}-${c}`} style={s.chip("var(--warn)", "var(--warn-bg)")}>
+                <span key={`c-${j}-${c}`} style={s.chipCron}>
                   <Icon.Clock size={ICON_SIZE.inline} aria-hidden="true" />
                   {c}
                 </span>

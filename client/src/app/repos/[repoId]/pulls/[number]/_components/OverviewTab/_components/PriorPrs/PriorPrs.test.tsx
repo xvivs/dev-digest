@@ -1,5 +1,6 @@
 import { describe, it, expect, afterEach } from "vitest";
-import { screen, cleanup, fireEvent } from "@testing-library/react";
+import { screen, cleanup } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import brief from "@/../messages/en/brief.json";
 import { renderWithProviders } from "@/test/render";
 import { setupFakeApi } from "@/test/fake-api";
@@ -10,6 +11,7 @@ afterEach(cleanup);
 
 describe("PriorPrs", () => {
   it("is closed by default and reveals prior PRs on click", async () => {
+    const user = userEvent.setup();
     api.reply("GET", "/pulls/p1/history", {
       status: "ok",
       reason: null,
@@ -25,7 +27,7 @@ describe("PriorPrs", () => {
     expect(toggle).toHaveAttribute("aria-expanded", "false");
     expect(screen.queryByText("Tighten limiter")).toBeNull();
 
-    fireEvent.click(toggle);
+    await user.click(toggle);
 
     expect(await screen.findByText("Tighten limiter")).toBeInTheDocument();
   });

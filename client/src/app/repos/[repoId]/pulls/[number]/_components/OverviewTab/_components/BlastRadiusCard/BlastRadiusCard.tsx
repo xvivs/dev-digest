@@ -4,7 +4,7 @@ import React from "react";
 import { useTranslations } from "next-intl";
 import { Badge, EmptyState, ErrorState, Icon, SectionLabel, Skeleton } from "@devdigest/ui";
 import { usePrBlast } from "@/lib/hooks";
-import { BLAST_VIEWS, ICON_SIZE, SKELETON_HEIGHT, type BlastView } from "../../constants";
+import { BLAST_STAT_ICON, BLAST_VIEWS, ICON_SIZE, SKELETON_HEIGHT, type BlastView } from "../../constants";
 import { blastStats } from "../../helpers";
 import { s as shared } from "../../styles";
 import { BlastTree } from "./_components/BlastTree";
@@ -60,10 +60,10 @@ export function BlastRadiusCard({ prId }: { prId: string }) {
   const { blast } = data;
   const stats = blastStats(blast);
   const statItems = [
-    { key: "symbols", value: stats.symbols, icon: "Code" },
-    { key: "callers", value: stats.callers, icon: "CornerDownRight" },
-    { key: "endpoints", value: stats.endpoints, icon: "Globe" },
-    { key: "crons", value: stats.crons, icon: "Clock" },
+    { key: "symbols", value: stats.symbols },
+    { key: "callers", value: stats.callers },
+    { key: "endpoints", value: stats.endpoints },
+    { key: "crons", value: stats.crons },
   ] as const;
 
   let graphBody: React.ReactNode;
@@ -93,7 +93,7 @@ export function BlastRadiusCard({ prId }: { prId: string }) {
       <div style={s.statsRow}>
         <div style={s.stats}>
           {statItems.map((st) => {
-            const StatIcon = Icon[st.icon];
+            const StatIcon = Icon[BLAST_STAT_ICON[st.key]];
             return (
               <div key={st.key} style={s.stat}>
                 <StatIcon size={ICON_SIZE.inline} aria-hidden="true" style={s.statIcon} />

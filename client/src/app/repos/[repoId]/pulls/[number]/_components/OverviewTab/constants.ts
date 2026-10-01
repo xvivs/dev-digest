@@ -11,6 +11,14 @@ export const ICON_SIZE = { section: 15, inline: 13 } as const;
 export const BLAST_VIEWS = ["tree", "graph"] as const;
 export type BlastView = (typeof BLAST_VIEWS)[number];
 
+/** Icon per blast stat, in display order. */
+export const BLAST_STAT_ICON = {
+  symbols: "Code",
+  callers: "CornerDownRight",
+  endpoints: "Globe",
+  crons: "Clock",
+} as const satisfies Record<string, IconName>;
+
 /** Callers drawn in the SVG graph; the rest collapse into "+N more". */
 export const GRAPH_MAX_CALLERS = 8;
 

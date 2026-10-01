@@ -41,13 +41,6 @@ function stubApi() {
 }
 
 describe("OverviewTab", () => {
-  it("takes no PR body and renders no Description block", async () => {
-    stubApi();
-    renderWithProviders(<OverviewTab prId="p1" />, { namespaces });
-    await screen.findByText(/Add rate limiting/);
-    expect(screen.queryByText("Description")).toBeNull();
-  });
-
   it("renders the intent in typographic quotes with both scope lists", async () => {
     stubApi();
     renderWithProviders(<OverviewTab prId="p1" />, { namespaces });

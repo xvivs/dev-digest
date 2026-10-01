@@ -36,7 +36,7 @@ export function PriorPrs({ prId }: { prId: string }) {
         {data.history.map((h) => (
           <li key={h.pr_number} style={s.row}>
             <div style={s.titleRow}>
-              <span style={{ ...shared.mono, ...s.number }}>#{h.pr_number}</span>
+              <span style={s.number}>#{h.pr_number}</span>
               <span style={s.title} title={h.title}>
                 {h.title}
               </span>
@@ -49,7 +49,7 @@ export function PriorPrs({ prId }: { prId: string }) {
                 <Badge>{t("overlap", { count: h.files_overlap.length })}</Badge>
                 <div style={s.overlapFiles}>
                   {h.files_overlap.map((f) => (
-                    <span key={f} style={{ ...shared.mono, ...s.path }} title={f}>
+                    <span key={f} style={s.path} title={f}>
                       {f}
                     </span>
                   ))}

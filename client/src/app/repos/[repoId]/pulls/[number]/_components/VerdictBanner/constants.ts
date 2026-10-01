@@ -26,3 +26,8 @@ export const VERDICT_META = {
   approve: { c: "var(--ok)", bg: "var(--ok-bg)", icon: "CheckCircle", labelKey: "approve" },
   comment: { c: "var(--info)", bg: "var(--info-bg)", icon: "MessageSquare", labelKey: "comment" },
 } as const satisfies Record<Verdict, VerdictMeta>;
+
+/** Score ring (px) and verdict icon size (px). */
+export const SCORE_SIZE = 52;
+export const SCORE_STROKE = 5;
+export const VERDICT_ICON_SIZE = 22;

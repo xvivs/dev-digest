@@ -2,6 +2,20 @@ import type { CSSProperties } from "react";
 
 const MONO = "var(--font-mono, ui-monospace, monospace)";
 
+const chip = (color: string, bg: string): CSSProperties => ({
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 6,
+  padding: "2px 8px",
+  borderRadius: 5,
+  border: `1px solid ${color}`,
+  background: bg,
+  color,
+  fontFamily: MONO,
+  fontSize: 12,
+  overflowWrap: "anywhere",
+});
+
 export const s = {
   list: { listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 8 } satisfies CSSProperties,
   item: { minWidth: 0 } satisfies CSSProperties,
@@ -49,17 +63,6 @@ export const s = {
   } satisfies CSSProperties,
   callerName: { color: "var(--text-muted)" } satisfies CSSProperties,
   chips: { display: "flex", flexWrap: "wrap", gap: 6, marginTop: 4 } satisfies CSSProperties,
-  chip: (color: string, bg: string): CSSProperties => ({
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 6,
-    padding: "2px 8px",
-    borderRadius: 5,
-    border: `1px solid ${color}`,
-    background: bg,
-    color,
-    fontFamily: MONO,
-    fontSize: 12,
-    overflowWrap: "anywhere",
-  }),
+  chipEndpoint: chip("var(--accent-text)", "var(--accent-bg)"),
+  chipCron: chip("var(--warn)", "var(--warn-bg)"),
 } as const;

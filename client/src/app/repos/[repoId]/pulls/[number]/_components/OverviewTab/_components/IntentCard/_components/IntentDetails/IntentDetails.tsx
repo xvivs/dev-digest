@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import { Badge, Disclosure, DisclosureChevron } from "@devdigest/ui";
 import type { PrIntentRecord } from "@devdigest/shared";
 import { RunCostValue } from "@/components/run-cost-value";
+import { ICON_SIZE } from "../../../../constants";
 import { s as shared } from "../../../../styles";
 import { s } from "./styles";
 
@@ -20,7 +21,7 @@ export function IntentDetails({ intent }: { intent: PrIntentRecord }) {
       headerStyle={s.header}
       header={(open) => (
         <>
-          <DisclosureChevron open={open} size={14} />
+          <DisclosureChevron open={open} size={ICON_SIZE.inline} />
           <span>{t("details")}</span>
         </>
       )}
@@ -53,7 +54,7 @@ export function IntentDetails({ intent }: { intent: PrIntentRecord }) {
           </div>
         )}
 
-        <div style={{ ...shared.muted, ...s.meta }}>
+        <div style={s.costLine}>
           {t("intent.cost")} <RunCostValue usd={intent.cost_usd} source={intent.cost_source} />
         </div>
       </div>

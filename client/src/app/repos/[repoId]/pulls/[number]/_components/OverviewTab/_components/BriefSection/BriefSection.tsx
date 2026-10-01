@@ -8,7 +8,8 @@ import { RunCostValue } from "@/components/run-cost-value";
 import { VerdictBanner } from "@/app/repos/[repoId]/pulls/[number]/_components/VerdictBanner";
 import { formatTokenArrow, formatTokenPair, selectLatestBrief } from "../../helpers";
 import { ICON_SIZE, SKELETON_HEIGHT } from "../../constants";
-import { s } from "../../styles";
+import { s as shared } from "../../styles";
+import { s } from "./styles";
 
 /**
  * The newest finished review as a verdict banner with its cost/tokens aside.
@@ -41,7 +42,7 @@ export function BriefSection({ prId }: { prId: string }) {
       <div style={s.briefEmpty}>
         <Icon.Sparkles size={ICON_SIZE.inline} aria-hidden="true" />
         <span style={s.briefEmptyTitle}>{t("noRun")}</span>
-        <span style={s.muted}>{t("unavailableHint")}</span>
+        <span style={shared.muted}>{t("unavailableHint")}</span>
       </div>
     );
   } else {
@@ -51,7 +52,7 @@ export function BriefSection({ prId }: { prId: string }) {
     body = (
       <>
         {newerRun && (
-          <div style={s.notice} role="status">
+          <div style={shared.notice} role="status">
             <Icon.Info size={ICON_SIZE.section} aria-hidden="true" />
             <span>{t(`newerRun.${newerRun}`)}</span>
           </div>

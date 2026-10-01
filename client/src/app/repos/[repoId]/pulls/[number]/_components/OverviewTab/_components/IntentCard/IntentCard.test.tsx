@@ -1,5 +1,6 @@
 import { describe, it, expect, afterEach } from "vitest";
-import { screen, cleanup, within, fireEvent } from "@testing-library/react";
+import { screen, cleanup, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import brief from "@/../messages/en/brief.json";
 import cost from "@/../messages/en/cost.json";
 import { renderWithProviders } from "@/test/render";
@@ -49,6 +50,7 @@ describe("IntentCard", () => {
   });
 
   it("keeps sources, unread links and cost behind a closed Details disclosure", async () => {
+    const user = userEvent.setup();
     api.reply("GET", "/pulls/p1/intent", intentResponse("high"));
     renderWithProviders(<IntentCard prId="p1" />, { namespaces });
     const toggle = await screen.findByRole("button", { name: brief.details });
@@ -57,7 +59,7 @@ describe("IntentCard", () => {
     expect(screen.queryByText(brief.intent.unresolved)).toBeNull();
     expect(screen.queryByText(brief.intent.cost, { exact: false })).toBeNull();
 
-    fireEvent.click(toggle);
+    await user.click(toggle);
 
     expect(toggle).toHaveAttribute("aria-expanded", "true");
     expect(screen.getByText(brief.intent.sources)).toBeInTheDocument();
