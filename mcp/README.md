@@ -1,6 +1,6 @@
 # devdigest-mcp
 
-A local stdio MCP server that lets Claude Code (or any MCP client) use DevDigest: list the review agents, run one on a pull request, read the findings, and read a repo's conventions. It is a thin HTTP client of the DevDigest API. It never opens the database and imports no server code (ADR 0026, `specs/07-devdigest-mcp.md`).
+A local stdio MCP server that lets Claude Code (or any MCP client) use DevDigest: list the review agents, run one on a pull request, read the findings, read a repo's conventions, and read the blast radius of a PR. It is a thin HTTP client of the DevDigest API. It never opens the database and imports no server code (ADR 0026, `specs/07-devdigest-mcp.md`).
 
 | Tool | What it does | Calls |
 |---|---|---|
@@ -8,9 +8,9 @@ A local stdio MCP server that lets Claude Code (or any MCP client) use DevDigest
 | `run_agent_on_pr` | starts one review run (a paid LLM call) and waits for it | `GET /repos`, `GET /agents`, `GET /repos/:id/pulls`, `POST /pulls/:id/review`, `GET /pulls/:id/runs`, `GET /pulls/:id/reviews` |
 | `get_findings` | findings of the newest review, or of one `run_id` | `GET /repos`, `GET /repos/:id/pulls`, `GET /pulls/:id/reviews`, `GET /pulls/:id/runs` |
 | `get_conventions` | accepted (or all) convention rules of a repo | `GET /repos`, `GET /repos/:id/conventions` |
-| `get_blast_radius` | stub: always `status: "not_implemented"`, no API call | none |
+| `get_blast_radius` | blast radius map of a PR (same map as the Overview tab): changed symbols, downstream callers, endpoints, crons | `GET /repos`, `GET /repos/:id/pulls`, `GET /pulls/:id/blast` |
 
-Those seven endpoints are the whole surface. `src/api/client.ts` is the only file that calls `fetch`.
+Those eight endpoints are the whole surface. `src/api/client.ts` is the only file that calls `fetch`.
 
 ## Run
 
@@ -69,10 +69,11 @@ Repos and PRs are not listed by this server. Use `gh pr list --repo owner/name -
 Put allow rules in your own `.claude/settings.local.json` (not committed):
 
 ```json
-{ "permissions": { "allow": ["mcp__devdigest__list_agents", "mcp__devdigest__get_conventions", "mcp__devdigest__get_blast_radius"] } }
+{ "permissions": { "allow": ["mcp__devdigest__list_agents", "mcp__devdigest__get_conventions"] } }
 ```
 
 - `mcp__devdigest__get_findings`: allow it only if you accept the side effects of PR lookup. It calls `GET /repos/:id/pulls`, which syncs the repo's PRs from GitHub, writes PR rows and, with `automatic_brief` on in DevDigest Settings, can queue up to 10 LLM brief jobs per call. These are the same writes opening the PR list in the UI causes.
+- `mcp__devdigest__get_blast_radius`: the same caveat as `get_findings` applies, because it resolves the PR through `GET /repos/:id/pulls` (GitHub sync). Allow it only if you accept that. The map is not capped, so a very large PR can exceed the client's tool-output limit; raise `MAX_MCP_OUTPUT_TOKENS` in Claude Code if the result is cut.
 - Never auto-allow `mcp__devdigest__run_agent_on_pr` (every call starts a paid LLM run) and never `mcp__devdigest__*`.
 
 ## Errors

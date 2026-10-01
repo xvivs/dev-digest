@@ -14,7 +14,7 @@ L04 adds an MCP server so Claude Code can run DevDigest reviews and read finding
 1. **A standalone `mcp/` package that talks to the API over HTTP only.** No DB and no server-module imports. Shared contracts are reused by nested `.pick()` through tsconfig paths, as reviewer-core does. `mcp/` becomes the second consumer of the `server/src/vendor/shared` copy (ADR 0001 names only reviewer-core).
    - **1a.** mcp parses every API response with picked, non-strict schemas in all environments. ADR 0007's dev-only parse rule is scoped to the client `apiFetch`. Its argument against parsing everywhere was a strict parse that breaks on additive changes, and picked schemas do not. A deliberate exception to ADR 0007's "no loosened schemas" clause: `category` is relaxed to `z.string()` because it is a pass-through field. This is not a drift fix. The enums the tools branch on (`severity`, `verdict`, statuses) stay strict.
 2. **`@modelcontextprotocol/sdk` 1.31.0 (v1), pinned exactly.** v2 requires zod ^4.2.
-3. **The permission boundary is code.** One `DevDigestApi` class (`mcp/src/api/client.ts`) with seven explicit method+path pairs and no generic request helper. Annotations only describe it.
+3. **The permission boundary is code.** One `DevDigestApi` class (`mcp/src/api/client.ts`) with eight explicit method+path pairs and no generic request helper. Annotations only describe it.
 
 ## Consequences
 

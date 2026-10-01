@@ -10,10 +10,12 @@
 import { z } from 'zod';
 import {
   Agent,
+  BlastRadius,
   ConventionCandidate,
   ConventionEvidence,
   ConventionScan,
   FindingRecord,
+  PrBlastResponse,
   PrMeta,
   Repo,
   ReviewRecord,
@@ -96,3 +98,13 @@ export const ConventionsLite = z.object({
 });
 export type ConventionsLite = z.infer<typeof ConventionsLite>;
 export type ConventionCandidateLite = ConventionsLite['candidates'][number];
+
+/** `GET /pulls/:id/blast`, projected 1:1: the tool drops cached/computed_at/index_status. */
+export const PrBlastLite = PrBlastResponse.pick({
+  status: true,
+  reason: true,
+  head_sha: true,
+  source_sha: true,
+  truncated: true,
+}).extend({ blast: BlastRadius.nullable() });
+export type PrBlastLite = z.infer<typeof PrBlastLite>;

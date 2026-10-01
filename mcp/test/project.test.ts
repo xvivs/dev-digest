@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import type { ConventionsLite, FindingLite, ReviewLite, RunLite } from '../src/api/schemas.js';
+import type { ConventionsLite, PrBlastLite, FindingLite, ReviewLite, RunLite } from '../src/api/schemas.js';
 import {
   CONVENTIONS_MAX,
   newerRunInProgress,
+  blastNextStep,
   projectAgents,
+  projectBlastRadius,
   projectConventions,
   projectNoReview,
   projectReviewFindings,
@@ -318,5 +320,40 @@ describe('projectConventions (AC-17)', () => {
     const out = projectConventions(page, { status: 'accepted', category: 'nothing' });
     expect(out.rules).toEqual([]);
     expect(out.next_step).toMatch(/extraction/);
+  });
+});
+
+describe('projectBlastRadius / blastNextStep', () => {
+  const base: PrBlastLite = { status: 'ok', reason: null, head_sha: 'h', source_sha: 's', truncated: false, blast: null };
+
+  it('null blast → null summary and empty lists', () => {
+    const out = projectBlastRadius('acme/shop', 3, base);
+    expect(out).toMatchObject({ repo: 'acme/shop', pr_number: 3, summary: null, changed_symbols: [], downstream: [], head_sha: 'h', source_sha: 's' });
+  });
+
+  it('keeps downstream and caller order and adds no cap', () => {
+    const downstream = Array.from({ length: 30 }, (_, i) => ({
+      symbol: `s${30 - i}`,
+      callers: [{ name: 'c', file: 'f.ts', line: i + 1 }],
+      endpoints_affected: [],
+      crons_affected: [],
+    }));
+    const out = projectBlastRadius('a/b', 1, { ...base, blast: { summary: 's', changed_symbols: [], downstream } });
+    expect(out.downstream.map((d) => d.symbol)).toEqual(downstream.map((d) => d.symbol));
+  });
+
+  it('next_step per D9 row', () => {
+    const step = (status: PrBlastLite['status'], reason: PrBlastLite['reason'], truncated = false) =>
+      blastNextStep({ ...base, status, reason, truncated });
+    expect(step('unavailable', 'no_changed_files')).toMatch(/Open the PR in the DevDigest UI/);
+    for (const r of ['index_partial', 'index_failed', 'no_index', 'no_data'] as const) {
+      expect(step('degraded', r)).toContain(`(${r})`);
+      expect(step('degraded', r)).toContain('Resync');
+    }
+    expect(step('degraded', 'repo_too_large')).toMatch(/too large/);
+    expect(step('degraded', 'flag_off')).toContain('REPO_INTEL_ENABLED=false');
+    expect(step('ok', null, true)).toMatch(/capped per symbol/);
+    expect(step('ok', null)).toBeUndefined();
+    expect(projectBlastRadius('a/b', 1, base)).not.toHaveProperty('next_step');
   });
 });

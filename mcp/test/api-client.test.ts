@@ -3,6 +3,7 @@ import { HttpDevDigestApi } from '../src/api/client.js';
 import { ApiError, isTransient } from '../src/api/errors.js';
 import {
   agentJson,
+  blastJson,
   candidateJson,
   conventionsJson,
   findingJson,
@@ -52,12 +53,13 @@ async function catchApiError(p: Promise<unknown>): Promise<ApiError> {
 }
 
 describe('HttpDevDigestApi — the permission boundary (AC-21)', () => {
-  it('exposes exactly the seven D7 methods', () => {
+  it('exposes exactly the eight D7 methods', () => {
     const names = Object.getOwnPropertyNames(HttpDevDigestApi.prototype)
       .filter((n) => n !== 'constructor')
       .sort();
     expect(names).toEqual(
       [
+        'getBlastRadius',
         'getConventions',
         'listAgents',
         'listPulls',
@@ -115,6 +117,13 @@ describe('HttpDevDigestApi — the permission boundary (AC-21)', () => {
       url: `${BASE}/repos/a%2Fb%3Fc/conventions`,
       reply: conventionsJson(),
     },
+    {
+      name: 'getBlastRadius',
+      invoke: (a) => a.getBlastRadius('a/b?c'),
+      method: 'GET',
+      url: `${BASE}/pulls/a%2Fb%3Fc/blast`,
+      reply: blastJson(),
+    },
   ];
 
   for (const c of cases) {
@@ -127,6 +136,19 @@ describe('HttpDevDigestApi — the permission boundary (AC-21)', () => {
       if (c.body !== undefined) expect(JSON.parse(calls[0]!.body!)).toEqual(c.body);
     });
   }
+
+  it('getBlastRadius keeps the map and keeps source_sha and drops cached/computed_at/index_status', async () => {
+    const { api } = recordingApi(() => jsonResponse(blastJson()));
+    const res = await api.getBlastRadius('p');
+    expect(Object.keys(res).sort()).toEqual(['blast', 'head_sha', 'reason', 'source_sha', 'status', 'truncated']);
+    expect(res.blast?.downstream[0]?.callers[0]?.line).toBe(42);
+  });
+
+  it('getBlastRadius maps an unparseable body to invalid_response', async () => {
+    const { api } = recordingApi(() => jsonResponse({ status: 'weird' }));
+    const e = await catchApiError(api.getBlastRadius('p'));
+    expect(e.kind).toBe('invalid_response');
+  });
 
   it('returns only the picked fields (agent loses system_prompt)', async () => {
     const { api } = recordingApi(() => jsonResponse([agentJson()]));

@@ -2,6 +2,7 @@ import type { DevDigestApi } from '../src/api/client.js';
 import type {
   AgentLite,
   ConventionsLite,
+  PrBlastLite,
   PrLite,
   RepoLite,
   ReviewLite,
@@ -21,6 +22,7 @@ export class FakeApi implements DevDigestApi {
   runs: RunLite[] | ((signal?: AbortSignal) => RunLite[] | Promise<RunLite[]>) = [];
   reviews: ReviewLite[] | (() => ReviewLite[] | Promise<ReviewLite[]>) = [];
   conventions: ConventionsLite = { last_scan: null, candidates: [] };
+  blast: PrBlastLite = { status: 'ok', reason: null, blast: null, head_sha: 'abc', source_sha: 'def', truncated: false };
   started: StartReviewLite = {
     pr_id: PR_ID,
     runs: [{ run_id: RUN_ID, agent_id: AGENT_ID, agent_name: 'Security Reviewer' }],
@@ -61,5 +63,9 @@ export class FakeApi implements DevDigestApi {
   async getConventions(repoId: string) {
     this.#rec('getConventions', [repoId]);
     return this.conventions;
+  }
+  async getBlastRadius(prId: string) {
+    this.#rec('getBlastRadius', [prId]);
+    return this.blast;
   }
 }

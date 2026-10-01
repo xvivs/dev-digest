@@ -179,3 +179,30 @@ export function conventionsJson(overrides: Record<string, unknown> = {}) {
     ...overrides,
   };
 }
+
+/** Full `GET /pulls/:id/blast` payload, including fields the MCP client drops. */
+export function blastJson(overrides: Record<string, unknown> = {}) {
+  return {
+    status: 'ok',
+    reason: null,
+    blast: {
+      changed_symbols: [{ name: 'chargeCard', file: 'src/pay.ts', kind: 'function' }],
+      downstream: [
+        {
+          symbol: 'chargeCard',
+          callers: [{ name: 'checkout', file: 'src/checkout.ts', line: 42 }],
+          endpoints_affected: ['POST /checkout'],
+          crons_affected: [],
+        },
+      ],
+      summary: '1 changed symbol, 1 caller.',
+    },
+    head_sha: 'abc',
+    source_sha: 'def',
+    index_status: 'full',
+    cached: false,
+    truncated: false,
+    computed_at: '2026-10-01T10:00:00.000Z',
+    ...overrides,
+  };
+}

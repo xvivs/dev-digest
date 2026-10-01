@@ -4,7 +4,7 @@
  * return type is the tool's `z.infer<typeof XOutput>`, so tsc checks it against
  * the output schema (excess-property checks only apply to fresh literals).
  */
-import type { AgentLite, ConventionsLite, FindingLite, ReviewLite, RunLite } from './api/schemas.js';
+import type { AgentLite, ConventionsLite, FindingLite, PrBlastLite, ReviewLite, RunLite } from './api/schemas.js';
 import { runPhase } from './run-status.js';
 import type { GetBlastRadiusOutput } from './tools/get-blast-radius.js';
 import type { GetConventionsOutput } from './tools/get-conventions.js';
@@ -279,21 +279,60 @@ export function projectConventions(page: ConventionsLite, opts: ConventionsOptio
   return out;
 }
 
-// ---- get_blast_radius (stub) -----------------------------------------------
+// ---- get_blast_radius -------------------------------------------------------
 
-export const BLAST_RADIUS_NEXT_STEP =
-  "Blast radius is not wired in this lab; open the PR's Overview tab in the DevDigest UI.";
+const BLAST_NO_FILES_NEXT_STEP =
+  'DevDigest has no changed files stored for this PR yet. Open the PR in the DevDigest UI (that syncs its files), then call again.';
+const BLAST_TOO_LARGE_NEXT_STEP = 'The repo is too large to index fully; this map covers only the indexed part.';
+const BLAST_FLAG_OFF_NEXT_STEP =
+  'Repo-intel is off on the DevDigest API (REPO_INTEL_ENABLED=false). Enable it and restart the API.';
+const BLAST_TRUNCATED_NEXT_STEP =
+  'Callers were capped per symbol by the index; the Overview tab shows the same capped list.';
+const blastIndexIncomplete = (reason: string): string =>
+  `The repo index is incomplete (${reason}). Press Resync next to the badge in the PR's Overview tab in DevDigest, wait for indexing to finish, then call again.`;
 
-export function blastRadiusStub(repo: string, prNumber: number): GetBlastRadiusOutput {
-  return {
-    status: 'not_implemented',
-    reason: null,
+/** The D9 `next_step` table; it interpolates only the enum `reason`, never repo content. */
+export function blastNextStep(res: PrBlastLite): string | undefined {
+  if (res.status === 'unavailable') return BLAST_NO_FILES_NEXT_STEP;
+  if (res.status === 'degraded') {
+    switch (res.reason) {
+      case 'index_partial':
+      case 'index_failed':
+      case 'no_index':
+      case 'no_data':
+        return blastIndexIncomplete(res.reason);
+      case 'repo_too_large':
+        return BLAST_TOO_LARGE_NEXT_STEP;
+      case 'flag_off':
+        return BLAST_FLAG_OFF_NEXT_STEP;
+      default:
+        return undefined;
+    }
+  }
+  return res.truncated ? BLAST_TRUNCATED_NEXT_STEP : undefined;
+}
+
+/** Thin projection of the route: order and content 1:1, no cap. */
+export function projectBlastRadius(repo: string, prNumber: number, res: PrBlastLite): GetBlastRadiusOutput {
+  const out: GetBlastRadiusOutput = {
+    status: res.status,
     repo,
     pr_number: prNumber,
-    summary: null,
-    changed_symbols: [],
-    downstream: [],
-    truncated: false,
-    next_step: BLAST_RADIUS_NEXT_STEP,
+    reason: res.reason,
+    summary: res.blast?.summary ?? null,
+    changed_symbols: res.blast?.changed_symbols.map((c) => ({ name: c.name, file: c.file, kind: c.kind })) ?? [],
+    downstream:
+      res.blast?.downstream.map((d) => ({
+        symbol: d.symbol,
+        callers: d.callers.map((c) => ({ name: c.name, file: c.file, line: c.line })),
+        endpoints_affected: [...d.endpoints_affected],
+        crons_affected: [...d.crons_affected],
+      })) ?? [],
+    head_sha: res.head_sha,
+    source_sha: res.source_sha,
+    truncated: res.truncated,
   };
+  const next = blastNextStep(res);
+  if (next !== undefined) out.next_step = next;
+  return out;
 }

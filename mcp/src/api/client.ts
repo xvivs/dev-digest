@@ -1,5 +1,5 @@
 /**
- * The permission boundary (D7): the seven DevDigest API calls a tool can make.
+ * The permission boundary (D7): the eight DevDigest API calls a tool can make.
  * There is deliberately no generic `request(method, path)` export; adding an
  * endpoint means adding a method here and a test in `test/api-client.test.ts`.
  * This file is the only `fetch` caller in the package.
@@ -9,6 +9,7 @@ import { ApiError } from './errors.js';
 import {
   AgentLite,
   ConventionsLite,
+  PrBlastLite,
   PrLite,
   RepoLite,
   ReviewLite,
@@ -25,6 +26,8 @@ export interface DevDigestApi {
   listRuns(prId: string, signal?: AbortSignal): Promise<RunLite[]>;
   listReviews(prId: string, signal?: AbortSignal): Promise<ReviewLite[]>;
   getConventions(repoId: string): Promise<ConventionsLite>;
+  /** `signal` (the tool call's abort signal) cancels the in-flight request too. */
+  getBlastRadius(prId: string, signal?: AbortSignal): Promise<PrBlastLite>;
 }
 
 type FetchImpl = (input: string | URL, init?: RequestInit) => Promise<Response>;
@@ -87,6 +90,10 @@ export class HttpDevDigestApi implements DevDigestApi {
       `/repos/${id(repoId)}/conventions`,
       ConventionsLite,
     );
+  }
+
+  getBlastRadius(prId: string, signal?: AbortSignal): Promise<PrBlastLite> {
+    return this.#get('GET /pulls/:id/blast', `/pulls/${id(prId)}/blast`, PrBlastLite, signal);
   }
 
   #get<T>(
