@@ -73,6 +73,8 @@ lives in the engineering-insights skill).
 
 - **Rows in the `jobs` table are never reaped on boot, so any dedupe keyed on `jobs.status IN ('queued','running')` blocks forever after a crash.** Boot reaping covers only review runs (`server/src/app.ts:94-96`) and `JobRunner` has no find/dedupe API (`server/src/platform/jobs.ts:56-137`); spec 06 therefore uses an in-process `KeyedGate` (`server/src/platform/keyed-gate.ts`, ADR 0025) instead of the table. _(2026-10-01)_
 
+- **After a `JobRunner` handler returns, `enqueue` still awaits two `jobs` row updates (`attempts`, then `status: 'done'`) before `done` resolves — bookkeeping that frees state in the handler but counts on `done` has a window where the work is over and the job is not.** `server/src/platform/jobs.ts:89-108`. The index gate lost a trailing pass in exactly that window (code-review F1); `KeyedGate.settle` now hands the trailing pass to `dispatch` together with a fresh reservation so the key never goes idle in between (`server/src/platform/keyed-gate.ts`, ADR 0025). _(2026-10-01)_
+
 ## Tool & Library Notes
 
 - **`pnpm exec <bin>` / `pnpm run <script>` can fail non-interactively with `ERR_PNPM_IGNORED_BUILDS` even when `node_modules` is already correct** — both `pnpm db:generate` and `pnpm exec drizzle-kit generate` refused to run this way, erroring "Run \"pnpm approve-builds\" to pick which dependencies should be allowed to run scripts." Workaround: invoke the wrapper under `node_modules/.bin/` directly with `sh`, e.g. `sh node_modules/.bin/drizzle-kit generate`, `sh node_modules/.bin/tsx src/db/migrate.ts`, `sh node_modules/.bin/vitest run` — bypasses pnpm's pre-flight check entirely. _(2026-09-19)_
@@ -86,6 +88,8 @@ lives in the engineering-insights skill).
 - **`z.string().nullable()` serializes to OpenAPI-style `{type: "string", nullable: true}` in the structured-output JSON schema; upstream grammars ignore `nullable`, so the model can never emit null and invents values instead** — `signal_id` came back as made-up `S1…S10`. Give the field a check (e.g. a `^S\d+$` regex) or an explicit union so the emitted schema carries `null` as a type; reused zod objects also emit `$ref`. See `server/src/modules/conventions/llm-schema.ts:36`. _(2026-09-30)_
 
 - **Fastify 5.8.5 hands the validator a body-less POST as `null`, not `undefined`, so an optional zod body must be `.nullish()`; `.optional()` rejects the request.** Seen on `POST /pulls/:id/overview/prepare` (`server/src/modules/overview/routes.ts:40-41`; source `fastify/lib/validation.js:123`). A POST with `content-type: application/json` and an empty body is still a 400 `FST_ERR_CTP_EMPTY_JSON_BODY` before validation, so clients should send `{}`. _(2026-10-01)_
+
+- **A zod `z.union` used as a Fastify response schema serializes with the FIRST member that matches and strips every other key, so a looser member placed first silently drops fields from the response.** On `POST /repos/:id/resync` the `{status, jobId?}` member listed first matched a coalesced reply and removed `coalesced: true`; characterization test I8 (`server/test/repo-services-singleton.it.test.ts`) caught it. Order members with extra required keys first (`server/src/modules/repo-intel/routes.ts:25-32`). _(2026-10-01)_
 
 ## Recurring Errors & Fixes
 
@@ -116,6 +120,8 @@ lives in the engineering-insights skill).
 - **Server `*.it.test.ts` suites report "skipped", not failed, when Docker is down — e.g. right after a Claude Code or machine restart** — each IT file does `const d = hasDocker ? describe : describe.skip` from `dockerAvailable()` (`server/test/reviews-smart-diff.it.test.ts:16-17`, `server/test/helpers/pg.ts:10`), so a green `pnpm test` can have run zero DB tests. Check the skipped count in the vitest summary and start Docker Desktop before calling server tests green. _(2026-10-01)_
 
 - **A finding lands in "N findings on files not in this diff" although the reviewer clearly saw that file: `pr_files` held only the first 100 files of the PR.** `pulls.listFiles({ per_page: 100 })` without pagination stored 100 of 147 files while `files_count` came from `pr.changed_files`, and the reviewer reads the full `git diff` from the clone (`server/src/modules/reviews/diff-loader.ts:8-9`), so grounding accepted findings on files 101+. Fixed with `octokit.paginate` (`server/src/adapters/github/octokit.ts:113-125`; GitHub caps at 3000 files / 250 commits). Check with `select count(*) from pr_files where pr_id=…` vs the tab count; opening the PR page (`GET /pulls/:id`) replaces `pr_files` in full. _(2026-10-01)_
+
+- **A test that holds a job handler on a deferred and releases it after the assertions hangs ~120 s when an assertion fails — the held handler only ends at the `JobRunner` timeout.** Release in `finally` (`server/test/repo-services-singleton.it.test.ts:139-142`). Symptom: one red `expect` turns into a vitest timeout with no useful message. _(2026-10-01)_
 
 ## Session Notes
 

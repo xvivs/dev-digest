@@ -60,6 +60,8 @@ lives in the engineering-insights skill).
 
 - **Checklist-style browser QA ("structure as in design: PASS") misses small visual gaps — the VerdictBanner aside passed with no divider under "PR SCORE", a single-colour cost row and the wrong token format** — the human caught it. The gaps were fixed in `client/src/app/repos/[repoId]/pulls/[number]/_components/VerdictBanner/VerdictBanner.tsx:63` (divider) and `OverviewTab/_components/BriefSection/BriefSection.tsx` (cost row). What caught everything on the re-check: give QA a cropped design fragment (`client/specs/assets/verdict-banner-design.png`), ask for an element-by-element table, and require computed `color`/`font-weight`/`font-size` via `evaluate_script`. A spec step that says only "cost line under the score" is too vague to verify. _(2026-10-01)_
 
+- **A `ResizeObserver` subscribed to a scroll region's children at mount misses content that is swapped later (Tree ↔ Graph in Blast Radius), so derived UI such as the bottom fade goes stale until the next scroll.** Observe the scroll container plus one stable inner wrapper that wraps the swappable children (`ScrollFadeRegion/hooks/useScrollFade.ts:9,26`); the regression test uses a controlled ResizeObserver that reports only elements actually observed, which is what makes the stale child detectable. _(2026-10-01)_
+
 ## Codebase Patterns
 
 - Dynamic i18n key lookup — `t(\`namespace.${variable}\`)` — is an established,
