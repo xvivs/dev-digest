@@ -22,14 +22,16 @@ export function OverviewTab({ prId, pr }: OverviewTabProps) {
     <div style={s.root}>
       <BriefSection prId={prId} />
       <div style={s.grid}>
-        <div style={s.col}>
+        <section style={s.card}>
           <IntentCard prId={prId} />
+          <hr style={s.divider} />
           <RiskAreas prId={prId} />
-        </div>
-        <div style={s.col}>
+        </section>
+        <section style={s.card}>
           <BlastRadiusCard prId={prId} />
+          <hr style={s.divider} />
           <PriorPrs prId={prId} />
-        </div>
+        </section>
       </div>
       {pr.body && (
         <section>

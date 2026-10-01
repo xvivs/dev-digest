@@ -29,19 +29,33 @@ export const s = {
     gap: 12,
     flexWrap: "wrap",
   } satisfies CSSProperties,
-  label: (color: string): CSSProperties => ({ fontSize: 18, fontWeight: 700, color }),
+  label: (color: string): CSSProperties => ({ fontSize: 18, fontWeight: 600, color }),
   summary: {
     fontSize: 14,
     lineHeight: 1.55,
     color: "var(--text-secondary)",
     marginTop: 8,
   } satisfies CSSProperties,
-  asideCol: {
+  endCol: {
     display: "flex",
     flexDirection: "column",
-    gap: 4,
+    alignItems: "flex-end",
+    gap: 9,
     flexShrink: 0,
-    fontSize: 12,
+  } satisfies CSSProperties,
+  asideDivider: {
+    alignSelf: "stretch",
+    border: 0,
+    borderTop: "1px solid var(--border)",
+    margin: "0",
+  } satisfies CSSProperties,
+  asideRow: {
+    display: "flex",
+    flexWrap: "wrap",
+    justifyContent: "flex-end",
+    gap: "2px 10px",
+    fontFamily: "var(--font-mono, ui-monospace, monospace)",
+    fontSize: 11,
     color: "var(--text-muted)",
   } satisfies CSSProperties,
   scoreCol: {
@@ -49,7 +63,7 @@ export const s = {
     flexDirection: "column",
     alignItems: "center",
     gap: 5,
-    flexShrink: 0,
+    alignSelf: "center",
   } satisfies CSSProperties,
   scoreLabel: {
     fontSize: 12,

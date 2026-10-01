@@ -30,40 +30,40 @@ export function BlastRadiusCard({ prId }: { prId: string }) {
 
   if (isLoading) {
     return (
-      <section style={shared.card}>
+      <div style={shared.block}>
         {heading}
         <Skeleton height={SKELETON_HEIGHT.blast} />
-      </section>
+      </div>
     );
   }
   if (isError || !data) {
     return (
-      <section style={shared.card}>
+      <div style={shared.block}>
         {heading}
         <ErrorState title={t("state.error")} onRetry={() => refetch()} />
-      </section>
+      </div>
     );
   }
   if (data.status === "unavailable" || !data.blast) {
     return (
-      <section style={shared.card}>
+      <div style={shared.block}>
         {heading}
         <EmptyState
           icon="Workflow"
           title={t("state.unavailable")}
           body={data.reason ? t(`reason.${data.reason}`) : undefined}
         />
-      </section>
+      </div>
     );
   }
 
   const { blast } = data;
   const stats = blastStats(blast);
   const statItems = [
-    { key: "symbols", value: stats.symbols },
-    { key: "callers", value: stats.callers },
-    { key: "endpoints", value: stats.endpoints },
-    { key: "crons", value: stats.crons },
+    { key: "symbols", value: stats.symbols, icon: "Code" },
+    { key: "callers", value: stats.callers, icon: "CornerDownRight" },
+    { key: "endpoints", value: stats.endpoints, icon: "Globe" },
+    { key: "crons", value: stats.crons, icon: "Clock" },
   ] as const;
 
   let graphBody: React.ReactNode;
@@ -76,19 +76,8 @@ export function BlastRadiusCard({ prId }: { prId: string }) {
   }
 
   return (
-    <section style={shared.card}>
-      <SectionLabel
-        icon="Workflow"
-        right={
-          <div style={s.toggle} role="group" aria-label={tb("block.blast")}>
-            {BLAST_VIEWS.map((v) => (
-              <ViewToggle key={v} label={t(`view.${v}`)} active={view === v} onSelect={() => setView(v)} />
-            ))}
-          </div>
-        }
-      >
-        {tb("block.blast")}
-      </SectionLabel>
+    <div style={shared.block}>
+      {heading}
 
       {data.status === "degraded" && (
         <div style={s.notice} role="status">
@@ -101,13 +90,24 @@ export function BlastRadiusCard({ prId }: { prId: string }) {
       )}
       {data.truncated && <div style={s.truncated}>{t("truncated")}</div>}
 
-      <div style={s.stats}>
-        {statItems.map((st) => (
-          <div key={st.key} style={s.stat}>
-            <span style={s.statValue}>{st.value}</span>
-            <span style={shared.muted}>{t(`stat.${st.key}`)}</span>
-          </div>
-        ))}
+      <div style={s.statsRow}>
+        <div style={s.stats}>
+          {statItems.map((st) => {
+            const StatIcon = Icon[st.icon];
+            return (
+              <div key={st.key} style={s.stat}>
+                <StatIcon size={ICON_SIZE.inline} aria-hidden="true" style={s.statIcon} />
+                <span style={s.statValue}>{st.value}</span>
+                <span style={s.statLabel}>{t(`stat.${st.key}`)}</span>
+              </div>
+            );
+          })}
+        </div>
+        <div style={s.toggle} role="group" aria-label={tb("block.blast")}>
+          {BLAST_VIEWS.map((v) => (
+            <ViewToggle key={v} label={t(`view.${v}`)} active={view === v} onSelect={() => setView(v)} />
+          ))}
+        </div>
       </div>
 
       {graphBody}
@@ -117,6 +117,6 @@ export function BlastRadiusCard({ prId }: { prId: string }) {
           <Badge mono>{t("basedOnIndex", { sha: data.source_sha.slice(0, 7) })}</Badge>
         </div>
       )}
-    </section>
+    </div>
   );
 }

@@ -220,6 +220,8 @@ lives in the engineering-insights skill).
 
 - **CSS grid `repeat(auto-fill, minmax(280px, 1fr))` overflows containers narrower than 280px — write `minmax(min(280px, 100%), 1fr)`** — fixed in `CARD_GRID_COLS` at `client/src/app/agents/_components/AgentsListView/constants.ts:7`. _(2026-10-01)_
 
+- **A test that opens a `Disclosure` whose body depends on a query must `await findByText` for the body after the click — finding the toggle button does not mean data has loaded** — the header `<button>` renders at once (`client/src/vendor/ui/primitives/Disclosure.tsx:90`) while the body shows a skeleton until the query resolves; `getByText` right after `fireEvent.click` failed in `PriorPrs.test.tsx:30` until switched to `findByText`. The same unmount-when-closed contract (`Disclosure.tsx:99`) makes "absent until opened" assertable with `queryByText`. _(2026-10-01)_
+
 ## Session Notes
 
 - Cost Badge (L01, client half): added `RunCostValue` + `formatCost`/`exactCost`

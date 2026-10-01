@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vitest";
 import type { DownstreamImpact, ReviewRecord, RunSummary } from "@devdigest/shared";
 import { GRAPH, GRAPH_MAX_CALLERS } from "./constants";
-import { blastGraphLayout, blastStats, selectLatestBrief, splitInlineCode } from "./helpers";
+import {
+  blastGraphLayout,
+  blastStats,
+  formatTokenArrow,
+  selectLatestBrief,
+  shouldShowConfidenceBadge,
+  splitInlineCode,
+} from "./helpers";
 
 const run = (run_id: string, status: string | null, ran_at: string | null): RunSummary =>
   ({ run_id, status, ran_at }) as RunSummary;
@@ -150,5 +157,21 @@ describe("blastGraphLayout", () => {
     expect(many?.height).toBe(GRAPH_MAX_CALLERS * GRAPH.rowHeight + GRAPH.pad * 2);
     const manySymbols = blastGraphLayout(Array.from({ length: 10 }, (_, i) => impact(`s${i}`, i === 0 ? 1 : 0)));
     expect(manySymbols?.height).toBe(10 * GRAPH.rowHeight + GRAPH.pad * 2);
+  });
+});
+
+describe("shouldShowConfidenceBadge", () => {
+  it("flags low and medium confidence only", () => {
+    expect(shouldShowConfidenceBadge("low")).toBe(true);
+    expect(shouldShowConfidenceBadge("medium")).toBe(true);
+    expect(shouldShowConfidenceBadge("high")).toBe(false);
+  });
+});
+
+describe("formatTokenArrow", () => {
+  it("formats in→out with an uppercase K and one decimal", () => {
+    expect(formatTokenArrow(8200, 1300)).toBe("8.2K→1.3K");
+    expect(formatTokenArrow(950, null)).toBe("950→—");
+    expect(formatTokenArrow(null, null)).toBeNull();
   });
 });

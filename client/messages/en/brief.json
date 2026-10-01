@@ -2,7 +2,7 @@
   "block": {
     "intent": "Intent",
     "blast": "Blast radius",
-    "risks": "Risks",
+    "risks": "Risk areas",
     "history": "PR history"
   },
   "noRisks": "No notable risks flagged.",
@@ -16,7 +16,8 @@
     "noHistory": "No history available for this line.",
     "noCommits": "No commits found for this line."
   },
-  "section": "Review brief",
+  "section": "PR brief",
+  "details": "Details",
   "noRun": "No completed review yet",
   "newerRun": {
     "running": "A newer review is running; this brief may be out of date.",
@@ -93,7 +94,7 @@
     }
   },
   "history": {
-    "title": "Prior PRs",
+    "title": "Prior PRs touching these files",
     "unavailable": "History unavailable.",
     "merged": "merged {date}",
     "cached": "cached",
