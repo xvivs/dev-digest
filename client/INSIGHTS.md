@@ -46,6 +46,8 @@ lives in the engineering-insights skill).
 
 - **Catch a polled query's running → terminal transition inside its `queryFn`, by comparing against `queryClient.getQueryData(key)`, not in a `useEffect` over `data.status`** — `useEvalSuite` (`client/src/lib/hooks/evals.ts:133`) invalidates stats, the skill and the list exactly once per transition, and needs no ref or effect. The catch is a suite that finishes before the first poll: nothing is cached to compare against. `useStartEvalSuite` therefore seeds the detail cache as `running` from the start response (`seedSuiteDetail`). _(2026-09-29)_
 
+- **Keep transient scroll-driven UI state in the smallest subtree: the condensed-bar flag lives in `PrDetailHeader`, not `PrDetailContent`** — lifting it up re-rendered the whole diff on every toggle (284ms bar lag on a 100-file PR, per commit `4963d9f`); `useCondensedHeader` is called at `client/src/app/repos/[repoId]/pulls/[number]/_components/PrDetailHeader/PrDetailHeader.tsx:49`. _(2026-10-01)_
+
 ## What Doesn't Work
 
 - **`IconBtn` is the wrong primitive for a row's trailing actions, and its `danger` prop has zero call sites** — `src/vendor/ui/primitives/IconBtn.tsx:36` already encodes exactly the hover colours a delete glyph wants (`danger && h ? var(--crit) : h ? var(--text-primary) : var(--text-secondary)`), which makes it look like the obvious reuse. It is not: it also forces a `size × size` box (default 30, vs ~19 for a bare 15px glyph) and its own `var(--bg-hover)` fill, both of which fight the "bare glyphs, no button chrome" rule the timeline row is built on. Meanwhile `grep -r '<IconBtn' src` shows the `danger` prop used nowhere, while four hand-rolled trash buttons sit at a static `var(--text-muted)` with no hover at all (`app/agents/_components/AgentCard/AgentCard.tsx:41`, `pulls/[number]/_components/ReviewRunAccordion/ReviewRunAccordion.tsx:117`, `vendor/ui/kit/Dropdown.tsx:35`). Read that prop as an unused sketch, not a convention — the timeline row uses a local `RunHistory/_components/RowAction/` that keeps the glyph bare and only swaps `color`. _(2026-09-20)_
@@ -149,6 +151,12 @@ lives in the engineering-insights skill).
 
 - **`@testing-library/user-event` 14.6.7 is now a client devDependency: `userEvent.setup()` replaces `fireEvent` for hover, keyboard activation and clicks** — added in `client/package.json` (commit `20ae36e`); with fake timers use `userEvent.setup({ advanceTimers: vi.advanceTimersByTime })`, and `setup()` also installs a working `navigator.clipboard`. This supersedes the "user-event is not a dependency" workarounds in the `fireEvent.mouseEnter` and `fireEvent.keyDown` entries. _(2026-09-30)_
 
+- **Under vitest fake timers, `userEvent.setup({ advanceTimers: vi.advanceTimersByTime })` hangs unless a `jest` global is stubbed** — RTL's asyncWrapper only advances fake timers when it sees `jest`; stub it with `vi.stubGlobal("jest", { advanceTimersByTime: ... })` as in `client/src/components/app-shell/AppShell.test.tsx:89-90`. _(2026-10-01)_
+
+- **Anything in a `vendor/ui` Drawer `title` becomes part of the dialog's accessible name; mark decorative title content `aria-hidden` and assert names exactly (`{ name: "Navigation" }`, not a regex, which hid the bug)** — `client/src/vendor/ui/kit/Drawer.tsx:84` sets `aria-labelledby` to the title id; exact-name assertion at `client/src/components/app-shell/AppShell.test.tsx:43`. _(2026-10-01)_
+
+- **The global `prefers-reduced-motion: reduce` rule shrinks every animation/transition duration to 0.01ms with `!important`, inline ones included, so a JS "reduced-motion fallback animation" never visibly plays — design reduced-motion branches as instant** — `client/src/vendor/ui/styles.css:411-417`; the Drawer's reduced fade (`DRAWER_FADE_MS`, `client/src/vendor/ui/kit/Drawer.tsx:7,60`) is overridden by it. _(2026-10-01)_
+
 ## Recurring Errors & Fixes
 
 - Every RTL test that renders a component tree containing a cross-route leaf
@@ -203,6 +211,14 @@ lives in the engineering-insights skill).
 - **In a working tree shared with a concurrent agent, `git rm <path>` stages the deletion right away, and a later `git add <other paths> && git commit` ships it with those files, even though you never named it** — `git commit` with no pathspec commits the whole index. That is how the PlaceholderTab deletion landed in the helpers refactor `4bd3ad0`, a commit whose `SkillEditor.tsx` still imports that component. Delete with plain `rm`, stage the deletion only in the commit that removes its last import, and run `git diff --cached --stat` before every commit. _(2026-09-29)_
 
 - **A merge that pairs this branch's `Tabs` (`role="tab"`, `client/src/vendor/ui/kit/Tabs.tsx`) with tests written on `main` fails them with `Unable to find an accessible element with the role "button" and name "…"`** — main's tests still query tab switches as buttons (`SkillEditorView.test.tsx`, `EvalsTab.test.tsx`); the component is fine, only the query needs `getByRole("tab", …)`. Also re-check client mirrors of server rules after such a merge: `restoreResetsVetting` (`VersionsTab/_components/RestoreVersionModal/helpers.ts:11`) had main's `imported`-only rule while the server resets `extracted` too (`server/src/modules/skills/domain.ts:234`), and no unit test caught it — only `skills-versions.it.test.ts`. _(2026-09-30)_
+
+- **Returning focus to a trigger after a `vendor/ui` Drawer closes: a synchronous `focus()` in the close handler loses, and `queueMicrotask` can too — use `requestAnimationFrame` plus an explicit trigger ref** — `useDialogFocus` restores focus in an effect cleanup (`client/src/vendor/ui/hooks/useDialogFocus.ts:146-150`) that runs after the close handler, and Safari never focuses buttons on click, so its remembered opener is empty there. Fix in `client/src/components/app-shell/AppShell.tsx:49-52` (`closeNav`, `navTriggerRef`). _(2026-10-01)_
+
+- **A sticky header that shrinks in flow inside the scroll container triggers browser scroll anchoring, and JS scroll compensation wobbles because it lags a frame — use the condensing pattern** — commit `8259f38` replaced the collapsing header (`6df5a33`) with a static full header plus a fixed-height bar in a zero-height sticky anchor (`PrDetailHeader/_components/CondensedBar/styles.ts:10-15`), and sets `overflow-anchor: none` on `<main>` as a guard (`PrDetailHeader/hooks/useCondensedHeader.ts:30-31`, under `client/src/app/repos/[repoId]/pulls/[number]/_components/`). Flow height never changes, so nothing is left to compensate. _(2026-10-01)_
+
+- **Measurements gated on `transitionrun` race a ResizeObserver: the event fires in the frame after the style change, while the ResizeObserver callback fires in the same frame** — seen in `useStickyOffset` (`.../PrDetailView/_components/PrDetailContent/hooks/useStickyOffset.ts:54` at commit `6df5a33`, code later removed — open it with `git show 6df5a33:<path>`). Don't gate layout reads on transition events. _(2026-10-01)_
+
+- **CSS grid `repeat(auto-fill, minmax(280px, 1fr))` overflows containers narrower than 280px — write `minmax(min(280px, 100%), 1fr)`** — fixed in `CARD_GRID_COLS` at `client/src/app/agents/_components/AgentsListView/constants.ts:7`. _(2026-10-01)_
 
 ## Session Notes
 
