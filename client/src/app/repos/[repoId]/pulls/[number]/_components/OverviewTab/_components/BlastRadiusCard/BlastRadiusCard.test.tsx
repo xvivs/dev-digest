@@ -331,6 +331,15 @@ describe("BlastRadiusCard degraded badge and Resync", () => {
     await waitFor(() => expect(api.requestsTo("POST", "/repos/r1/resync")).toHaveLength(1));
   });
 
+  // Every reason a degraded badge can carry resolves to real copy (no raw key, no MISSING_MESSAGE).
+  it.each(BLAST_REASONS)("shows the copy for the degraded reason %s", async (reason) => {
+    replyBlast({ status: "degraded", reason, symbols: 1, downstream: oneCaller });
+    renderCard();
+    const status = await screen.findByRole("status");
+    expect(status).toHaveTextContent(blast.reason[reason]);
+    expect(status).not.toHaveTextContent(/MISSING_MESSAGE|reason\./);
+  });
+
   it.each(["flag_off", "repo_too_large"] as const)("offers no Resync for %s", async (reason) => {
     replyBlast({ status: "degraded", reason, symbols: 1, downstream: oneCaller });
     renderCard();

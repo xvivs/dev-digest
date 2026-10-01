@@ -6,7 +6,7 @@ import blast from "@/../messages/en/blast.json";
 import cost from "@/../messages/en/cost.json";
 import prReview from "@/../messages/en/prReview.json";
 import { renderWithProviders } from "@/test/render";
-import { setupFakeApi } from "@/test/fake-api";
+import { setupFakeApi, json } from "@/test/fake-api";
 import { OverviewTab } from "./OverviewTab";
 import { readiness } from "./_components/PrepareOverview/testFixtures";
 
@@ -127,5 +127,52 @@ describe("OverviewTab", () => {
       expect(follows(risksHeading, second!)).toBe(true);
       expect(await screen.findByRole("button", { name: brief.prepare.blocked })).toBeDisabled();
     });
+  });
+});
+
+describe("Resync from the Blast radius card", () => {
+  const DOWNSTREAM = [{ symbol: "doWork", callers: [{ file: "src/a.ts", line: 7, name: "run" }], endpoints_affected: [], crons_affected: [] }];
+  const blastBody = (status: "ok" | "degraded") => ({
+    status,
+    reason: status === "degraded" ? "index_partial" : null,
+    blast: { changed_symbols: [{ name: "doWork", file: "src/a.ts", kind: "function" }], downstream: DOWNSTREAM, summary: "" },
+    head_sha: "abc",
+    source_sha: "deadbeef",
+    index_status: "ready",
+    cached: false,
+    truncated: false,
+    computed_at: null,
+  });
+
+  // A job that finishes before the first readiness poll: the first readiness the page reads after the
+  // POST already says idle, and the index is fresh from then on. A blast fetched alongside that readiness
+  // (the resync's own refresh) still sees the old answer; only a blast refetch after it sees "ok".
+  it("a fast resync job refreshes the blast once readiness settles: the degraded badge goes away", async () => {
+    stubApi();
+    let resynced = false;
+    let indexFresh = false;
+    api.route("POST", "/repos/r1/resync", () => {
+      resynced = true;
+      return json({ status: "queued" }, 202);
+    });
+    api.route("GET", "/pulls/p1/overview/readiness", async () => {
+      if (resynced) {
+        await new Promise((r) => setTimeout(r, 30));
+        indexFresh = true;
+      }
+      return json(readiness());
+    });
+    api.route("GET", "/pulls/p1/blast", () => json(blastBody(indexFresh ? "ok" : "degraded")));
+
+    const user = userEvent.setup();
+    renderWithProviders(<OverviewTab prId="p1" repoId="r1" repoFullName="acme/widgets" />, { namespaces });
+    expect(await screen.findByRole("status")).toHaveTextContent(blast.reason.index_partial);
+
+    await user.click(screen.getByRole("button", { name: blast.resync }));
+
+    await waitFor(() => expect(screen.queryByRole("status")).not.toBeInTheDocument());
+    expect(screen.queryByRole("button", { name: blast.resync })).not.toBeInTheDocument();
+    expect(api.requestsTo("POST", "/repos/r1/resync")).toHaveLength(1);
+    expect(api.requestsTo("GET", "/pulls/p1/blast").length).toBeGreaterThanOrEqual(3);
   });
 });

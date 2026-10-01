@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { DownstreamImpact, ReviewRecord, RunSummary } from "@devdigest/shared";
-import blastMessages from "@/../messages/en/blast.json";
-import { BLAST_REASONS, GRAPH, GRAPH_MAX_CALLERS } from "./constants";
+import { GRAPH, GRAPH_MAX_CALLERS } from "./constants";
 import {
   blastCallerHref,
   blastGraphLayout,
@@ -217,14 +216,6 @@ describe("hasNoCallers", () => {
   });
   it("is false with one caller", () => {
     expect(hasNoCallers(blast([impact("a", 0), impact("b", 1)]))).toBe(false);
-  });
-});
-
-describe("blast.json copy", () => {
-  it("has a reason.<value> string for every BLAST_REASONS entry", () => {
-    for (const r of BLAST_REASONS) {
-      expect((blastMessages.reason as Record<string, string>)[r], r).toBeTruthy();
-    }
   });
 });
 
