@@ -24,6 +24,8 @@
 
 export type IndexStatus = 'full' | 'partial' | 'degraded' | 'failed';
 
+export type PartialReasonValue = 'soft_budget' | 'graph_failed' | 'parse_errors' | 'no_files';
+
 export type DegradedReason =
   | 'flag_off'
   | 'index_failed'
@@ -44,6 +46,10 @@ export interface IndexState extends IndexResult {
   lastIndexedSha: string;
   indexerVersion: number;
   updatedAt: Date;
+  /** Last run that re-read the clone at a HEAD; `null` = never or not recorded. */
+  lastIndexedAt: Date | null;
+  /** Why a persisted `partial` row is partial, read from its stats. */
+  partialReason?: PartialReasonValue;
   /** True when the layer is running on the ripgrep fallback. */
   degraded?: boolean;
   degradedReason?: DegradedReason;
@@ -131,6 +137,46 @@ export interface RepoMapResult {
   reason?: DegradedReason;
 }
 
+// ---------------------------------------------------------------------------
+// Index gate + readiness (spec 06 D3, D16).
+// ---------------------------------------------------------------------------
+
+/** `index` = full index; `refresh` = incremental; `resync` = fetch + incremental. */
+export type IndexRequestKind = 'index' | 'refresh' | 'resync';
+
+/**
+ * A coalesced follow-up pass after the running index body, merged by OR so no
+ * accepted request is lost: `sync` = fetch origin first (resync), `full` = run
+ * a full index instead of an incremental. Runs as its own job once the repo is
+ * idle; `workspaceId` is the job's workspace (absent only for a job enqueued
+ * without one, which the gate then cannot re-enqueue).
+ */
+export interface IndexTrailing {
+  full: boolean;
+  sync: boolean;
+  workspaceId?: string;
+}
+
+export interface IndexRequestResult {
+  queued: boolean;
+  reason?: 'in_flight' | 'no_handler';
+  /** Id of the enqueued job when `queued`. */
+  jobId?: string;
+}
+
+export interface IndexReadiness {
+  /** `REPO_INTEL_ENABLED`. */
+  enabled: boolean;
+  /** `git rev-parse HEAD` of the clone; `null` when not cloned or unreadable. */
+  cloneHead: string | null;
+  /** The persisted row, or `null` (no synthesis). */
+  state: IndexState | null;
+  /** `state.indexerVersion === INDEXER_VERSION`. */
+  versionCurrent: boolean;
+  /** A reservation is held or an index body is running for this repo. */
+  inFlight: boolean;
+}
+
 /**
  * The facade. Studio (T2+) serves reads purely from the Postgres cache; T1 and
  * CI may parse diff-scoped on the hot path. Indexing runs through
@@ -144,6 +190,15 @@ export interface RepoIntel {
   refreshIndex(repoId: string): Promise<IndexResult>;
   /** Current index state — ALWAYS works, even degraded. */
   getIndexState(repoId: string): Promise<IndexState>;
+  /**
+   * The ONLY way to enqueue an index/refresh/resync job (spec 06 D4, ADR 0025).
+   * Reserves the repo's in-process gate synchronously; when it is busy, no job
+   * is enqueued and the request coalesces into the running job's trailing pass.
+   * Tenant-agnostic: callers scope the repo to the workspace first.
+   */
+  requestIndex(workspaceId: string, repoId: string, kind: IndexRequestKind): Promise<IndexRequestResult>;
+  /** Cheap index facts for the Overview readiness (no LLM, no blast). Never throws. */
+  getIndexReadiness(repoId: string): Promise<IndexReadiness>;
 
   // --- Reads --------------------------------------------------------------
   getBlastRadius(repoId: string, changedFiles: string[]): Promise<BlastResult>;

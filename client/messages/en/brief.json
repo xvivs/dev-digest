@@ -103,5 +103,35 @@
       "fetch_failed": "GitHub could not be reached.",
       "no_changed_files": "This PR has no changed files."
     }
+  },
+  "prepare": {
+    "label": "Prepare overview",
+    "preparing": "Preparing…",
+    "ready": "Overview ready",
+    "blocked": "Brief needs attention",
+    "updateIndex": "Update index",
+    "failedSome": "Some steps could not start.",
+    "openSettings": "Open Settings → API Keys",
+    "cloneFailed": {
+      "not_found": "The last clone failed: Repository not found, or the GitHub token has no access to it. Check the repository URL and the GitHub token in Settings, then try again.",
+      "auth": "The last clone failed: GitHub rejected the credentials. Check the GitHub token in Settings, then try again.",
+      "network": "The last clone failed: GitHub could not be reached. Try again in a moment.",
+      "unknown": "The last clone failed. Try again."
+    },
+    "tooltip": {
+      "lastIndexed": "Last indexed {time} · {sha}",
+      "never": "Never indexed",
+      "notRecorded": "Indexed at {sha}; time unknown",
+      "flagOff": "Repo intelligence is off (REPO_INTEL_ENABLED=false)",
+      "partial": "Index incomplete ({reason}) · last indexed {time}. Updating may end incomplete again.",
+      "unknownTime": "unknown"
+    },
+    "partialReason": {
+      "soft_budget": "time budget reached",
+      "graph_failed": "import graph failed",
+      "parse_errors": "some files could not be parsed",
+      "no_files": "no supported files",
+      "unknown": "unknown"
+    }
   }
 }

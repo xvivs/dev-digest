@@ -1,0 +1,1 @@
+ALTER TABLE "repo_index_state" ADD COLUMN "last_indexed_at" timestamp with time zone;

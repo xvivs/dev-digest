@@ -22,3 +22,10 @@ export const GIT_TOKEN_USERNAME = 'x-access-token';
 
 /** Host for which a token is embedded into an https clone URL. */
 export const GITHUB_HTTPS_HOST = 'github.com';
+
+/** Clone failure classes, matched against git's stderr in this order. */
+export const CLONE_FAILURE_PATTERNS: ReadonlyArray<readonly [reason: 'not_found' | 'auth' | 'network', re: RegExp]> = [
+  ['not_found', /repository .*not found|error: 404|does not exist/i],
+  ['auth', /authentication failed|could not read username|invalid username|error: 40[13]|permission denied/i],
+  ['network', /could not resolve host|unable to access|timed out|connection (refused|reset)|ENOTFOUND|ECONN|early EOF|RPC failed/i],
+];

@@ -197,6 +197,13 @@
       "when": 1790799585462,
       "tag": "0027_magenta_madame_masque",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1790855557966,
+      "tag": "0028_funny_sentry",
+      "breakpoints": true
     }
   ]
 }

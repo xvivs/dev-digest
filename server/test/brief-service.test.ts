@@ -389,6 +389,39 @@ describe('requestDerive: the automatic gate', () => {
   });
 });
 
+describe('requestDerive: onlyIfIdle (Prepare overview, spec 06 D8)', () => {
+  it('two concurrent on_demand idle-only requests enqueue one job', async () => {
+    const s = setup();
+    const [a, b] = await Promise.all([
+      s.svc.requestDerive('ws', 'pr1', 'on_demand', { onlyIfIdle: true }),
+      s.svc.requestDerive('ws', 'pr1', 'on_demand', { onlyIfIdle: true }),
+    ]);
+    expect([a, b]).toEqual(expect.arrayContaining([{ queued: true }, { queued: false }]));
+    expect(s.jobs.enqueued).toHaveLength(1);
+  });
+
+  it('with a job already queued → { queued:false }, nothing enqueued', async () => {
+    const s = setup();
+    await s.svc.requestDerive('ws', 'pr1', 'on_demand');
+    expect(await s.svc.requestDerive('ws', 'pr1', 'on_demand', { onlyIfIdle: true })).toEqual({ queued: false });
+    expect(s.jobs.enqueued).toHaveLength(1);
+  });
+
+  it('without the option the old behaviour is unchanged (enqueue every time)', async () => {
+    const s = setup();
+    await s.svc.requestDerive('ws', 'pr1', 'on_demand');
+    expect(await s.svc.requestDerive('ws', 'pr1', 'on_demand')).toEqual({ queued: true });
+    expect(s.jobs.enqueued).toHaveLength(2);
+  });
+
+  it('a foreign PR is still undefined', async () => {
+    const s = setup();
+    s.setPull(undefined);
+    expect(await s.svc.requestDerive('ws', 'pr1', 'on_demand', { onlyIfIdle: true })).toBeUndefined();
+    expect(s.jobs.enqueued).toHaveLength(0);
+  });
+});
+
 describe('requestDerive: enqueue failure', () => {
   it('on_demand rethrows and the queued mark is cleared', async () => {
     const s = setup();

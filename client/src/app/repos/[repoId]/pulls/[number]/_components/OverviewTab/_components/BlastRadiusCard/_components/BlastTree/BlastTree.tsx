@@ -27,10 +27,14 @@ function BlastSymbol({ impact }: { impact: DownstreamImpact }) {
             {impact.callers.map((c, j) => (
               <li key={`${j}-${c.file}-${c.line}`} style={s.caller}>
                 <Icon.CornerDownRight size={ICON_SIZE.inline} aria-hidden="true" style={s.headIcon} />
-                <span>
-                  {c.file}:{c.line}
-                </span>
-                <span style={s.callerName}>{c.name}</span>
+                <div style={s.callerBody}>
+                  <span style={s.callerPath} title={`${c.file}:${c.line}`}>
+                    <span style={s.callerPathText}>
+                      {c.file}:{c.line}
+                    </span>
+                  </span>
+                  <span style={s.callerName}>{c.name}</span>
+                </div>
               </li>
             ))}
           </ul>

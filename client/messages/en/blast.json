@@ -9,6 +9,7 @@
     "tree": "tree",
     "graph": "graph"
   },
+  "scrollRegion": "Blast radius details",
   "callerCount": "{count} callers",
   "noDownstream": "{count} changed symbol(s), no downstream callers found.",
   "graph": {

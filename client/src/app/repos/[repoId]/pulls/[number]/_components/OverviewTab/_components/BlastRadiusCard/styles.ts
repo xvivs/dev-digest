@@ -1,6 +1,9 @@
 import type { CSSProperties } from "react";
 import { s as shared } from "../../styles";
 
+/** Max height (px) of the tree/graph body before it scrolls; matches the 360px used by other in-card scroll areas. */
+export const BLAST_BODY_MAX_HEIGHT = 360;
+
 export const s = {
   statsRow: { display: "flex", alignItems: "center", flexWrap: "nowrap", gap: 12, marginBottom: 14 } satisfies CSSProperties,
   stats: { flex: "1 1 auto", minWidth: 0, display: "flex", flexWrap: "wrap", columnGap: 12, rowGap: 4, alignItems: "center" } satisfies CSSProperties,

@@ -291,6 +291,9 @@ Shipped the Overview tab (brief, intent, risks, blast radius, prior PRs), the Se
 ### 2026-10-01 — client session
 Brought the PR Overview tab in line with the `pr-overview` design (spec `client/specs/03-pr-overview-design-parity.md`, commits bee1069..6d2bf04). Changes: PR brief label, hidden brief at zero runs, two-card grid, Intent restyle with a Details disclosure, risk pills, one-row blast stats, Prior PRs accordion, VerdictBanner aside, and the PR description block removed. Three pr-self-review rounds closed 1 HIGH and 12 MEDIUM; one MEDIUM was refuted as a false positive. Not verified in a browser: the compact "runs but no completed review" card and the blast tree with chips (dev DB has no such data).
 
+### 2026-10-01 — client session
+Added `PrepareOverview` (one-click Prepare with last-indexed tooltip, `reindex_partial` "Update index", clone-failure note, bounded auto-continuation via `nextContinuation`) and moved Refresh PR ownership into each card. Smart-diff fix: finding paths open and scroll to the file in Files changed, off-diff paths link to GitHub, punctuation-only suggestions are hidden. Browser check pending with the user.
+
 ## Open Questions
 
 - **Conflict: does a `NextIntlClientProvider` missing a namespace throw or only log?** — the Recurring Errors entry dated 2026-09-19 says a single-namespace provider "throws on the first missing message", the Tool & Library entry dated 2026-09-28 observed only a logged `MISSING_MESSAGE` with a passing test (`client/src/test/smoke.test.tsx`). Possibly both true (missing key vs missing namespace, or a custom `onError`); needs a human to reconcile. _(2026-09-28)_

@@ -1,10 +1,11 @@
-import { type Repo } from '@devdigest/shared';
+import { type CloneFailureReason, type Repo } from '@devdigest/shared';
 import * as t from '../../db/schema.js';
 import { AppError } from '../../platform/errors.js';
 import {
   GITHUB_URL_REGEX,
   GIT_TOKEN_USERNAME,
   GITHUB_HTTPS_HOST,
+  CLONE_FAILURE_PATTERNS,
 } from './constants.js';
 
 /**
@@ -38,6 +39,20 @@ export function withGitHubToken(url: string, token: string): string {
     /* non-URL (e.g. git@github.com:...) — leave as-is */
   }
   return url;
+}
+
+/** Public https clone URL for a repo's `owner/name`. */
+export function cloneUrlFor(fullName: string): string {
+  return `https://${GITHUB_HTTPS_HOST}/${fullName}.git`;
+}
+
+/**
+ * Reduce a clone error to a safe class. Only the class leaves this function:
+ * the raw message may carry the clone URL or the token.
+ */
+export function classifyCloneFailure(err: unknown): CloneFailureReason {
+  const message = err instanceof Error ? err.message : String(err);
+  return CLONE_FAILURE_PATTERNS.find(([, re]) => re.test(message))?.[0] ?? 'unknown';
 }
 
 /** Map a persisted repo row to the API `Repo` DTO. */

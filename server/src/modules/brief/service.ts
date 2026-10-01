@@ -200,9 +200,13 @@ export class BriefService implements PrBriefFacade {
     workspaceId: string,
     prId: string,
     trigger: BriefTrigger,
+    opts: { onlyIfIdle?: boolean } = {},
   ): Promise<{ queued: boolean } | undefined> {
     const pull = await this.deps.pulls.getPull(workspaceId, prId);
     if (!pull) return undefined;
+    // No `await` between this check and `enqueue`'s synchronous bump, so two
+    // concurrent idle-only requests queue one job.
+    if (opts.onlyIfIdle && this.isInFlight(prId)) return { queued: false };
     if (trigger !== 'on_demand') {
       try {
         if (this.isInFlight(prId)) return { queued: false };

@@ -2,31 +2,33 @@
  * repo-intel HTTP module.
  *
  *   GET  /repos/:id/index-state  → IndexState (always works; degraded on missing data)
- *   POST /repos/:id/resync       → enqueues a RESYNC_JOB_KIND job (202 + job id):
- *                                  fetch latest from origin + incremental reindex.
+ *   POST /repos/:id/resync       → requests a resync through the per-repo index
+ *                                  gate (202): fetch latest from origin +
+ *                                  incremental reindex. A busy repo coalesces
+ *                                  into one trailing pass, enqueued as its own
+ *                                  job once the repo is idle.
  *
  * Job-handler registration lives here: this plugin runs once at app boot and
- * calls `RepoIntelService.registerIndexJobHandlers()` so INDEX/REFRESH jobs
- * enqueued by `repos/service.ts` (after clone / on refresh) have a handler
- * to run against. Mirrors the `RepoService.registerCloneJobHandler()` shape.
+ * calls `RepoIntelService.registerIndexJobHandlers()` so INDEX/REFRESH/RESYNC
+ * jobs have a handler to run against. Every index job is requested through
+ * `repoIntel.requestIndex(...)` (spec 06 D4, ADR 0025) — never by enqueueing
+ * INDEX/REFRESH/RESYNC on `container.jobs` directly, which would bypass the gate.
  */
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
+import { NotFoundError } from '../../platform/errors.js';
 import { getContext } from '../_shared/context.js';
 import { IdParams } from '../_shared/schemas.js';
-import { RepoIntelService } from './service.js';
-import { RESYNC_JOB_KIND } from './constants.js';
 import type { IndexState } from './types.js';
 
 export default async function repoIntelRoutes(appBase: FastifyInstance) {
   const app = appBase.withTypeProvider<ZodTypeProvider>();
   const { container } = app;
-  // Register the INDEX/REFRESH handlers exactly once at module load. Using a
-  // local service here (instead of `container.repoIntel`) is fine — the
-  // JobRunner stores the handler closure, not the service instance, and the
-  // lazy `container.repoIntel` getter constructs its own service for read
-  // calls. Both share the same DB, so behaviour is identical.
-  const service = new RepoIntelService(container);
+  // Register the INDEX/REFRESH/RESYNC handlers exactly once at module load, on
+  // the container's one RepoIntelService (the same instance `container.repoIntel`
+  // returns without an override, so handlers and facade share one index gate).
+  // `repoIntelService` ignores overrides, so handlers always run the real pipelines.
+  const service = container.repoIntelService;
   service.registerIndexJobHandlers();
 
   app.get(
@@ -45,22 +47,17 @@ export default async function repoIntelRoutes(appBase: FastifyInstance) {
     { schema: { params: IdParams } },
     async (req, reply) => {
       const { workspaceId } = await getContext(container, req);
+      // Tenancy: the gate is tenant-agnostic, so scope the repo first (AC-20).
+      const clone = await container.repoClone.getCloneStatus(workspaceId, req.params.id);
+      if (!clone) throw new NotFoundError('Repo not found');
       // 202 even when enqueue fails (no handler / DB hiccup) so the UI can
       // still poll /index-state without an inline error path. The actual
       // outcome shows up in `repo_index_state` once the worker runs.
-      let jobId: string | null = null;
-      try {
-        const job = await container.jobs.enqueue(workspaceId, RESYNC_JOB_KIND, {
-          repoId: req.params.id,
-        });
-        jobId = job.id;
-      } catch {
-        // swallow — degraded path
-      }
+      const result = await service.requestIndex(workspaceId, req.params.id, 'resync');
       reply.code(202);
-      return jobId
-        ? { status: 'accepted', jobId }
-        : { status: 'accepted', degraded: true, reason: 'no_handler' };
+      if (result.queued) return { status: 'accepted', jobId: result.jobId };
+      if (result.reason === 'in_flight') return { status: 'accepted', coalesced: true };
+      return { status: 'accepted', degraded: true, reason: 'no_handler' };
     },
   );
 }

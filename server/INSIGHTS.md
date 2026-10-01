@@ -71,6 +71,8 @@ lives in the engineering-insights skill).
 
 - **Seeded PR #482 has `pr_files` rows with no `patch`, so it cannot demo an inline diff; use #490/#491/#492** — the #482 `prFiles` insert sets only path/additions/deletions (`server/src/db/seed.ts:413-419`), while the SPEC-02 control PRs carry real unified-diff hunks in `pr_files.patch` (`server/src/db/seed.ts:1076`). Smart Diff / DiffViewer checks on #482 show empty file cards, not a bug. _(2026-10-01)_
 
+- **Rows in the `jobs` table are never reaped on boot, so any dedupe keyed on `jobs.status IN ('queued','running')` blocks forever after a crash.** Boot reaping covers only review runs (`server/src/app.ts:94-96`) and `JobRunner` has no find/dedupe API (`server/src/platform/jobs.ts:56-137`); spec 06 therefore uses an in-process `KeyedGate` (`server/src/platform/keyed-gate.ts`, ADR 0025) instead of the table. _(2026-10-01)_
+
 ## Tool & Library Notes
 
 - **`pnpm exec <bin>` / `pnpm run <script>` can fail non-interactively with `ERR_PNPM_IGNORED_BUILDS` even when `node_modules` is already correct** — both `pnpm db:generate` and `pnpm exec drizzle-kit generate` refused to run this way, erroring "Run \"pnpm approve-builds\" to pick which dependencies should be allowed to run scripts." Workaround: invoke the wrapper under `node_modules/.bin/` directly with `sh`, e.g. `sh node_modules/.bin/drizzle-kit generate`, `sh node_modules/.bin/tsx src/db/migrate.ts`, `sh node_modules/.bin/vitest run` — bypasses pnpm's pre-flight check entirely. _(2026-09-19)_
@@ -82,6 +84,8 @@ lives in the engineering-insights skill).
 - **`drizzle-kit generate --custom` snapshots the PREVIOUS schema, so a following plain `generate` still diffs the whole change; splitting add-columns and drop-columns into two migrations needs a temporary schema edit** — keep the legacy columns in the Drizzle schema for the first `generate`, then delete them and `generate` again; this also sidesteps the interactive "created or renamed?" prompt. `sh node_modules/.bin/drizzle-kit generate` runs despite `ERR_PNPM_IGNORED_BUILDS`. Evidence: `server/src/db/migrations/0015_delete_legacy_conventions.sql` (custom `DELETE`), `0016_add_conventions_extractor.sql`, `0017_drop_legacy_convention_columns.sql`. _(2026-09-29)_
 
 - **`z.string().nullable()` serializes to OpenAPI-style `{type: "string", nullable: true}` in the structured-output JSON schema; upstream grammars ignore `nullable`, so the model can never emit null and invents values instead** — `signal_id` came back as made-up `S1…S10`. Give the field a check (e.g. a `^S\d+$` regex) or an explicit union so the emitted schema carries `null` as a type; reused zod objects also emit `$ref`. See `server/src/modules/conventions/llm-schema.ts:36`. _(2026-09-30)_
+
+- **Fastify 5.8.5 hands the validator a body-less POST as `null`, not `undefined`, so an optional zod body must be `.nullish()`; `.optional()` rejects the request.** Seen on `POST /pulls/:id/overview/prepare` (`server/src/modules/overview/routes.ts:40-41`; source `fastify/lib/validation.js:123`). A POST with `content-type: application/json` and an empty body is still a 400 `FST_ERR_CTP_EMPTY_JSON_BODY` before validation, so clients should send `{}`. _(2026-10-01)_
 
 ## Recurring Errors & Fixes
 
@@ -110,6 +114,8 @@ lives in the engineering-insights skill).
 - **Changing a `FEATURE_MODELS` default turns `settings-models.it.test.ts` red with "expected { provider: 'openrouter', … } to deeply equal …"** — the test pins `risk_brief` as its "unset feature resolves to its registry default" example with a literal provider/model (`server/test/settings-models.it.test.ts:54-57`), so it breaks whenever that one default moves (it did when `risk_brief` went from `openai/gpt-4.1` to `openrouter/deepseek/deepseek-v4-flash`). Update the literal together with both vendored `platform.ts` copies and the client copy. _(2026-09-30)_
 
 - **Server `*.it.test.ts` suites report "skipped", not failed, when Docker is down — e.g. right after a Claude Code or machine restart** — each IT file does `const d = hasDocker ? describe : describe.skip` from `dockerAvailable()` (`server/test/reviews-smart-diff.it.test.ts:16-17`, `server/test/helpers/pg.ts:10`), so a green `pnpm test` can have run zero DB tests. Check the skipped count in the vitest summary and start Docker Desktop before calling server tests green. _(2026-10-01)_
+
+- **A finding lands in "N findings on files not in this diff" although the reviewer clearly saw that file: `pr_files` held only the first 100 files of the PR.** `pulls.listFiles({ per_page: 100 })` without pagination stored 100 of 147 files while `files_count` came from `pr.changed_files`, and the reviewer reads the full `git diff` from the clone (`server/src/modules/reviews/diff-loader.ts:8-9`), so grounding accepted findings on files 101+. Fixed with `octokit.paginate` (`server/src/adapters/github/octokit.ts:113-125`; GitHub caps at 3000 files / 250 commits). Check with `select count(*) from pr_files where pr_id=…` vs the tab count; opening the PR page (`GET /pulls/:id`) replaces `pr_files` in full. _(2026-10-01)_
 
 ## Session Notes
 
@@ -151,6 +157,9 @@ Applied migrations 0015-0020 to the shared dev Postgres, after a pg_dump backup,
 
 ### 2026-09-30 — server session
 Added the brief, blast and history modules, migrations 0025-0027 and 10 new test files; fixed SEC-1 (quadratic doc-path regex in planLinks). Left for later: the non-atomic legacy pulls detail refresh, splitting the 839-line BriefService, and the remaining Test plan rows.
+
+### 2026-10-01 — server session
+Shipped spec 06 Overview prepare: new `overview` module (readiness + prepare, pure `planPrepare`), `container.repoClone` facade with clone gate and in-memory clone failure (AR-1), `brief.requestDerive` `onlyIfIdle`, ADR 0025. Also fixed `listFiles`/`listCommits` pagination in the GitHub adapter. All suites green; e2e flow 12 run at wrap-up.
 
 ## Open Questions
 

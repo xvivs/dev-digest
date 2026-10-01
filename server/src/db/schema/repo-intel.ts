@@ -45,6 +45,12 @@ export const repoIndexState = pgTable('repo_index_state', {
   filesSkipped: integer('files_skipped').notNull().default(0),
   stats: jsonb('stats').notNull().default({}),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  /**
+   * When a run last re-read the clone at a HEAD (full, slice, advanced sha).
+   * Not bumped by a `sha_unchanged` touch or a `no_clone` stamp, unlike
+   * `updated_at`. Null for rows written before it existed (no backfill).
+   */
+  lastIndexedAt: timestamp('last_indexed_at', { withTimezone: true }),
 });
 
 /**

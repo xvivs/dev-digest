@@ -9,6 +9,7 @@ import { blastStats } from "../../helpers";
 import { s as shared } from "../../styles";
 import { BlastTree } from "./_components/BlastTree";
 import { BlastGraph } from "./_components/BlastGraph";
+import { ScrollFadeRegion } from "./_components/ScrollFadeRegion";
 import { s } from "./styles";
 
 function ViewToggle({ label, active, onSelect }: { label: string; active: boolean; onSelect: () => void }) {
@@ -73,6 +74,12 @@ export function BlastRadiusCard({ prId }: { prId: string }) {
     graphBody = <BlastTree downstream={blast.downstream} />;
   } else {
     graphBody = <BlastGraph downstream={blast.downstream} />;
+  }
+  if (blast.downstream.length > 0) {
+    // Only the list scrolls; heading, notices, stats and the view toggle stay outside. Focusable so arrow keys scroll it.
+    graphBody = (
+      <ScrollFadeRegion label={t("scrollRegion")}>{graphBody}</ScrollFadeRegion>
+    );
   }
 
   return (

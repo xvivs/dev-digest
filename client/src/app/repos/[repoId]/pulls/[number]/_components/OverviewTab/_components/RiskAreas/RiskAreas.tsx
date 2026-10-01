@@ -83,6 +83,16 @@ export function RiskAreas({ prId }: { prId: string }) {
           {t("deriving")}
         </div>
       )}
+      {/* `head_moved` next to a record: this card owns its Refresh PR (spec 06 D11). */}
+      {failure?.reason === "head_moved" && !inFlight && (
+        <BriefFailureNotice
+          prId={prId}
+          reason={failure.reason}
+          deriveLabel={t("refresh")}
+          busy={busy}
+          onDerive={() => derive.mutate()}
+        />
+      )}
       {record.rule_only && <div style={s.ruleOnly}>{t("risks.ruleOnly")}</div>}
 
       {record.risks.length === 0 ? (

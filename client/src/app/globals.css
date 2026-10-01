@@ -40,6 +40,10 @@
   --dd-prh-branch-size: 12px;
   --dd-prh-branch-max: none;
   --dd-prh-actions-gap: 10px;
+  --dd-blast-caller-dir: row;
+  --dd-blast-caller-align: baseline;
+  --dd-blast-caller-gap: 8px;
+  --dd-blast-caller-name-max: 60%;
 }
 @media (max-width: 767px) {
   :root {
@@ -57,5 +61,9 @@
     --dd-prh-branch-size: 11.5px;
     --dd-prh-branch-max: 120px;
     --dd-prh-actions-gap: 6px;
+    --dd-blast-caller-dir: column;
+    --dd-blast-caller-align: flex-start;
+    --dd-blast-caller-gap: 2px;
+    --dd-blast-caller-name-max: 100%;
   }
 }
