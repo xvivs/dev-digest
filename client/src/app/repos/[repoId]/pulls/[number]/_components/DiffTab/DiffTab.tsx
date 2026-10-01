@@ -9,6 +9,7 @@ import {
   isActiveFinding,
   type DiffCommentApi,
   type DiffFindingApi,
+  type RevealTarget,
   UnmatchedFindings,
 } from "@/components/diff-viewer";
 import {
@@ -30,7 +31,7 @@ import {
   collapsedPathsFor,
 } from "./helpers";
 import { s } from "./styles";
-import { DiffFindingCard } from "./_components/DiffFindingCard";
+import { DiffFindingCard, DiffNavContext, type DiffNav } from "./_components/DiffFindingCard";
 import { OrderToggle } from "./_components/OrderToggle";
 import { SmartDiffGroup } from "./_components/SmartDiffGroup";
 
@@ -44,11 +45,13 @@ export interface DiffTabProps {
   /** Keys the smart-diff query, so a head move re-groups. */
   headSha: string;
   files: PrFile[];
+  /** `owner/repo`; lets finding paths outside the diff link to GitHub. */
+  repoFullName?: string | null;
   /** Inline commenting is offered only on open PRs (GitHub rejects otherwise). */
   canComment?: boolean;
 }
 
-export function DiffTab({ prId, headSha, files, canComment }: DiffTabProps) {
+export function DiffTab({ prId, headSha, files, repoFullName, canComment }: DiffTabProps) {
   const t = useTranslations("prReview");
   const { data: comments } = usePrComments(prId);
   const { data: reviews } = usePrReviews(prId);
@@ -59,6 +62,25 @@ export function DiffTab({ prId, headSha, files, canComment }: DiffTabProps) {
   // comments stay hidden (clean diff), findings stay shown.
   const [showOverride, setShowOverride] = React.useState<boolean | null>(null);
   const [mode, setMode] = React.useState<OrderMode>("smart");
+
+  // The last "open this file" request from a finding card; a new object per
+  // click so repeating the same path scrolls again.
+  const [reveal, setReveal] = React.useState<RevealTarget | null>(null);
+  // One-shot: the card that acted on a request clears it, so remounting cards
+  // (group re-expand, Smart <-> Original) does not replay it.
+  const consumeReveal = React.useCallback(
+    (done: RevealTarget) => setReveal((cur) => (cur === done ? null : cur)),
+    [],
+  );
+  const nav = React.useMemo<DiffNav>(
+    () => ({
+      paths: new Set(files.map((f) => f.path)),
+      openFile: (path, line) => setReveal({ path, line }),
+      repoFullName: repoFullName ?? null,
+      headSha,
+    }),
+    [files, repoFullName, headSha],
+  );
 
   const findings = React.useMemo(() => selectDiffFindings(reviews ?? []), [reviews]);
   const activeFindingCount = findings.filter(isActiveFinding).length;
@@ -118,67 +140,78 @@ export function DiffTab({ prId, headSha, files, canComment }: DiffTabProps) {
   const totals = summarize(files);
 
   return (
-    <section>
-      <SectionLabel
-        icon="Code"
-        right={
-          toggle.visible ? (
-            <Button
-              kind="ghost"
-              size="sm"
-              icon={toggle.next ? "Eye" : "EyeOff"}
-              onClick={() => setShowOverride(toggle.next)}
-            >
-              {t(`diff.${toggle.key}`, { count: toggle.count })}
-            </Button>
-          ) : undefined
-        }
-      >
-        {t("smartDiff.groupedByRole")}
-      </SectionLabel>
+    <DiffNavContext value={nav}>
+      <section>
+        <SectionLabel
+          icon="Code"
+          right={
+            toggle.visible ? (
+              <Button
+                kind="ghost"
+                size="sm"
+                icon={toggle.next ? "Eye" : "EyeOff"}
+                onClick={() => setShowOverride(toggle.next)}
+              >
+                {t(`diff.${toggle.key}`, { count: toggle.count })}
+              </Button>
+            ) : undefined
+          }
+        >
+          {t("smartDiff.groupedByRole")}
+        </SectionLabel>
 
-      <div style={s.headerRow}>
-        <span style={s.summary}>
-          {t("smartDiff.summaryFiles", { count: totals.count })}{" "}
-          <span className="mono" style={s.add}>
-            +{totals.additions}
-          </span>{" "}
-          <span className="mono" style={s.del}>
-            −{totals.deletions}
+        <div style={s.headerRow}>
+          <span style={s.summary}>
+            {t("smartDiff.summaryFiles", { count: totals.count })}{" "}
+            <span className="mono" style={s.add}>
+              +{totals.additions}
+            </span>{" "}
+            <span className="mono" style={s.del}>
+              −{totals.deletions}
+            </span>
           </span>
-        </span>
-        {reviews && reviews.length === 0 && <span style={s.summary}>{t("smartDiff.reviewNotRun")}</span>}
-        <OrderToggle mode={activeMode} onChange={setMode} smartDisabled={groupingFailed} />
-      </div>
-      {groupingFailed && <div style={s.note}>{t("smartDiff.groupingFailed")}</div>}
+          {reviews && reviews.length === 0 && <span style={s.summary}>{t("smartDiff.reviewNotRun")}</span>}
+          <OrderToggle mode={activeMode} onChange={setMode} smartDisabled={groupingFailed} />
+        </div>
+        {groupingFailed && <div style={s.note}>{t("smartDiff.groupingFailed")}</div>}
 
-      {grouped ? (
-        groups.map((g) => (
-          <SmartDiffGroup
-            key={g.role}
-            group={g}
-            filesWithFindings={hasReviews ? countFilesWithFindings(g.files, findings) : null}
-          >
-            <DiffViewer
-              files={g.files}
-              commenting={commenting}
-              findings={findingApi}
-              defaultOpenFor={defaultOpenFor}
-            />
-          </SmartDiffGroup>
-        ))
-      ) : (
-        <DiffViewer files={files} commenting={commenting} findings={findingApi} />
-      )}
+        {grouped ? (
+          groups.map((g) => (
+            <SmartDiffGroup
+              key={g.role}
+              group={g}
+              filesWithFindings={hasReviews ? countFilesWithFindings(g.files, findings) : null}
+              reveal={reveal && g.files.some((f) => f.path === reveal.path) ? reveal : null}
+            >
+              <DiffViewer
+                files={g.files}
+                commenting={commenting}
+                findings={findingApi}
+                defaultOpenFor={defaultOpenFor}
+                reveal={reveal}
+                onRevealConsumed={consumeReveal}
+              />
+            </SmartDiffGroup>
+          ))
+        ) : (
+          <DiffViewer
+            files={files}
+            commenting={commenting}
+            findings={findingApi}
+            reveal={reveal}
+            onRevealConsumed={consumeReveal}
+          />
+        )}
 
-      {findingApi.show && (
-        <UnmatchedFindings
-          findings={stray}
-          api={findingApi}
-          variant="standalone"
-          title={t("smartDiff.unmatchedFilesTitle", { count: stray.length })}
-        />
-      )}
-    </section>
+        {findingApi.show && (
+          <UnmatchedFindings
+            findings={stray}
+            api={findingApi}
+            variant="standalone"
+            title={t("smartDiff.unmatchedFilesTitle", { count: stray.length })}
+          />
+        )}
+      </section>
+    </DiffNavContext>
   );
 }

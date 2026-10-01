@@ -7,6 +7,7 @@
 import React from "react";
 import { useTranslations } from "next-intl";
 import { Disclosure, Icon } from "@devdigest/ui";
+import type { RevealTarget } from "@/components/diff-viewer";
 import { COLLAPSED_ROLES, ROLE_META } from "../../constants";
 import type { RoleGroup } from "../../helpers";
 import { chevronFor, s, squareFor } from "./styles";
@@ -14,15 +15,24 @@ import { chevronFor, s, squareFor } from "./styles";
 export function SmartDiffGroup({
   group,
   filesWithFindings,
+  reveal,
   children,
 }: {
   group: RoleGroup;
   /** Files of this group with an active finding; null while no review exists. */
   filesWithFindings: number | null;
+  /** A reveal request for a file of THIS group; a new one opens the group. */
+  reveal?: RevealTarget | null;
   children?: React.ReactNode;
 }) {
   const t = useTranslations("prReview");
   const labelId = React.useId();
+  const [open, setOpen] = React.useState(!COLLAPSED_ROLES.has(group.role));
+  const [seen, setSeen] = React.useState<RevealTarget | null>(null);
+  if (reveal && reveal !== seen) {
+    setSeen(reveal);
+    setOpen(true);
+  }
   const meta = ROLE_META[group.role];
   const count = t("smartDiff.filesCount", { count: group.files.length });
 
@@ -52,7 +62,8 @@ export function SmartDiffGroup({
   return (
     <section role="region" aria-labelledby={labelId} style={s.wrapper}>
       <Disclosure
-        defaultOpen={!COLLAPSED_ROLES.has(group.role)}
+        open={open}
+        onOpenChange={setOpen}
         headerStyle={s.header}
         header={(open) => (
           <>

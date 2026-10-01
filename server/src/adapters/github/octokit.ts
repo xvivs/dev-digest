@@ -110,13 +110,15 @@ export class OctokitGitHubClient implements GitHubClient {
             repo: repo.name,
             pull_number: n,
           });
-          const { data: files } = await this.octokit.rest.pulls.listFiles({
+          // A page holds at most 100 items, so paginate; one page silently
+          // dropped files 101+. GitHub itself caps a PR at 3000 files / 250 commits.
+          const files = await this.octokit.paginate(this.octokit.rest.pulls.listFiles, {
             owner: repo.owner,
             repo: repo.name,
             pull_number: n,
             per_page: 100,
           });
-          const { data: commits } = await this.octokit.rest.pulls.listCommits({
+          const commits = await this.octokit.paginate(this.octokit.rest.pulls.listCommits, {
             owner: repo.owner,
             repo: repo.name,
             pull_number: n,

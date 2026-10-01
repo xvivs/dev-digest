@@ -1,6 +1,15 @@
 /** Pure helpers for the DiffViewer. */
 import { HUNK_HEADER_RE, NO_NEWLINE_MARKER } from "./constants";
 
+/**
+ * A request to bring one file (and, when it is in the patch, one new-side line)
+ * into view. A fresh object per request: re-clicking the same path re-fires it.
+ */
+export interface RevealTarget {
+  path: string;
+  line: number | null;
+}
+
 export interface Line {
   kind: "add" | "del" | "ctx" | "hunk";
   text: string;

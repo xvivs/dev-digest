@@ -42,4 +42,17 @@ describe("SmartDiffGroup", () => {
     expect(screen.getByText("0 files")).toBeInTheDocument();
     expect(screen.queryByText("body")).toBeNull();
   });
+
+  it("a reveal request opens a collapsed group", () => {
+    const group = { role: "docs" as const, isEmpty: false, files: [{ path: "a.md", additions: 1, deletions: 0, patch: null }] };
+    const ui = (reveal: { path: string; line: number | null } | null) => (
+      <SmartDiffGroup group={group} filesWithFindings={null} reveal={reveal}>
+        <p>body</p>
+      </SmartDiffGroup>
+    );
+    const { rerender } = renderWithProviders(ui(null), { namespaces: { prReview } });
+    expect(screen.getByRole("button", { name: /Docs/ })).toHaveAttribute("aria-expanded", "false");
+    rerender(ui({ path: "a.md", line: 1 }));
+    expect(screen.getByRole("button", { name: /Docs/ })).toHaveAttribute("aria-expanded", "true");
+  });
 });

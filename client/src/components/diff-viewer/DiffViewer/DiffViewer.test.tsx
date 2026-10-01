@@ -175,4 +175,22 @@ describe("DiffViewer", () => {
       expect(onAction).toHaveBeenCalledWith(f, "accept");
     });
   });
+
+  it("a reveal request opens a collapsed file and scrolls to the requested line", () => {
+    const scrollIntoView = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+    try {
+      const ui = (reveal: { path: string; line: number | null } | null) => (
+        <DiffViewer files={[FILE]} defaultOpenFor={() => false} reveal={reveal} />
+      );
+      const { rerender } = renderViewer(ui(null));
+      expect(screen.getByRole("button", { name: /src\/config\.ts/ })).toHaveAttribute("aria-expanded", "false");
+      rerender(ui({ path: "src/config.ts", line: 3 }));
+      expect(screen.getByRole("button", { name: /src\/config\.ts/ })).toHaveAttribute("aria-expanded", "true");
+      expect(scrollIntoView).toHaveBeenCalledTimes(1);
+      expect((scrollIntoView.mock.contexts[0] as HTMLElement).getAttribute("data-new-line")).toBe("3");
+    } finally {
+      delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+    }
+  });
 });

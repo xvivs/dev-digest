@@ -132,7 +132,13 @@ export function PrDetailContent({ repoId, number, repoFullName }: PrDetailConten
         )}
 
         {tab === "diff" && (
-          <DiffTab prId={prId} headSha={pr.head_sha} files={pr.files} canComment={pr.status === "open"} />
+          <DiffTab
+            prId={prId}
+            headSha={pr.head_sha}
+            files={pr.files}
+            repoFullName={repoFullName}
+            canComment={pr.status === "open"}
+          />
         )}
       </div>
 

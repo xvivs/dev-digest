@@ -5,6 +5,8 @@ import type { Line } from "./helpers";
 export const s = {
   list: { display: "flex", flexDirection: "column", gap: 8 } satisfies CSSProperties,
   empty: { padding: "24px", fontSize: 14, color: "var(--text-muted)", textAlign: "center" } satisfies CSSProperties,
+  /** Keeps a scrolled-to file clear of the sticky group header. */
+  fileRoot: { scrollMarginTop: 56 } satisfies CSSProperties,
   fileCard: {
     border: "1px solid var(--border)",
     borderRadius: 7,

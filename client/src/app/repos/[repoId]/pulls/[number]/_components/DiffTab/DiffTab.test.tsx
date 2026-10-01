@@ -429,4 +429,59 @@ describe("DiffTab", () => {
     expect(container.querySelector("script")).toBeNull();
     expect((window as unknown as { __pwned?: number }).__pwned).toBeUndefined();
   });
+
+  describe("finding path links", () => {
+    const scrollIntoView = vi.fn();
+    beforeEach(() => {
+      scrollIntoView.mockClear();
+      Element.prototype.scrollIntoView = scrollIntoView;
+    });
+    afterEach(() => {
+      delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+    });
+
+    it("a path in the diff is a button that scrolls to the finding's line", async () => {
+      renderWithProviders(
+        <DiffTab prId="pr-1" headSha="sha-1" files={FILES} repoFullName="acme/api" canComment={false} />,
+        { namespaces: { prReview, diffViewer } },
+      );
+      const user = userEvent.setup();
+      const path = await screen.findByRole("button", { name: "src/a.ts:3" });
+      expect(screen.queryByRole("link", { name: "src/a.ts:3" })).toBeNull();
+      await user.click(path);
+      expect(scrollIntoView).toHaveBeenCalledTimes(1);
+      const target = scrollIntoView.mock.contexts[0] as HTMLElement;
+      expect(target.getAttribute("data-new-line")).toBe("3");
+    });
+
+    it("a reveal is one-shot: remounting the cards does not re-scroll, a new click does", async () => {
+      renderWithProviders(
+        <DiffTab prId="pr-1" headSha="sha-1" files={FILES} repoFullName="acme/api" canComment={false} />,
+        { namespaces: { prReview, diffViewer } },
+      );
+      const user = userEvent.setup();
+      await user.click(await screen.findByRole("button", { name: "src/a.ts:3" }));
+      expect(scrollIntoView).toHaveBeenCalledTimes(1);
+
+      // Smart -> Original order remounts every FileCard.
+      await user.click(screen.getByRole("button", { name: "Original order" }));
+      await user.click(screen.getByRole("button", { name: "Smart order" }));
+      expect(scrollIntoView).toHaveBeenCalledTimes(1);
+
+      await user.click(await screen.findByRole("button", { name: "src/a.ts:3" }));
+      expect(scrollIntoView).toHaveBeenCalledTimes(2);
+    });
+
+    it("a path outside the diff links to the file at the head sha on GitHub", async () => {
+      const r = review();
+      r.findings.push({ ...r.findings[0]!, id: "f2", title: "Stray", file: "old/name.ts", start_line: 5, end_line: 7 });
+      setRoutes({ "/pulls/pr-1/reviews": [r] });
+      renderWithProviders(
+        <DiffTab prId="pr-1" headSha="sha-1" files={FILES} repoFullName="acme/api" canComment={false} />,
+        { namespaces: { prReview, diffViewer } },
+      );
+      const link = await screen.findByRole("link", { name: "old/name.ts:5-7" });
+      expect(link).toHaveAttribute("href", "https://github.com/acme/api/blob/sha-1/old/name.ts#L5-L7");
+    });
+  });
 });
