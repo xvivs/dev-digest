@@ -36,6 +36,7 @@ export function buildBlastService(container: Container): BlastService {
             status: indexState.status,
             lastIndexedSha: indexState.lastIndexedSha,
             indexerVersion: indexState.indexerVersion,
+            degradedReason: indexState.degradedReason,
           },
           cloneHead,
         };
@@ -49,11 +50,15 @@ export function buildBlastService(container: Container): BlastService {
           callers: r.callers,
           factsByFile: r.factsByFile,
           degraded: r.degraded,
+          reason: r.reason,
           truncated: r.truncated,
         };
       },
     },
     // Late-bound: app.ts assigns container.logger after the container is built.
-    log: { debug: (o, m) => container.logger.debug(o, m) },
+    log: {
+      debug: (o, m) => container.logger.debug(o, m),
+      info: (o, m) => container.logger.info(o, m),
+    },
   });
 }

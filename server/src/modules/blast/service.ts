@@ -3,15 +3,18 @@
  * (D14), caches per `(head, index sha, indexer version, index status, flag)` so
  * the ripgrep fallback runs once per key. No SQL, no Fastify.
  */
-import { blastVerdict, sameBlastKey, sourceShaFor, toBlastRadius, type BlastKey } from './domain.js';
+import { BLAST_MAPPING_VERSION } from './constants.js';
+import { blastSource, blastVerdict, sameBlastKey, sourceShaFor, toBlastRadius, type BlastKey } from './domain.js';
 import type {
   BlastCacheEntry,
   BlastKeySource,
   BlastLogger,
+  BlastPull,
   BlastSource,
   BlastStore,
   PullSource,
 } from './ports.js';
+import type { BlastRadius } from '@devdigest/shared';
 import type { PrBlastView } from './types.js';
 
 export interface BlastDeps {
@@ -57,12 +60,13 @@ export class BlastService {
       indexerVersion: parts.indexState.indexerVersion,
       indexStatus: parts.indexState.status,
       repoIntelEnabled: parts.enabled,
+      mappingVersion: BLAST_MAPPING_VERSION,
     };
 
     const hit = await store.get(prId);
     if (hit && sameBlastKey(hit, key)) {
       const res = toView(hit, true);
-      log.debug({ prId, cached: true, status: res.status, reason: res.reason, durationMs: Date.now() - started }, 'blast');
+      logRead(log, pull, files.length, key, res, hit.blast, started);
       return res;
     }
 
@@ -82,20 +86,40 @@ export class BlastService {
     await store.upsert(prId, entry);
 
     const res = toView({ ...entry, computedAt: new Date() }, false);
-    log.debug(
-      {
-        prId,
-        cached: false,
-        status: res.status,
-        reason: res.reason,
-        symbols: entry.blast.changed_symbols.length,
-        truncated: entry.truncated,
-        durationMs: Date.now() - started,
-      },
-      'blast',
-    );
+    logRead(log, pull, files.length, key, res, entry.blast, started);
     return res;
   }
+}
+
+/** One `info` per read: proves whether the index or a re-parse served it. Counts only, no paths. */
+function logRead(
+  log: BlastLogger,
+  pull: BlastPull,
+  changedFiles: number,
+  key: BlastKey,
+  res: PrBlastView,
+  blast: BlastRadius,
+  started: number,
+): void {
+  const source = blastSource(key);
+  log.info(
+    {
+      prId: pull.id,
+      repoId: pull.repoId,
+      indexStatus: key.indexStatus,
+      sourceSha7: key.sourceSha.slice(0, 7),
+      changedFiles,
+      symbols: blast.changed_symbols.length,
+      callers: blast.downstream.reduce((n, d) => n + d.callers.length, 0),
+      cached: res.cached,
+      source,
+      reparse: !res.cached && source === 'ripgrep_fallback',
+      status: res.status,
+      reason: res.reason,
+      durationMs: Date.now() - started,
+    },
+    'blast index read',
+  );
 }
 
 function toView(e: BlastCacheEntry, cached: boolean): PrBlastView {

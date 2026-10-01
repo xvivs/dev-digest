@@ -16,6 +16,7 @@ function toEntry(r: typeof t.prBlastCache.$inferSelect): BlastCacheEntry {
     indexerVersion: r.indexerVersion,
     indexStatus: r.indexStatus,
     repoIntelEnabled: r.repoIntelEnabled,
+    mappingVersion: r.mappingVersion,
     status: r.status,
     reason: r.reason,
     blast: r.blast,
@@ -40,6 +41,7 @@ export class BlastRepository implements BlastStore {
       // The key carries the indexer's status (full/partial/degraded/failed); the column pins that set.
       indexStatus: e.indexStatus as CachedIndexStatus,
       repoIntelEnabled: e.repoIntelEnabled,
+      mappingVersion: e.mappingVersion,
       status: e.status,
       reason: e.reason,
       blast: e.blast,
