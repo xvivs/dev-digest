@@ -29,7 +29,15 @@ import { repoIndexState } from './repo-intel';
  * cannot resolve the shared runtime, so the list is spelled out here; the
  * checks below fail typecheck if the two ever drift.
  */
-const BLAST_REASONS = ['index_partial', 'no_index', 'flag_off', 'no_changed_files'] as const satisfies readonly BlastReason[];
+const BLAST_REASONS = [
+  'index_partial',
+  'no_index',
+  'flag_off',
+  'no_changed_files',
+  'index_failed',
+  'repo_too_large',
+  'no_data',
+] as const satisfies readonly BlastReason[];
 type AssertAllBlastReasons = Exclude<BlastReason, (typeof BLAST_REASONS)[number]> extends never ? true : never;
 const _allBlastReasons: AssertAllBlastReasons = true;
 void _allBlastReasons;
@@ -192,6 +200,8 @@ export const prBlastCache = pgTable('pr_blast_cache', {
   reason: text('reason', { enum: BLAST_REASONS }),
   blast: jsonb('blast').$type<BlastRadius>().notNull(),
   truncated: boolean('truncated').notNull().default(false),
+  /** Bumped (BLAST_MAPPING_VERSION) when the status/reason/order mapping changes; older rows are stale. */
+  mappingVersion: integer('mapping_version').notNull().default(0),
   computedAt: timestamp('computed_at', { withTimezone: true }).notNull().defaultNow(),
 },
   (t) => ({

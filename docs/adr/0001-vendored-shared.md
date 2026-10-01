@@ -1,6 +1,6 @@
 # ADR 0001 — `@devdigest/shared` is vendored per package
 
-**Status:** accepted, with a known and currently unmanaged cost
+**Status:** accepted, with a known and currently unmanaged cost; amended by ADR 0026
 **Date:** 2026-09-19
 
 ## Context

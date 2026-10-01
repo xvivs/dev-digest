@@ -2,8 +2,11 @@ import { describe, expect, it } from "vitest";
 import type { DownstreamImpact, ReviewRecord, RunSummary } from "@devdigest/shared";
 import { GRAPH, GRAPH_MAX_CALLERS } from "./constants";
 import {
+  blastCallerHref,
   blastGraphLayout,
   blastStats,
+  canResyncBlast,
+  hasNoCallers,
   formatTokenArrow,
   selectLatestBrief,
   shouldShowConfidenceBadge,
@@ -157,6 +160,62 @@ describe("blastGraphLayout", () => {
     expect(many?.height).toBe(GRAPH_MAX_CALLERS * GRAPH.rowHeight + GRAPH.pad * 2);
     const manySymbols = blastGraphLayout(Array.from({ length: 10 }, (_, i) => impact(`s${i}`, i === 0 ? 1 : 0)));
     expect(manySymbols?.height).toBe(10 * GRAPH.rowHeight + GRAPH.pad * 2);
+  });
+});
+
+describe("blastGraphLayout callers", () => {
+  it("carry the file and line of the source caller, in order", () => {
+    const layout = blastGraphLayout([impact("a", 2), impact("b", 1)]);
+    expect(layout?.callers.map((c) => [c.file, c.line])).toEqual([["f.ts", 1], ["f.ts", 2], ["f.ts", 1]]);
+    expect(layout?.callers.map((c) => c.label)).toEqual(["aCaller0:1", "aCaller1:2", "bCaller0:1"]);
+  });
+});
+
+describe("blastCallerHref", () => {
+  it("builds the GitHub blob URL at the line, encoding path segments", () => {
+    expect(blastCallerHref("o/r", "abc123", "src/a b/c#.ts", 12)).toBe(
+      "https://github.com/o/r/blob/abc123/src/a%20b/c%23.ts#L12",
+    );
+  });
+
+  it("is null without a repo name or sha (including an empty sha)", () => {
+    expect(blastCallerHref(null, "abc", "f.ts", 1)).toBeNull();
+    expect(blastCallerHref(undefined, "abc", "f.ts", 1)).toBeNull();
+    expect(blastCallerHref("o/r", null, "f.ts", 1)).toBeNull();
+    expect(blastCallerHref("o/r", "", "f.ts", 1)).toBeNull();
+  });
+});
+
+describe("canResyncBlast", () => {
+  it.each([
+    ["degraded", "index_partial", true],
+    ["degraded", "index_failed", true],
+    ["degraded", "no_index", true],
+    ["degraded", "no_data", true],
+    ["degraded", "flag_off", false],
+    ["degraded", "repo_too_large", false],
+    ["degraded", "no_changed_files", false],
+    ["degraded", null, false],
+    ["ok", "index_partial", false],
+    ["unavailable", "no_data", false],
+  ] as const)("%s / %s -> %s", (status, reason, want) => {
+    expect(canResyncBlast(status, reason)).toBe(want);
+  });
+});
+
+describe("hasNoCallers", () => {
+  const blast = (downstream: DownstreamImpact[]) => ({
+    changed_symbols: downstream.map((d) => ({ name: d.symbol, file: "f.ts", kind: "function" as const })),
+    downstream,
+    summary: "",
+  });
+  it("is true with zero symbols and with symbols that have no callers", () => {
+    expect(hasNoCallers(blast([]))).toBe(true);
+    expect(hasNoCallers(blast([impact("a", 0), impact("b", 0)]))).toBe(true);
+    expect(hasNoCallers(null)).toBe(true);
+  });
+  it("is false with one caller", () => {
+    expect(hasNoCallers(blast([impact("a", 0), impact("b", 1)]))).toBe(false);
   });
 });
 

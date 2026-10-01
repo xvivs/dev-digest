@@ -3,7 +3,7 @@
  * single-row-per-PR upsert, cascade, and the enum CHECK constraints.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { startPg, dockerAvailable, type PgFixture } from './helpers/pg.js';
 import * as t from '../src/db/schema.js';
 import { BlastRepository } from '../src/modules/blast/repository.js';
@@ -20,6 +20,7 @@ const entry = (over: Partial<Write> = {}): Write => ({
   indexerVersion: 1,
   indexStatus: 'full',
   repoIntelEnabled: true,
+  mappingVersion: 1,
   status: 'ok',
   reason: null,
   blast: { changed_symbols: [], downstream: [], summary: 'no impact' },
@@ -128,6 +129,24 @@ d('BlastRepository (Testcontainers pg)', () => {
   it('upsert for an unknown PR id violates the foreign key', async () => {
     const err = await repo.upsert('00000000-0000-0000-0000-000000000000', entry()).catch((e: unknown) => e);
     expect(errText(err)).toMatch(/foreign key|pr_blast_cache_pr_id/i);
+  });
+
+  it('round-trips mapping_version, which defaults to 0 for legacy inserts', async () => {
+    const id = await pr();
+    await repo.upsert(id, entry({ mappingVersion: 7 }));
+    expect((await repo.get(id))?.mappingVersion).toBe(7);
+    const legacy = await pr();
+    await pg.handle.db.execute(
+      sql`insert into pr_blast_cache (pr_id, head_sha, source_sha, indexer_version, index_status, repo_intel_enabled, status, blast)
+          values (${legacy}, 'h', 's', 1, 'full', true, 'ok', '{"changed_symbols":[],"downstream":[],"summary":""}'::jsonb)`,
+    );
+    expect((await repo.get(legacy))?.mappingVersion).toBe(0);
+  });
+
+  it.each(['index_failed', 'repo_too_large', 'no_data'] as const)('CHECK accepts the new reason %s', async (reason) => {
+    const id = await pr();
+    await repo.upsert(id, entry({ status: 'degraded', reason }));
+    expect((await repo.get(id))?.reason).toBe(reason);
   });
 
   it('CHECK constraints reject values outside the enum sets', async () => {

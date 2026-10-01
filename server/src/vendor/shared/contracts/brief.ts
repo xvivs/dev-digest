@@ -90,7 +90,15 @@ export type BlastRadius = z.infer<typeof BlastRadius>;
 export const BlastStatus = z.enum(['ok', 'degraded', 'unavailable']);
 export type BlastStatus = z.infer<typeof BlastStatus>;
 
-export const BlastReason = z.enum(['index_partial', 'no_index', 'flag_off', 'no_changed_files']);
+export const BlastReason = z.enum([
+  'index_partial',
+  'no_index',
+  'flag_off',
+  'no_changed_files',
+  'index_failed',
+  'repo_too_large',
+  'no_data',
+]);
 export type BlastReason = z.infer<typeof BlastReason>;
 
 /** Response of `GET /pulls/:id/blast`. */

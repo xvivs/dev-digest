@@ -41,11 +41,13 @@ export const DEFAULT_REVIEW_MAX_RETRIES = 2;
  * the OpenAI SDK clears its timeout once response headers arrive, and
  * OpenRouter sends headers (plus whitespace keep-alives) right away, so a
  * stalled upstream body hung reviews for 5+ minutes with the socket open.
- * 120 s is ~2x the slowest healthy single-pass review measured on
- * deepseek-v4-flash (~50 s when an upstream burned max_tokens on reasoning),
- * and stays under the UI's patience for a "running" row.
+ * The deadline stays (rather than being removed) as the guard against a hung
+ * upstream that keeps the socket alive with keep-alives. 15 min because large
+ * single-pass PRs (~79 files / 12.8k diff lines) legitimately did not fit in
+ * the earlier 120 s. Hosts override it per deployment via `callDeadlineMs`
+ * (server: REVIEW_CALL_DEADLINE_MS).
  */
-export const DEFAULT_REVIEW_CALL_DEADLINE_MS = 120_000;
+export const DEFAULT_REVIEW_CALL_DEADLINE_MS = 900_000;
 /**
  * Explicit sampling temperature for review calls. Providers used to fall back
  * to their own defaults (0 / 0.2 / SDK-side), which the review experiment

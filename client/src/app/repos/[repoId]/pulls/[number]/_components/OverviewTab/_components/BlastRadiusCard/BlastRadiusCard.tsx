@@ -2,10 +2,11 @@
 
 import React from "react";
 import { useTranslations } from "next-intl";
-import { Badge, EmptyState, ErrorState, Icon, SectionLabel, Skeleton } from "@devdigest/ui";
+import { Badge, Button, EmptyState, ErrorState, Icon, SectionLabel, Skeleton } from "@devdigest/ui";
 import { usePrBlast } from "@/lib/hooks";
+import { useResyncRepoIntel } from "@/lib/hooks/repo-intel";
 import { BLAST_STAT_ICON, BLAST_VIEWS, ICON_SIZE, SKELETON_HEIGHT, type BlastView } from "../../constants";
-import { blastStats } from "../../helpers";
+import { blastStats, canResyncBlast, hasNoCallers } from "../../helpers";
 import { s as shared } from "../../styles";
 import { BlastTree } from "./_components/BlastTree";
 import { BlastGraph } from "./_components/BlastGraph";
@@ -21,11 +22,19 @@ function ViewToggle({ label, active, onSelect }: { label: string; active: boolea
 }
 
 /** Downstream impact of the changed symbols: stats + tree/graph views. */
-export function BlastRadiusCard({ prId }: { prId: string }) {
+export interface BlastRadiusCardProps {
+  prId: string;
+  repoId: string;
+  /** `owner/name`; null → caller paths render as plain text. */
+  repoFullName: string | null;
+}
+
+export function BlastRadiusCard({ prId, repoId, repoFullName }: BlastRadiusCardProps) {
   const t = useTranslations("blast");
   const tb = useTranslations("brief");
   const [view, setView] = React.useState<BlastView>("tree");
   const { data, isLoading, isError, refetch } = usePrBlast(prId);
+  const resync = useResyncRepoIntel(repoId, { prId });
 
   const heading = <SectionLabel icon="Workflow">{tb("block.blast")}</SectionLabel>;
 
@@ -68,14 +77,15 @@ export function BlastRadiusCard({ prId }: { prId: string }) {
   ] as const;
 
   let graphBody: React.ReactNode;
-  if (blast.downstream.length === 0) {
+  const noCallers = hasNoCallers(blast);
+  if (noCallers) {
     graphBody = <div style={shared.muted}>{t("noDownstream", { count: stats.symbols })}</div>;
   } else if (view === "tree") {
-    graphBody = <BlastTree downstream={blast.downstream} />;
+    graphBody = <BlastTree downstream={blast.downstream} repoFullName={repoFullName} sourceSha={data.source_sha} />;
   } else {
-    graphBody = <BlastGraph downstream={blast.downstream} />;
+    graphBody = <BlastGraph downstream={blast.downstream} repoFullName={repoFullName} sourceSha={data.source_sha} />;
   }
-  if (blast.downstream.length > 0) {
+  if (!noCallers) {
     // Only the list scrolls; heading, notices, stats and the view toggle stay outside. Focusable so arrow keys scroll it.
     graphBody = (
       <ScrollFadeRegion label={t("scrollRegion")}>{graphBody}</ScrollFadeRegion>
@@ -87,12 +97,23 @@ export function BlastRadiusCard({ prId }: { prId: string }) {
       {heading}
 
       {data.status === "degraded" && (
-        <div style={s.notice} role="status">
-          <Icon.AlertTriangle size={ICON_SIZE.section} aria-hidden="true" />
-          <span>
+        <div style={s.degradedRow} role="status">
+          <Badge icon="AlertTriangle" color="var(--warn)" bg="var(--warn-bg)" style={s.degradedBadge}>
             {t("state.degraded")}
             {data.reason ? ` ${t(`reason.${data.reason}`)}` : ""}
-          </span>
+          </Badge>
+          {canResyncBlast(data.status, data.reason) && (
+            <Button
+              kind="secondary"
+              size="sm"
+              icon="RefreshCw"
+              loading={resync.isPending}
+              disabled={resync.isPending}
+              onClick={() => resync.mutate()}
+            >
+              {resync.isPending ? t("resyncing") : t("resync")}
+            </Button>
+          )}
         </div>
       )}
       {data.truncated && <div style={s.truncated}>{t("truncated")}</div>}
@@ -105,7 +126,7 @@ export function BlastRadiusCard({ prId }: { prId: string }) {
               <div key={st.key} style={s.stat}>
                 <StatIcon size={ICON_SIZE.inline} aria-hidden="true" style={s.statIcon} />
                 <span style={s.statValue}>{st.value}</span>
-                <span style={s.statLabel}>{t(`stat.${st.key}`)}</span>
+                <span style={s.statLabel}>{t(`stat.${st.key}`, { count: st.value })}</span>
               </div>
             );
           })}

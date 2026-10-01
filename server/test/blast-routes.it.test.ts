@@ -177,12 +177,12 @@ d('GET /pulls/:id/blast (Testcontainers pg)', () => {
     await on.app.close();
   });
 
-  it('a ripgrep-fallback result on a full index is degraded/no_index, and keeps the truncation flag', async () => {
+  it('a ripgrep-fallback result on a full index is degraded/no_data, and keeps the truncation flag', async () => {
     const { app, state } = await appWith();
     state.blast = { ...state.blast, degraded: true, truncated: true, factsByFile: undefined };
     const pr = await makePr();
     const res = await app.inject({ method: 'GET', url: `/pulls/${pr.id}/blast` });
-    expect(res.json()).toMatchObject({ status: 'degraded', reason: 'no_index', truncated: true });
+    expect(res.json()).toMatchObject({ status: 'degraded', reason: 'no_data', truncated: true });
     expect(res.json().blast.downstream[0]).toMatchObject({ endpoints_affected: [], crons_affected: [] });
     await app.close();
   });
@@ -192,7 +192,17 @@ d('GET /pulls/:id/blast (Testcontainers pg)', () => {
     state.index = { ...state.index, status: 'failed', lastIndexedSha: '' };
     const pr = await makePr();
     const res = await app.inject({ method: 'GET', url: `/pulls/${pr.id}/blast` });
-    expect(res.json()).toMatchObject({ status: 'degraded', reason: 'no_index', source_sha: 'clone-head-1' });
+    expect(res.json()).toMatchObject({ status: 'degraded', reason: 'index_failed', source_sha: 'clone-head-1' });
+    await app.close();
+  });
+
+  it('a facade reason (repo_too_large) on a degraded index passes the response schema', async () => {
+    const { app, state } = await appWith();
+    state.index = { ...state.index, status: 'degraded', lastIndexedSha: '', degradedReason: 'repo_too_large' };
+    const pr = await makePr();
+    const res = await app.inject({ method: 'GET', url: `/pulls/${pr.id}/blast` });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ status: 'degraded', reason: 'repo_too_large' });
     await app.close();
   });
 

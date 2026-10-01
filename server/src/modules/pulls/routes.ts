@@ -80,7 +80,11 @@ export default async function pullsRoutes(appBase: FastifyInstance) {
         // Fire-and-forget: schedules intent/risk derivation; never awaited, never rejects.
         void container.prBrief.scheduleForRepo(workspaceId, repo.id, 'list_sync');
       } catch (err) {
-        app.log.warn({ err }, 'GitHub PR sync skipped (no token / offline); serving persisted PRs');
+        const e = err as { status?: number; statusCode?: number };
+        app.log.warn(
+          { err, status: e.status ?? e.statusCode },
+          'GitHub PR sync failed; serving persisted PRs',
+        );
       }
     }
 

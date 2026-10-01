@@ -6,7 +6,7 @@ import blast from "@/../messages/en/blast.json";
 import cost from "@/../messages/en/cost.json";
 import prReview from "@/../messages/en/prReview.json";
 import { renderWithProviders } from "@/test/render";
-import { setupFakeApi } from "@/test/fake-api";
+import { setupFakeApi, json } from "@/test/fake-api";
 import { OverviewTab } from "./OverviewTab";
 import { readiness } from "./_components/PrepareOverview/testFixtures";
 
@@ -63,7 +63,7 @@ function stubApi() {
 describe("OverviewTab", () => {
   it("renders the intent in typographic quotes with both scope lists", async () => {
     stubApi();
-    renderWithProviders(<OverviewTab prId="p1" />, { namespaces });
+    renderWithProviders(<OverviewTab prId="p1" repoId="r1" repoFullName="acme/widgets" />, { namespaces });
     expect(await screen.findByText("“Add rate limiting”")).toBeInTheDocument();
     expect(screen.getByText(brief.intent.inScope)).toBeInTheDocument();
     expect(screen.getByText(brief.intent.outOfScope)).toBeInTheDocument();
@@ -73,7 +73,7 @@ describe("OverviewTab", () => {
 
   it("renders no PR brief section for a PR without runs", async () => {
     stubApi();
-    renderWithProviders(<OverviewTab prId="p1" />, { namespaces });
+    renderWithProviders(<OverviewTab prId="p1" repoId="r1" repoFullName="acme/widgets" />, { namespaces });
     await screen.findByText(/Add rate limiting/);
     expect(screen.queryByText(brief.section)).toBeNull();
   });
@@ -86,7 +86,7 @@ describe("OverviewTab", () => {
       stubApi();
       api.reply("GET", "/pulls/p1/risks", { risks: RISKS_RECORD, stale: true, in_flight: false, last_failure: HEAD_MOVED });
       api.reply("GET", "/pulls/p1/overview/readiness", readiness({ brief: { risks: "stale", risks_failure: HEAD_MOVED }, blocked_by: "head_moved" }));
-      renderWithProviders(<OverviewTab prId="p1" />, { namespaces });
+      renderWithProviders(<OverviewTab prId="p1" repoId="r1" repoFullName="acme/widgets" />, { namespaces });
       await screen.findByRole("button", { name: /Auth surface touched/ });
       const buttons = await screen.findAllByRole("button", { name: REFRESH });
       expect(buttons).toHaveLength(1);
@@ -102,7 +102,7 @@ describe("OverviewTab", () => {
       stubApi();
       api.reply("GET", "/pulls/p1/risks", { risks: null, stale: false, in_flight: false, last_failure: HEAD_MOVED });
       api.reply("GET", "/pulls/p1/overview/readiness", readiness({ brief: { risks: "missing", risks_failure: HEAD_MOVED }, blocked_by: "head_moved" }));
-      renderWithProviders(<OverviewTab prId="p1" />, { namespaces });
+      renderWithProviders(<OverviewTab prId="p1" repoId="r1" repoFullName="acme/widgets" />, { namespaces });
       await screen.findByText("“Add rate limiting”");
       expect(await screen.findAllByRole("button", { name: REFRESH })).toHaveLength(1);
     });
@@ -116,7 +116,7 @@ describe("OverviewTab", () => {
         "/pulls/p1/overview/readiness",
         readiness({ brief: { intent: "missing", risks: "stale", intent_failure: HEAD_MOVED, risks_failure: HEAD_MOVED }, blocked_by: "head_moved" }),
       );
-      renderWithProviders(<OverviewTab prId="p1" />, { namespaces });
+      renderWithProviders(<OverviewTab prId="p1" repoId="r1" repoFullName="acme/widgets" />, { namespaces });
       await screen.findByRole("button", { name: /Auth surface touched/ });
       await waitFor(() => expect(screen.getAllByRole("button", { name: REFRESH })).toHaveLength(2));
       const [first, second] = screen.getAllByRole("button", { name: REFRESH });
@@ -127,5 +127,57 @@ describe("OverviewTab", () => {
       expect(follows(risksHeading, second!)).toBe(true);
       expect(await screen.findByRole("button", { name: brief.prepare.blocked })).toBeDisabled();
     });
+  });
+});
+
+describe("Resync from the Blast radius card", () => {
+  const DOWNSTREAM = [{ symbol: "doWork", callers: [{ file: "src/a.ts", line: 7, name: "run" }], endpoints_affected: [], crons_affected: [] }];
+  const blastBody = (status: "ok" | "degraded") => ({
+    status,
+    reason: status === "degraded" ? "index_partial" : null,
+    blast: { changed_symbols: [{ name: "doWork", file: "src/a.ts", kind: "function" }], downstream: DOWNSTREAM, summary: "" },
+    head_sha: "abc",
+    source_sha: "deadbeef",
+    index_status: "ready",
+    cached: false,
+    truncated: false,
+    computed_at: null,
+  });
+
+  // A job that finishes before the first readiness poll: the first readiness the page reads after the
+  // POST already says idle, and the index is fresh from then on. A blast fetched alongside that readiness
+  // (the resync's own refresh) still sees the old answer; only a blast refetch after it sees "ok".
+  it("a fast resync job refreshes the blast once readiness settles: the degraded badge goes away", async () => {
+    stubApi();
+    let resynced = false;
+    let indexFresh = false;
+    let releaseJob!: () => void;
+    const jobDone = new Promise<void>((r) => {
+      releaseJob = r;
+    });
+    api.route("POST", "/repos/r1/resync", () => {
+      resynced = true;
+      return json({ status: "queued" }, 202);
+    });
+    api.route("GET", "/pulls/p1/overview/readiness", async () => {
+      if (resynced) {
+        await jobDone;
+        indexFresh = true;
+      }
+      return json(readiness());
+    });
+    api.route("GET", "/pulls/p1/blast", () => json(blastBody(indexFresh ? "ok" : "degraded")));
+
+    const user = userEvent.setup();
+    renderWithProviders(<OverviewTab prId="p1" repoId="r1" repoFullName="acme/widgets" />, { namespaces });
+    expect(await screen.findByRole("status")).toHaveTextContent(blast.reason.index_partial);
+
+    await user.click(screen.getByRole("button", { name: blast.resync }));
+    await waitFor(() => expect(api.requestsTo("POST", "/repos/r1/resync")).toHaveLength(1));
+    releaseJob();
+
+    await waitFor(() => expect(screen.queryByRole("status")).not.toBeInTheDocument());
+    expect(screen.queryByRole("button", { name: blast.resync })).not.toBeInTheDocument();
+    expect(api.requestsTo("POST", "/repos/r1/resync")).toHaveLength(1);
   });
 });

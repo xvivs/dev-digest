@@ -1,6 +1,6 @@
 # ADR 0007 — Validate API responses with zod in dev and test
 
-**Status:** accepted (mechanism shipped; endpoint wiring blocked, see Consequences)
+**Status:** accepted (mechanism shipped; endpoint wiring blocked, see Consequences); amended by ADR 0026
 **Date:** 2026-09-28
 
 ## Context

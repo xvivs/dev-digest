@@ -11,9 +11,12 @@ import { s } from "./styles";
 
 export interface OverviewTabProps {
   prId: string;
+  repoId: string;
+  /** `owner/name`; null while the repo record is unknown (links fall back to plain text). */
+  repoFullName: string | null;
 }
 
-export function OverviewTab({ prId }: OverviewTabProps) {
+export function OverviewTab({ prId, repoId, repoFullName }: OverviewTabProps) {
   return (
     <div style={s.root}>
       {/* The tab's header; `key` remounts it (fresh auto-continue intent) on a PR change. */}
@@ -26,7 +29,7 @@ export function OverviewTab({ prId }: OverviewTabProps) {
           <RiskAreas prId={prId} />
         </section>
         <section style={s.card}>
-          <BlastRadiusCard prId={prId} />
+          <BlastRadiusCard prId={prId} repoId={repoId} repoFullName={repoFullName} />
           <hr style={s.divider} />
           <PriorPrs prId={prId} />
         </section>

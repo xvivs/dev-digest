@@ -75,6 +75,14 @@ lives in the engineering-insights skill).
 
 - **After a `JobRunner` handler returns, `enqueue` still awaits two `jobs` row updates (`attempts`, then `status: 'done'`) before `done` resolves — bookkeeping that frees state in the handler but counts on `done` has a window where the work is over and the job is not.** `server/src/platform/jobs.ts:89-108`. The index gate lost a trailing pass in exactly that window (code-review F1); `KeyedGate.settle` now hands the trailing pass to `dispatch` together with a fresh reservation so the key never goes idle in between (`server/src/platform/keyed-gate.ts`, ADR 0025). _(2026-10-01)_
 
+- **Empty `blast.downstream` means "no changed symbols", not "no callers"** — `toBlastRadius` maps over every distinct changed-symbol name and emits a group even with zero callers (`server/src/modules/blast/domain.ts:65`), so the no-callers state must be derived from the caller total, as the client does in `hasNoCallers` (`client/src/app/repos/[repoId]/pulls/[number]/_components/OverviewTab/helpers.ts:118`), never from `downstream.length`. _(2026-10-01)_
+
+- **Any change to the blast status/reason/order mapping or summary text needs a `BLAST_MAPPING_VERSION` bump** — `pr_blast_cache` rows are keyed on the mapping version (`server/src/modules/blast/service.ts:63`, constant at `server/src/modules/blast/constants.ts:6`), so without a bump the cache keeps serving the old shape until the index sha changes. _(2026-10-01)_
+
+- **Review runs are fire-and-forget outside `JobRunner`, so the `jobs.ts` 120 s job timeout never bounds them** — `ReviewService` launches `void this.executor.executeRuns(...)` (`server/src/modules/reviews/service.ts:126`); a review's wall-clock is bounded only by the per-call `callDeadlineMs`, the user's `cancelSignal`, and boot-time reaping. Raising `server/src/platform/jobs.ts:53` does nothing for slow reviews. _(2026-10-01)_
+
+- **`ConfigError` (missing LLM key / GitHub token / unseeded DB) is HTTP 424 `config_error`, not 500, and any run error text goes through `redactCredentials` before it is stored** — `server/src/platform/errors.ts:39`; `redactCredentials` (`server/src/platform/jobs.ts:40`) now also masks `Bearer …` and `sk-…` keys and is applied to `agent_runs.error` at `server/src/modules/reviews/run-executor.ts:451`. A new background error path that writes a message to the DB should call it too. _(2026-10-01)_
+
 ## Tool & Library Notes
 
 - **`pnpm exec <bin>` / `pnpm run <script>` can fail non-interactively with `ERR_PNPM_IGNORED_BUILDS` even when `node_modules` is already correct** — both `pnpm db:generate` and `pnpm exec drizzle-kit generate` refused to run this way, erroring "Run \"pnpm approve-builds\" to pick which dependencies should be allowed to run scripts." Workaround: invoke the wrapper under `node_modules/.bin/` directly with `sh`, e.g. `sh node_modules/.bin/drizzle-kit generate`, `sh node_modules/.bin/tsx src/db/migrate.ts`, `sh node_modules/.bin/vitest run` — bypasses pnpm's pre-flight check entirely. _(2026-09-19)_
@@ -90,6 +98,8 @@ lives in the engineering-insights skill).
 - **Fastify 5.8.5 hands the validator a body-less POST as `null`, not `undefined`, so an optional zod body must be `.nullish()`; `.optional()` rejects the request.** Seen on `POST /pulls/:id/overview/prepare` (`server/src/modules/overview/routes.ts:40-41`; source `fastify/lib/validation.js:123`). A POST with `content-type: application/json` and an empty body is still a 400 `FST_ERR_CTP_EMPTY_JSON_BODY` before validation, so clients should send `{}`. _(2026-10-01)_
 
 - **A zod `z.union` used as a Fastify response schema serializes with the FIRST member that matches and strips every other key, so a looser member placed first silently drops fields from the response.** On `POST /repos/:id/resync` the `{status, jobId?}` member listed first matched a coalesced reply and removed `coalesced: true`; characterization test I8 (`server/test/repo-services-singleton.it.test.ts`) caught it. Order members with extra required keys first (`server/src/modules/repo-intel/routes.ts:25-32`). _(2026-10-01)_
+
+- **`@fastify/rate-limit@11` sends `retry-after` (whole seconds, ≤ 60) on a 429 by default, a route-level `config.rateLimit` replaces the global 120/min instead of stacking, and the 429 envelope code is `internal_error`** — so API clients must classify 429 by HTTP status, not by `error.code`; the review trigger limit is `server/src/modules/reviews/routes.ts:32` (10/min, keyed by `req.ip`). Verified statically from the 11.0.0 tarball, not by firing 11 paid runs. _(2026-10-01)_
 
 ## Recurring Errors & Fixes
 
@@ -122,6 +132,8 @@ lives in the engineering-insights skill).
 - **A finding lands in "N findings on files not in this diff" although the reviewer clearly saw that file: `pr_files` held only the first 100 files of the PR.** `pulls.listFiles({ per_page: 100 })` without pagination stored 100 of 147 files while `files_count` came from `pr.changed_files`, and the reviewer reads the full `git diff` from the clone (`server/src/modules/reviews/diff-loader.ts:8-9`), so grounding accepted findings on files 101+. Fixed with `octokit.paginate` (`server/src/adapters/github/octokit.ts:113-125`; GitHub caps at 3000 files / 250 commits). Check with `select count(*) from pr_files where pr_id=…` vs the tab count; opening the PR page (`GET /pulls/:id`) replaces `pr_files` in full. _(2026-10-01)_
 
 - **A test that holds a job handler on a deferred and releases it after the assertions hangs ~120 s when an assertion fails — the held handler only ends at the `JobRunner` timeout.** Release in `finally` (`server/test/repo-services-singleton.it.test.ts:139-142`). Symptom: one red `expect` turns into a vitest timeout with no useful message. _(2026-10-01)_
+
+- **`Review LLM call for "all files" exceeded the 120 s deadline and was aborted` on a large single-pass PR is the reviewer-core per-chunk deadline, not the LLM key or the network** — `run-executor.ts` never passed `callDeadlineMs`, so the hardcoded reviewer-core default applied to the whole-diff call (PR #15: 79 files / ~12.8k lines, run `8293636f`). Fix: the default is now 900_000 (`reviewer-core/src/review/run.ts:50`) and the server overrides it via `REVIEW_CALL_DEADLINE_MS` (`server/src/platform/config.ts:40`) → `server/src/modules/reviews/run-executor.ts:309`; a still-slow run → raise the env, don't drop the deadline (a hung upstream would hold the run `running` until restart). _(2026-10-01)_
 
 ## Session Notes
 

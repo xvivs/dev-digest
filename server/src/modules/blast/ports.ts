@@ -51,4 +51,5 @@ export interface BlastStore {
 
 export interface BlastLogger {
   debug(obj: Record<string, unknown>, msg: string): void;
+  info(obj: Record<string, unknown>, msg: string): void;
 }

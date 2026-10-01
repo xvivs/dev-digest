@@ -7,6 +7,7 @@ import type {
   BlastPull,
   BlastStore,
 } from '../src/modules/blast/ports.js';
+import { BLAST_MAPPING_VERSION } from '../src/modules/blast/constants.js';
 import { BlastService } from '../src/modules/blast/service.js';
 
 const PULL: BlastPull = { id: 'pr1', repoId: 'repo1', headSha: 'head1' };
@@ -19,6 +20,7 @@ function setup(opts: {
   computeError?: Error;
 } = {}) {
   const rows = new Map<string, BlastCacheEntry>();
+  const infos: { obj: Record<string, unknown>; msg: string }[] = [];
   const calls = { blast: 0, key: 0, upsert: 0, blastFiles: [] as string[][] };
   let parts: BlastKeyParts = {
     enabled: true,
@@ -53,17 +55,23 @@ function setup(opts: {
         if (opts.computeError) throw opts.computeError;
         return {
           changedSymbols: [{ name: 'f', file: 'src/a.ts', kind: 'function' }],
-          callers: [{ file: 'src/b.ts', symbol: 'g', viaSymbol: 'f', line: 2 }],
+          callers: [{ file: 'src/b.ts', symbol: 'g', viaSymbol: 'f', line: 2, rank: 0 }],
           ...opts.result,
         };
       },
     },
-    log: { debug() {} },
+    log: {
+      debug() {},
+      info: (obj, msg) => {
+        infos.push({ obj, msg });
+      },
+    },
   });
   return {
     svc,
     rows,
     calls,
+    infos,
     setParts: (p: Partial<BlastKeyParts>) => (parts = { ...parts, ...p }),
     setPull: (p: BlastPull | undefined) => (pull = p),
   };
@@ -116,7 +124,7 @@ describe('BlastService.getForPull', () => {
   it('with no usable index the source sha is the clone head, so a new clone head recomputes', async () => {
     const s = setup({ parts: { indexState: { status: 'none', lastIndexedSha: '', indexerVersion: 3 }, cloneHead: 'c1' } });
     const v = await s.svc.getForPull('ws', 'pr1');
-    expect(v).toMatchObject({ sourceSha: 'c1', status: 'degraded', reason: 'no_index' });
+    expect(v).toMatchObject({ sourceSha: 'c1', status: 'degraded', reason: 'no_data' });
     s.setParts({ cloneHead: 'c2' });
     expect((await s.svc.getForPull('ws', 'pr1'))!.cached).toBe(false);
     expect(s.calls.blast).toBe(2);
@@ -127,8 +135,11 @@ describe('BlastService.getForPull', () => {
       ['flag off beats everything', { enabled: false }, {}, 'degraded', 'flag_off'],
       ['partial index', { indexState: { status: 'partial', lastIndexedSha: 'i', indexerVersion: 3 } }, {}, 'degraded', 'index_partial'],
       ['full + clean', {}, {}, 'ok', null],
-      ['full + degraded result (ripgrep fallback)', {}, { degraded: true }, 'degraded', 'no_index'],
-      ['no index', { indexState: { status: 'none', lastIndexedSha: '', indexerVersion: 3 } }, {}, 'degraded', 'no_index'],
+      ['full + degraded result (ripgrep fallback)', {}, { degraded: true, reason: 'repo_too_large' }, 'degraded', 'repo_too_large'],
+      ['full + degraded result without reason', {}, { degraded: true }, 'degraded', 'no_data'],
+      ['no index', { indexState: { status: 'none', lastIndexedSha: '', indexerVersion: 3 } }, {}, 'degraded', 'no_data'],
+      ['failed index', { indexState: { status: 'failed', lastIndexedSha: '', indexerVersion: 3 } }, {}, 'degraded', 'index_failed'],
+      ['failed index with facade reason', { indexState: { status: 'failed', lastIndexedSha: '', indexerVersion: 3, degradedReason: 'repo_too_large' } }, {}, 'degraded', 'repo_too_large'],
     ] as const)('%s', async (_n, parts, result, status, reason) => {
       const s = setup({ parts: parts as Partial<BlastKeyParts>, result });
       expect(await s.svc.getForPull('ws', 'pr1')).toMatchObject({ status, reason });
@@ -146,5 +157,66 @@ describe('BlastService.getForPull', () => {
     const s = setup({ computeError: new Error('rg crashed') });
     await expect(s.svc.getForPull('ws', 'pr1')).rejects.toThrow('rg crashed');
     expect(s.rows.size).toBe(0);
+  });
+
+  it('a cached row with an older mappingVersion is recomputed and overwritten', async () => {
+    const s = setup();
+    await s.svc.getForPull('ws', 'pr1');
+    const row = s.rows.get('pr1')!;
+    s.rows.set('pr1', { ...row, mappingVersion: 0, reason: 'no_index' });
+    const v = await s.svc.getForPull('ws', 'pr1');
+    expect(v!.cached).toBe(false);
+    expect(s.calls.blast).toBe(2);
+    expect(s.rows.get('pr1')).toMatchObject({ mappingVersion: BLAST_MAPPING_VERSION });
+  });
+
+  describe('info log (blast index read)', () => {
+    it('logs once per read with the index source and reparse:false when the index serves it', async () => {
+      const s = setup();
+      await s.svc.getForPull('ws', 'pr1');
+      await s.svc.getForPull('ws', 'pr1');
+      expect(s.infos).toHaveLength(2);
+      expect(s.infos[0]).toMatchObject({
+        msg: 'blast index read',
+        obj: {
+          prId: 'pr1',
+          repoId: 'repo1',
+          indexStatus: 'full',
+          sourceSha7: 'idx1',
+          changedFiles: 1,
+          symbols: 1,
+          callers: 1,
+          cached: false,
+          source: 'index',
+          reparse: false,
+          status: 'ok',
+          reason: null,
+        },
+      });
+      expect(s.infos[1]!.obj).toMatchObject({ cached: true, source: 'index', reparse: false });
+      expect(typeof s.infos[0]!.obj.durationMs).toBe('number');
+    });
+
+    it('computed read on the ripgrep fallback reports reparse:true; a cache hit reports false', async () => {
+      const s = setup({ parts: { indexState: { status: 'none', lastIndexedSha: '', indexerVersion: 3 } } });
+      await s.svc.getForPull('ws', 'pr1');
+      await s.svc.getForPull('ws', 'pr1');
+      expect(s.infos[0]!.obj).toMatchObject({ source: 'ripgrep_fallback', reparse: true, cached: false });
+      expect(s.infos[1]!.obj).toMatchObject({ source: 'ripgrep_fallback', reparse: false, cached: true });
+    });
+
+    it('flag off counts as the fallback source', async () => {
+      const s = setup({ parts: { enabled: false } });
+      await s.svc.getForPull('ws', 'pr1');
+      expect(s.infos[0]!.obj).toMatchObject({ source: 'ripgrep_fallback', reparse: true });
+    });
+
+    it('never logs a file path', async () => {
+      const s = setup();
+      await s.svc.getForPull('ws', 'pr1');
+      for (const v of Object.values(s.infos[0]!.obj)) {
+        if (typeof v === 'string') expect(v).not.toContain('/');
+      }
+    });
   });
 });

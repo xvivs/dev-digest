@@ -8,6 +8,7 @@
 import { useLayoutEffect, useRef } from "react";
 import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { api } from "../api";
+import { prBlastKey } from "./brief";
 import type { MutationHookOptions } from "../query-client";
 import {
   PrepareOverviewResponse,
@@ -27,10 +28,24 @@ export type OnReadiness = (prev: PrOverviewReadiness | undefined, next: PrOvervi
 function invalidateAfterPrepare(qc: QueryClient, prId: string, repoId: string): void {
   qc.invalidateQueries({ queryKey: ["pr-intent", prId] });
   qc.invalidateQueries({ queryKey: ["pr-risks", prId] });
-  qc.invalidateQueries({ queryKey: ["pr-blast", prId] });
+  qc.invalidateQueries({ queryKey: prBlastKey(prId) });
   qc.invalidateQueries({ queryKey: ["repo-intel-state", repoId] });
   // A clone changes `clone_path` on the repo list.
   qc.invalidateQueries({ queryKey: ["repos"] });
+}
+
+/**
+ * An index run was just enqueued for this PR's repo (e.g. a Resync from the blast card).
+ * Marks the cached readiness as in flight and refetches it: the poll then sees
+ * in_flight -> idle and invalidates the dependent queries (blast included), even when the
+ * job finishes before the first poll. No-op on an empty cache; the refetch still runs.
+ */
+export function markOverviewIndexRunStarted(qc: QueryClient, prId: string): void {
+  qc.setQueryData<PrOverviewReadiness>(
+    overviewReadinessKey(prId),
+    (o) => o && { ...o, in_flight: true, index: { ...o.index, in_flight: true } },
+  );
+  qc.invalidateQueries({ queryKey: overviewReadinessKey(prId) });
 }
 
 /**

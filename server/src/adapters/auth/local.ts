@@ -2,6 +2,7 @@ import type { AuthProvider, AuthUser, AuthWorkspace } from '@devdigest/shared';
 import { eq } from 'drizzle-orm';
 import type { Db } from '../../db/client.js';
 import * as t from '../../db/schema.js';
+import { ConfigError } from '../../platform/errors.js';
 import { DEFAULT_WORKSPACE_NAME, SYSTEM_USER_EMAIL } from '../../db/seed.js';
 
 /**
@@ -20,7 +21,7 @@ export class LocalNoAuthProvider implements AuthProvider {
   async currentUser(): Promise<AuthUser> {
     if (this.cachedUser) return this.cachedUser;
     const [u] = await this.db.select().from(t.users).where(eq(t.users.email, SYSTEM_USER_EMAIL));
-    if (!u) throw new Error('No system user found — run `pnpm db:seed`.');
+    if (!u) throw new ConfigError('No system user found — run `pnpm db:seed`.');
     this.cachedUser = { id: u.id, email: u.email, name: u.name };
     return this.cachedUser;
   }
@@ -31,7 +32,7 @@ export class LocalNoAuthProvider implements AuthProvider {
       .select()
       .from(t.workspaces)
       .where(eq(t.workspaces.name, DEFAULT_WORKSPACE_NAME));
-    if (!w) throw new Error('No default workspace found — run `pnpm db:seed`.');
+    if (!w) throw new ConfigError('No default workspace found — run `pnpm db:seed`.');
     this.cachedWorkspace = { id: w.id, name: w.name };
     return this.cachedWorkspace;
   }

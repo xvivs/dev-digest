@@ -62,6 +62,7 @@ No `chat`, no model key.
 # per package
 cd client        && pnpm test           # + pnpm typecheck
 cd reviewer-core && npm test
+cd mcp           && pnpm test           # + pnpm typecheck; hermetic (fake API, in-memory MCP transport)
 
 # server — the unit/integration split (see note below)
 cd server && pnpm exec vitest run --exclude '**/*.it.test.ts'   # unit, no Docker
@@ -91,5 +92,7 @@ cd e2e && npm install && npm test
 - **CI is path-filtered per package.** Cross-package source aliases are encoded
   in each workflow's `paths:` (e.g. `reviewer-core/**` triggers `server-unit`
   because the server type-checks against `../reviewer-core/src`).
+  `mcp.yml` runs on `mcp/**`, `server/src/vendor/shared/**` and its own
+  file, because `mcp/` aliases `@devdigest/shared` to the server's vendored copy.
 - **`server/clones/**` is runtime data** (git-ignored) and never collected by
   any suite.

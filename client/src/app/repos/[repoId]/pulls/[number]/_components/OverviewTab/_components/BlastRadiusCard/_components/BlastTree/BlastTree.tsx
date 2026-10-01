@@ -4,11 +4,21 @@ import React from "react";
 import { useTranslations } from "next-intl";
 import { Icon } from "@devdigest/ui";
 import type { DownstreamImpact } from "@devdigest/shared";
+import { MonoLink } from "@devdigest/ui";
 import { ICON_SIZE } from "../../../../constants";
+import { blastCallerHref } from "../../../../helpers";
 import { s } from "./styles";
 
-/** One changed symbol: a toggle row with its caller count, then callers (file:line), endpoints and crons. Text only. */
-function BlastSymbol({ impact }: { impact: DownstreamImpact }) {
+/** One changed symbol: a toggle row with its caller count, then callers (file:line), endpoints and crons. Caller paths link to GitHub when the repo and sha are known. */
+function BlastSymbol({
+  impact,
+  repoFullName,
+  sourceSha,
+}: {
+  impact: DownstreamImpact;
+  repoFullName: string | null;
+  sourceSha: string | null;
+}) {
   const t = useTranslations("blast");
   const [open, setOpen] = React.useState(true);
   const bodyId = React.useId();
@@ -24,19 +34,25 @@ function BlastSymbol({ impact }: { impact: DownstreamImpact }) {
       {open && (
         <div id={bodyId}>
           <ul style={s.callers}>
-            {impact.callers.map((c, j) => (
-              <li key={`${j}-${c.file}-${c.line}`} style={s.caller}>
-                <Icon.CornerDownRight size={ICON_SIZE.inline} aria-hidden="true" style={s.headIcon} />
-                <div style={s.callerBody}>
-                  <span style={s.callerPath} title={`${c.file}:${c.line}`}>
-                    <span style={s.callerPathText}>
-                      {c.file}:{c.line}
+            {impact.callers.map((c, j) => {
+              const href = blastCallerHref(repoFullName, sourceSha, c.file, c.line);
+              const pathText = (
+                <span style={s.callerPathText}>
+                  {c.file}:{c.line}
+                </span>
+              );
+              return (
+                <li key={`${j}-${c.file}-${c.line}`} style={s.caller}>
+                  <Icon.CornerDownRight size={ICON_SIZE.inline} aria-hidden="true" style={s.headIcon} />
+                  <div style={s.callerBody}>
+                    <span style={s.callerPath} title={`${c.file}:${c.line}`}>
+                      {href ? <MonoLink href={href}>{pathText}</MonoLink> : pathText}
                     </span>
-                  </span>
-                  <span style={s.callerName}>{c.name}</span>
-                </div>
-              </li>
-            ))}
+                    <span style={s.callerName}>{c.name}</span>
+                  </div>
+                </li>
+              );
+            })}
           </ul>
           {(impact.endpoints_affected.length > 0 || impact.crons_affected.length > 0) && (
             <div style={s.chips}>
@@ -60,11 +76,18 @@ function BlastSymbol({ impact }: { impact: DownstreamImpact }) {
   );
 }
 
-export function BlastTree({ downstream }: { downstream: DownstreamImpact[] }) {
+export interface BlastTreeProps {
+  downstream: DownstreamImpact[];
+  repoFullName: string | null;
+  /** Revision the caller lines were read from (`source_sha`); empty/null → no links. */
+  sourceSha: string | null;
+}
+
+export function BlastTree({ downstream, repoFullName, sourceSha }: BlastTreeProps) {
   return (
     <ul style={s.list}>
       {downstream.map((d, i) => (
-        <BlastSymbol key={`${i}-${d.symbol}`} impact={d} />
+        <BlastSymbol key={`${i}-${d.symbol}`} impact={d} repoFullName={repoFullName} sourceSha={sourceSha} />
       ))}
     </ul>
   );

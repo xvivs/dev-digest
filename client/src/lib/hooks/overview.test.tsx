@@ -10,7 +10,7 @@ import { createTestQueryClient } from "@/test/render";
 import { json, setupFakeApi } from "@/test/fake-api";
 import { usePrBlast, usePrIntent, usePrRisks } from "./brief";
 import { useRepos } from "./core";
-import { OVERVIEW_READINESS_POLL_MS, overviewReadinessKey, usePrepareOverview, usePrOverviewReadiness, type OnReadiness } from "./overview";
+import { OVERVIEW_READINESS_POLL_MS, markOverviewIndexRunStarted, overviewReadinessKey, usePrepareOverview, usePrOverviewReadiness, type OnReadiness } from "./overview";
 import { useRepoIntelStatus } from "./repo-intel";
 
 const READY: PrOverviewReadiness = {
@@ -144,5 +144,29 @@ describe("usePrepareOverview", () => {
     expect(api.requestsTo("POST", "/pulls/p1/overview/prepare")[0]?.body).toEqual({ reindex_partial: true });
     expect(qc.getQueryData(overviewReadinessKey("p1"))).toEqual(BUSY);
     expect(invalidate.mock.calls.map(([f]) => f?.queryKey)).toEqual([["pr-intent", "p1"], ["pr-risks", "p1"]]);
+  });
+});
+
+describe("markOverviewIndexRunStarted", () => {
+  const api = setupFakeApi();
+  afterEach(() => cleanup());
+
+  it("seeds in_flight, so an idle refetch is an in_flight -> idle transition that refetches the blast", async () => {
+    api.reply("GET", READINESS, READY);
+    replyDependents(api);
+    const qc = createTestQueryClient();
+    const { result } = renderHook(() => useOverviewScreen(), { wrapper: wrapperFor(qc) });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    await waitFor(() => expect(api.requestsTo("GET", "/pulls/p1/blast")).toHaveLength(1));
+
+    act(() => markOverviewIndexRunStarted(qc, "p1"));
+    await waitFor(() => expect(api.requestsTo("GET", READINESS)).toHaveLength(2));
+    await waitFor(() => expect(api.requestsTo("GET", "/pulls/p1/blast")).toHaveLength(2));
+  });
+
+  it("is a no-op seed on an empty cache (nothing invented)", () => {
+    const qc = createTestQueryClient();
+    markOverviewIndexRunStarted(qc, "p1");
+    expect(qc.getQueryData(overviewReadinessKey("p1"))).toBeUndefined();
   });
 });

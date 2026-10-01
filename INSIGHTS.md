@@ -39,6 +39,8 @@ lives in the engineering-insights skill).
 
 - **The pr-self-review gate is per worktree: a new worktree starts with an empty `.devdigest/self-review/` cache, so the first run re-reviews every file, and the hook only accepts a literal `cd <path> && …` and the current branch** — the stamp, per-file lens cache and runs live under the worktree's own `.devdigest/self-review/` (`.claude/skills/pr-self-review/SKILL.md`, "What is where"), so moving the branch to `pr-overview-final` turned an incremental run (85 file-lenses cached) into a full one (147 files, 6 lenses). `gate-hook.mjs` blocks `cd $VAR && gh pr create` ("не вдалося визначити статично") and `git push origin <other-branch>`; write the path literally. Copying the cache between worktrees is not allowed (the skill forbids hand-editing gate state). _(2026-09-30)_
 
+- **MCP picks the `run_failed` next step by regex over the run's free-text `error`, so the server strings it keys on are a de-facto contract** — `classifyRunError` (`mcp/src/run-error.ts:40`) matches `REAPED_RUN_ERROR` (`server/src/modules/reviews/repository/run.repo.ts:166`), `'Cancelled by user'` (`server/src/modules/reviews/run-executor.ts:451`) and the `ReviewDeadlineError` text (`reviewer-core/src/review/run.ts:64`); reword any of them and the hint silently falls to `unknown` — update `mcp/test/run-error.test.ts` in the same change. No `error_code` column exists yet (deliberately deferred). _(2026-10-01)_
+
 ## Tool & Library Notes
 
 - **`pnpm <script>` fails in this environment before the script even starts.** pnpm 11.5.3 via corepack runs a preflight `pnpm install` that exits 1 on `[ERR_PNPM_IGNORED_BUILDS]` (esbuild, sharp) — so `pnpm typecheck` / `pnpm test` look broken while the code is fine. `node_modules` is complete; call the binary directly (`./node_modules/.bin/tsc`, `./node_modules/.bin/vitest`) or run `pnpm approve-builds` once. Affects every package. _(2026-09-19)_
@@ -62,6 +64,10 @@ lives in the engineering-insights skill).
 - **chrome-devtools MCP `resize_page` acts on the currently SELECTED page, not on its `pageId` argument — call `select_page` first** — observed in the Smart Diff session (tool `mcp__chrome-devtools__resize_page`, 2026-10-01); related 500px-floor note above. _(2026-10-01)_
 
 - **`mcp__chrome-devtools__emulate` with a 390x844 mobile viewport does get under the 500px `resize_page` floor: `document.documentElement.scrollWidth` and `innerWidth` both read 390** — this answers the "untested" part of the 500px-floor note above (chrome-devtools MCP, PR Overview QA). Use `emulate` for phone widths; note in the report that it is emulation, not a real window. _(2026-10-01)_
+
+- **MCP SDK 1.31 `Client.callTool` validates `structuredContent` against `outputSchema` only for tools it has seen via `listTools`** — `mcp/node_modules/@modelcontextprotocol/sdk/dist/esm/client/index.js:485-493` looks the schema up from the cached tool list, so an in-memory contract test must call `listTools()` first or output-schema drift passes silently. _(2026-10-01)_
+
+- **`claude -p` loads the project `.mcp.json` without the approval prompt, and `--allowedTools` only auto-approves — it does not restrict** — the L04 acceptance run `claude -p "<prompt>" --allowedTools "mcp__devdigest__list_agents,…" --output-format stream-json --verbose` reported `devdigest: connected` in the init event, went `ToolSearch → list_agents → run_agent_on_pr → get_findings`, then also called `Bash`. For a strictly scoped headless check add `--disallowedTools`. Claude Code 2.1.286. _(2026-10-01)_
 
 ## Recurring Errors & Fixes
 
@@ -90,6 +96,12 @@ lives in the engineering-insights skill).
 
 - **The pr-self-review `client-tests` lens flags `async-wait-before-absence-assert` on "section not rendered" tests even when the component renders its heading during loading, so the absence can only be true after the query resolved; its cited line numbers can also be off by 100+ lines** — seen on `OverviewTab.test.tsx` (run `f9f389ec2272`). `BriefSection.tsx:32` returns null only on `runs.isSuccess && length === 0`, and the heading renders with the skeleton. Before "fixing" such a MEDIUM, read the component's loading branch. If it renders the asserted element while loading, the finding is a false positive: record that in the PR's Self-review block instead of adding waits. Locate the finding by its quoted code, not its line number (`:174`/`:64` did not exist in `PriorPrs.test.tsx`/`OverviewTab.test.tsx`). _(2026-10-01)_
 
+- **`tsc` runs out of memory in `mcp/` when tsconfig `paths` maps `zod/*` (the reviewer-core pattern) alongside `@modelcontextprotocol/sdk@1.31.0`; map only bare `zod`** — the SDK's own `zod/v3`/`zod/v4` subpath imports must resolve through zod's exports map, so `mcp/tsconfig.json:24` maps `"zod"` alone and `mcp/vitest.config.ts:15` aliases `/^zod$/` (a plain `zod` alias in vitest would also catch the subpaths, and without any alias the vendored shared files load a second zod instance). _(2026-10-01)_
+
+- **A stdio MCP server launched via `pnpm start` breaks the protocol: pnpm prints its `> pkg@ start` banner to stdout** — Claude Code reads stdout as JSON-RPC only, so `.mcp.json:8` execs `./node_modules/.bin/tsx src/index.ts` directly through `sh -c`; `pnpm start`/`pnpm inspect` in `mcp/package.json` are for humans only. Smoke-check: pipe `initialize` + `tools/list` into the launcher and assert every stdout line parses as JSON. _(2026-10-01)_
+
+- **The MCP `run_failed` error always says "Check the LLM key in DevDigest Settings", whatever the run error was — a deadline abort shows the same hint** — the next-step string is fixed in `mcp/src/errors.ts:96`; read the quoted run error, not the hint. Also, the MCP wait budget (`DEVDIGEST_MCP_RUN_TIMEOUT_MS`, default 600_000, `mcp/src/config.ts:22`) is now shorter than the 900_000 review deadline (`reviewer-core/src/review/run.ts:50`), so a review longer than 10 min returns `status: "running"` and needs `get_findings` later. _(2026-10-01)_
+
 ## Session Notes
 
 ### 2026-09-19 — repo-wide session
@@ -114,6 +126,9 @@ Audited the 16 dev agents against a README proposal: roster and chains were alre
 ### 2026-09-30 — PR Overview session (root)
 Implemented specs/04-pr-overview.md end to end with implementer, reviewers, test-writers and three pr-self-review rounds, and opened PR #11 with the mobile nav drawer (client/specs/01). Responsive design, the repo-UUID crumb flash and pnpm IGNORED_BUILDS went to issues #10, #9 and #8. A parallel Smart Diff session switched branches in the shared worktree, so the PR was finished from a separate worktree.
 
+### 2026-10-01 — mcp session
+L04: added the standalone `mcp/` stdio server (SDK 1.31.0, thin HTTP client over a 7-call allowlist) with five tools, spec `specs/07-devdigest-mcp.md` and ADR 0026. Inspector CLI and a live `claude -p` run against PR #3 passed all four DoD items (Security Reviewer: 0 CRITICAL, 1 WARNING). Left: real `get_blast_radius` (homework), `rationale_truncated` flag, API binding to 127.0.0.1 (OQ-1).
+
 ## Open Questions
 
 - **The shared `devdigest-postgres` container has drifted from this branch's migration files.** It carries 17 applied migrations against 11 local `.sql` files, and `agent_runs.cost_usd` already exists there (added by another branch) while `cost_source` does not — so `pnpm db:migrate` fails with "column already exists". Integration tests are unaffected: `*.it.test.ts` spins up a clean Postgres via testcontainers and applies only this branch's migrations. Open: whether each worktree should get its own database instead of sharing one. _(2026-09-19)_
@@ -123,3 +138,5 @@ Implemented specs/04-pr-overview.md end to end with implementer, reviewers, test
 - **Conflict to reconcile: the 2026-09-20 `Recurring Errors & Fixes` entry claims an `.npmrc`/`package.json` config would fix `[ERR_PNPM_IGNORED_BUILDS]` — tested against pnpm 11.5.3, it does not.** All of these still exit 1: `pnpm.onlyBuiltDependencies: []` and `pnpm.ignoredBuiltDependencies: [...]` in `server/package.json`, `ignoredBuiltDependencies` in a hand-written `server/pnpm-workspace.yaml`, and the env vars `npm_config_strict_dep_builds=false` and `npm_config_verify_deps_before_run=false`. Only the auto-generated `allowBuilds:` placeholders resolve it. Two entries in this file now prescribe different fixes for the same error code; a human should merge them during cleanup. _(2026-09-20)_
 
 - **Conflict: the 2026-09-28 `Recurring Errors & Fixes` entry on `Cannot find module 'zod'` from reviewer-core prescribes `cd reviewer-core && pnpm install`, which is destructive.** reviewer-core is an npm package: `pnpm install` there wipes `node_modules` and fails with `ERR_PNPM_NO_LOCKFILE` (see the newer entry in the same section). `server/INSIGHTS.md` gives the right fix, `npm ci`. Rewrite the root entry during cleanup. Separately, the 2026-09-20 Open Questions conflict about `npm_config_verify_deps_before_run=false` is partly answered: the `pnpm_config_` spelling does skip the pre-run install. _(2026-09-28)_
+
+- **Root `Recurring Errors & Fixes` entry "The MCP `run_failed` error always says Check the LLM key…" (2026-10-01) is stale** — since `mcp/src/run-error.ts:40` the next step depends on the cause; its second half (MCP wait 600_000 < review deadline 900_000) still holds. Rewrite or drop it in the next cleanup pass. _(2026-10-01)_

@@ -8,6 +8,7 @@ import {
   type SkillInput,
 } from '@devdigest/reviewer-core';
 import { failureTrace } from './failure-trace.js';
+import { redactCredentials } from '../../platform/jobs.js';
 import { RunLogger } from '../../platform/run-logger.js';
 import * as schema from '../../db/schema.js';
 import type { AgentRow } from '../../db/rows.js';
@@ -306,6 +307,7 @@ export class ReviewRunExecutor {
         onEvent: (e) => runLog.event(e.kind, e.msg, e.data),
         checkCancelled: throwIfCancelled,
         signal: cancelSignal,
+        callDeadlineMs: this.container.config.reviewCallDeadlineMs,
         // OpenRouter-only upstream routing (the other adapters ignore it).
         // Reasoning is left on — see the note under REVIEW_PROVIDER_ROUTING.
         ...(agent.provider === 'openrouter' ? { providerRouting: REVIEW_PROVIDER_ROUTING } : {}),
@@ -446,7 +448,7 @@ export class ReviewRunExecutor {
       // AbortError rather than RunCancelledError — the bus flag is the truth.
       const cancelled = err instanceof RunCancelledError || this.container.runBus.isCancelled(runId);
       const status = cancelled ? 'cancelled' : 'failed';
-      const msg = cancelled ? 'Cancelled by user' : (err as Error).message;
+      const msg = cancelled ? 'Cancelled by user' : redactCredentials((err as Error).message);
       runLog.error(cancelled ? 'Run cancelled by user' : `Run failed: ${msg}`);
       await this.saveRunSkills(runId, resolvedSkills, logger);
       // Trace + terminal status in one locked transaction — same invariant as

@@ -1,0 +1,3 @@
+ALTER TABLE "pr_blast_cache" DROP CONSTRAINT "pr_blast_cache_reason_check";--> statement-breakpoint
+ALTER TABLE "pr_blast_cache" ADD COLUMN "mapping_version" integer DEFAULT 0 NOT NULL;--> statement-breakpoint
+ALTER TABLE "pr_blast_cache" ADD CONSTRAINT "pr_blast_cache_reason_check" CHECK ("pr_blast_cache"."reason" IS NULL OR "pr_blast_cache"."reason" IN ('index_partial', 'no_index', 'flag_off', 'no_changed_files', 'index_failed', 'repo_too_large', 'no_data'));
