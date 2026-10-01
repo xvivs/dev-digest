@@ -3,11 +3,11 @@ import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { RepoInput } from '@devdigest/shared';
 import { getContext } from '../_shared/context.js';
 import { IdParams } from '../_shared/schemas.js';
-import { RepoService } from './service.js';
 
 /**
  * F1 — repos module. Transport layer only: parses requests, maps status
- * codes, and delegates all business logic to RepoService.
+ * codes, and delegates all business logic to the container's RepoService
+ * (`container.repoService`, built in wiring.ts).
  *   POST   /repos              → add repo (parse URL, persist, enqueue real clone)
  *   GET    /repos              → list repos (workspace-scoped)
  *   POST   /repos/:id/refresh  → re-fetch clone + bump last_polled_at
@@ -18,7 +18,7 @@ import { RepoService } from './service.js';
  */
 export default async function reposRoutes(appBase: FastifyInstance) {
   const app = appBase.withTypeProvider<ZodTypeProvider>();
-  const service = new RepoService(app.container);
+  const service = app.container.repoService;
 
   // Register the clone job handler once.
   service.registerCloneJobHandler();

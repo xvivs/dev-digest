@@ -85,3 +85,7 @@ export {
   deadlineFrom,
   type TransientRetryOptions,
 } from './llm/retry.js';
+
+// Smart Diff — pure path → role classifier (server run-executor, L08 prompt filter, CI runner).
+export { classifyFile } from './smart-diff/classify.js';
+export { ROLE_ORDER, CLASSIFY_ORDER, ROLE_PATTERNS } from './smart-diff/constants.js';

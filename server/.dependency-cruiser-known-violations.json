@@ -71,20 +71,6 @@
   },
   {
     "type": "dependency",
-    "from": "src/modules/repos/service.ts",
-    "to": "src/modules/repos/repository.ts",
-    "unresolvedTo": "./repository.js",
-    "dependencyTypes": [
-      "local",
-      "import"
-    ],
-    "rule": {
-      "severity": "error",
-      "name": "application-no-infra"
-    }
-  },
-  {
-    "type": "dependency",
     "from": "src/modules/reviews/service.ts",
     "to": "src/modules/reviews/repository.ts",
     "unresolvedTo": "./repository.js",
@@ -109,20 +95,6 @@
     "rule": {
       "severity": "error",
       "name": "mapper-is-pure"
-    }
-  },
-  {
-    "type": "dependency",
-    "from": "src/modules/repos/service.ts",
-    "to": "src/modules/repo-intel/constants.ts",
-    "unresolvedTo": "../repo-intel/constants.js",
-    "dependencyTypes": [
-      "local",
-      "import"
-    ],
-    "rule": {
-      "severity": "error",
-      "name": "modules-no-cross-import"
     }
   },
   {

@@ -4,7 +4,7 @@ import React from "react";
 import { useFormatter, useTranslations } from "next-intl";
 import { Badge, Disclosure, DisclosureChevron, ErrorState, Icon, Skeleton } from "@devdigest/ui";
 import { usePrHistory } from "@/lib/hooks";
-import { SKELETON_HEIGHT } from "../../constants";
+import { ICON_SIZE, SKELETON_HEIGHT } from "../../constants";
 import { s as shared } from "../../styles";
 import { s } from "./styles";
 
@@ -35,9 +35,11 @@ export function PriorPrs({ prId }: { prId: string }) {
       <ul style={s.list}>
         {data.history.map((h) => (
           <li key={h.pr_number} style={s.row}>
-            <div style={shared.row}>
-              <span style={shared.mono}>#{h.pr_number}</span>
-              <span style={s.title}>{h.title}</span>
+            <div style={s.titleRow}>
+              <span style={s.number}>#{h.pr_number}</span>
+              <span style={s.title} title={h.title}>
+                {h.title}
+              </span>
             </div>
             <div style={shared.muted}>
               {h.author} · {t("history.merged", { date: format.dateTime(new Date(h.merged_at), { dateStyle: "medium" }) })}
@@ -45,11 +47,13 @@ export function PriorPrs({ prId }: { prId: string }) {
             {h.files_overlap.length > 0 && (
               <div style={s.overlap}>
                 <Badge>{t("overlap", { count: h.files_overlap.length })}</Badge>
-                {h.files_overlap.map((f) => (
-                  <span key={f} style={shared.mono}>
-                    {f}
-                  </span>
-                ))}
+                <div style={s.overlapFiles}>
+                  {h.files_overlap.map((f) => (
+                    <span key={f} style={s.path} title={f}>
+                      {f}
+                    </span>
+                  ))}
+                </div>
               </div>
             )}
           </li>
@@ -59,22 +63,24 @@ export function PriorPrs({ prId }: { prId: string }) {
   }
 
   return (
-    <section style={shared.card}>
+    <div style={shared.block}>
       <Disclosure
+        style={s.box}
+        headerStyle={s.header}
         header={(open) => (
           <>
-            <Icon.History size={14} aria-hidden="true" style={s.icon} />
+            <Icon.History size={ICON_SIZE.section} aria-hidden="true" style={s.icon} />
             <span style={s.heading}>{t("history.title")}</span>
             {count > 0 && <Badge>{count}</Badge>}
             {data?.cached && <Badge>{t("history.cached")}</Badge>}
             <span style={s.chev}>
-              <DisclosureChevron open={open} />
+              <DisclosureChevron open={open} size={ICON_SIZE.section} />
             </span>
           </>
         )}
       >
         <div style={s.body}>{body}</div>
       </Disclosure>
-    </section>
+    </div>
   );
 }

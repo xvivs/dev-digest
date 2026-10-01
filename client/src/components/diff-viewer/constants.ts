@@ -1,5 +1,7 @@
 /** Constants for the DiffViewer. */
 
+import type { FindingRecord } from "@devdigest/shared";
+
 /** Files with this many or fewer changed lines start expanded. */
 export const AUTO_EXPAND_MAX_LINES = 200;
 
@@ -8,3 +10,13 @@ export const HUNK_HEADER_RE = /@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/;
 
 /** Prefix of git's "\\ No newline at end of file" annotation line in a patch. */
 export const NO_NEWLINE_MARKER = "\\";
+
+/** `diffViewer.finding.*` key of the lowercase label drawn on a finding's start line. */
+export const SEVERITY_LINE_LABEL_KEY: Record<
+  FindingRecord["severity"],
+  "blocker" | "warning" | "suggestion"
+> = {
+  CRITICAL: "blocker",
+  WARNING: "warning",
+  SUGGESTION: "suggestion",
+};

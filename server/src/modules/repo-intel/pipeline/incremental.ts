@@ -251,6 +251,9 @@ export async function runIncremental(
     hotnessAvailable: false,
     ...(graphFailed ? { graphFailed } : {}),
     parseDegraded,
+    // A clean slice over a `partial` index stays `partial` for the old reason;
+    // carry it, or readiness loses why (`partialReasonOf` reads it last).
+    ...(clean && status === 'partial' && state.partialReason ? { partialReason: state.partialReason } : {}),
     durationMs: Date.now() - startedAt,
   };
 
@@ -268,6 +271,7 @@ export async function runIncremental(
     filesIndexed: newFilesIndexed,
     filesSkipped: newFilesSkipped,
     stats,
+    lastIndexedAt: new Date(),
   });
 
   return {

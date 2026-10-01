@@ -1,0 +1,1 @@
+export { useCondensedHeader } from "./useCondensedHeader";

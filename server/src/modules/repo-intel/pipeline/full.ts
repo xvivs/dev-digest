@@ -99,11 +99,16 @@ export async function runFullIndex(
   // Walk + filter -------------------------------------------------------
   const walk = await walkClone(repo.clonePath);
   if (walk.files.length === 0) {
-    await safePersist(repository, repoId, currentSha, 'partial', 0, walk.stats.skippedTooLarge, {
-      ...walk.stats,
-      reason: 'no_files',
-      durationMs: Date.now() - startedAt,
-    });
+    await safePersist(
+      repository,
+      repoId,
+      currentSha,
+      'partial',
+      0,
+      walk.stats.skippedTooLarge,
+      { ...walk.stats, reason: 'no_files', durationMs: Date.now() - startedAt },
+      new Date(),
+    );
     return {
       status: 'partial',
       filesIndexed: 0,
@@ -274,6 +279,7 @@ export async function runFullIndex(
     filesIndexed,
     filesSkipped,
     stats,
+    lastIndexedAt: new Date(),
   });
 
   return {
@@ -314,6 +320,7 @@ async function safePersist(
   filesIndexed: number,
   filesSkipped: number,
   stats: Record<string, unknown>,
+  lastIndexedAt?: Date,
 ): Promise<void> {
   try {
     await repository.upsertIndexState({
@@ -324,6 +331,7 @@ async function safePersist(
       filesIndexed,
       filesSkipped,
       stats,
+      ...(lastIndexedAt ? { lastIndexedAt } : {}),
     });
   } catch {
     // Persistence failure during early-exit path — never throw out of the

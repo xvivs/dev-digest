@@ -19,6 +19,7 @@
  */
 import type { CodeSymbol, RepoRef } from '@devdigest/shared';
 import type { Container } from '../../platform/container.js';
+import { KeyedGate } from '../../platform/keyed-gate.js';
 import { extractEndpoints } from '../../adapters/codeindex/extract.js';
 import {
   parseImports,
@@ -34,8 +35,12 @@ import type {
   BlastChangedSymbol,
   BlastResult,
   FileRankRow,
+  IndexReadiness,
+  IndexRequestKind,
+  IndexRequestResult,
   IndexResult,
   IndexState,
+  IndexTrailing,
   RefRow,
   RepoIntel,
   RepoMapResult,
@@ -98,20 +103,141 @@ const PHANTOM_GLOBALS_ALLOWLIST: ReadonlySet<string> = new Set([
   'afterAll', 'afterEach', 'vi', 'jest',
 ]);
 
+/** Payload of INDEX / REFRESH / RESYNC jobs. `full` only on a RESYNC that also needs a full index. */
+type IndexJobPayload = IndexPayload & { workspaceId?: string; full?: boolean };
+
+const trailingFor = (kind: IndexRequestKind, workspaceId: string | undefined): IndexTrailing => ({
+  full: kind === 'index',
+  sync: kind === 'resync',
+  ...(workspaceId ? { workspaceId } : {}),
+});
+
+/** OR-merge: a coalesced full index or resync is never downgraded to a plain refresh. */
+const mergeTrailing = (a: IndexTrailing, b: IndexTrailing): IndexTrailing => {
+  const workspaceId = a.workspaceId ?? b.workspaceId;
+  return { full: a.full || b.full, sync: a.sync || b.sync, ...(workspaceId ? { workspaceId } : {}) };
+};
+
+/**
+ * Enqueue a trailing pass as its own job once the repo went idle. The gate
+ * holds `release` for it; this releases it when the job settles or when it
+ * cannot be enqueued (then the pass is dropped with a warn).
+ */
+function dispatchTrailing(container: Container, repoId: string, t: IndexTrailing, release: () => void): void {
+  const drop = (err: unknown) => {
+    container.logger?.warn(
+      { repoId, trailing: t, err: err instanceof Error ? err.message : String(err) },
+      'index gate: trailing pass not enqueued',
+    );
+    release();
+  };
+  if (!t.workspaceId) {
+    drop(new Error('no workspaceId on the coalesced job'));
+    return;
+  }
+  const kind = t.sync ? RESYNC_JOB_KIND : t.full ? INDEX_JOB_KIND : REFRESH_JOB_KIND;
+  const payload: IndexJobPayload = { repoId, workspaceId: t.workspaceId, ...(t.sync && t.full ? { full: true } : {}) };
+  container.jobs.enqueue(t.workspaceId, kind, payload).then((job) => {
+    job.done.then(release, release);
+  }, drop);
+}
+
+const JOB_KIND_FOR: Record<IndexRequestKind, string> = {
+  index: INDEX_JOB_KIND,
+  refresh: REFRESH_JOB_KIND,
+  resync: RESYNC_JOB_KIND,
+};
+
 export class RepoIntelService implements RepoIntel {
   private readonly repo: RepoIntelRepository;
+  /**
+   * Per-repo index gate (spec 06 D3, ADR 0025), shared by the job handlers
+   * (`runGated`) and the facade (`requestIndex`, `getIndexReadiness`). Per
+   * instance: the container holds exactly one `RepoIntelService`
+   * (`container.repoIntelService`), so handlers and facade see one gate, and
+   * separate test apps get separate gates. The logger is read at call time
+   * (`app.ts` assigns it after the container is built).
+   */
+  private readonly indexGate: KeyedGate<IndexTrailing>;
 
   constructor(private container: Container) {
     this.repo = new RepoIntelRepository(container.db);
+    this.indexGate = new KeyedGate<IndexTrailing>(
+      mergeTrailing,
+      { warn: (obj, msg) => container.logger?.warn(obj, msg) },
+      (repoId, t, release) => dispatchTrailing(container, repoId, t, release),
+    );
   }
 
   // -------------------------------------------------------------------------
   // Indexing — T2.2 worker. The job handlers (registered via
   // registerIndexJobHandlers below) are the ASYNC entry; these methods are
   // SYNC-from-the-handler (they ARE the handler body). HTTP/Repo callers go
-  // through `container.jobs.enqueue(INDEX_JOB_KIND, ...)` so the clone job
-  // closes promptly and the index runs in the background.
+  // through `requestIndex(...)`, never `container.jobs.enqueue(INDEX_JOB_KIND, ...)`
+  // directly: it dedupes through the per-repo gate (spec 06 D4, ADR 0025), so
+  // the clone job closes promptly and at most one index runs per repo.
   // -------------------------------------------------------------------------
+
+  /**
+   * Request an index job through the gate. The check-and-reserve runs before
+   * the first `await`, so two callers in one tick cannot both enqueue. The
+   * reservation is released exactly once: when the job's `done` settles or
+   * when `enqueue` throws.
+   */
+  async requestIndex(
+    workspaceId: string,
+    repoId: string,
+    kind: IndexRequestKind,
+  ): Promise<IndexRequestResult> {
+    const gate = this.indexGate;
+    const reservation = gate.reserve(repoId, trailingFor(kind, workspaceId));
+    if (!reservation.reserved) return { queued: false, reason: 'in_flight' };
+    try {
+      const payload: IndexJobPayload = { repoId, workspaceId };
+      const job = await this.container.jobs.enqueue(workspaceId, JOB_KIND_FOR[kind], payload);
+      job.done.then(reservation.release, reservation.release);
+      return { queued: true, jobId: job.id };
+    } catch {
+      reservation.release();
+      return { queued: false, reason: 'no_handler' };
+    }
+  }
+
+  /** Readiness facts for the Overview (spec 06 D16). Never throws. */
+  async getIndexReadiness(repoId: string): Promise<IndexReadiness> {
+    const inFlight = this.indexGate.isBusy(repoId);
+    const enabled = this.container.config.repoIntelEnabled;
+    const [basics, state] = await Promise.all([
+      this.repo.getRepoBasics(repoId).catch(() => null),
+      this.repo.tryGetIndexState(repoId),
+    ]);
+    let cloneHead: string | null = null;
+    if (basics?.clonePath) {
+      try {
+        cloneHead = await this.container.git.currentHead({ owner: basics.owner, name: basics.name });
+      } catch {
+        cloneHead = null;
+      }
+    }
+    return {
+      enabled,
+      cloneHead,
+      state,
+      versionCurrent: state?.indexerVersion === INDEXER_VERSION,
+      inFlight,
+    };
+  }
+
+  /**
+   * Run a handler body under the repo's gate. A body that finds another one
+   * running records `contendedAs` as a trailing pass and returns; the gate
+   * enqueues that pass as a new job once the repo is idle (`dispatchTrailing`).
+   */
+  private async runGated(repoId: string, contendedAs: IndexTrailing, body: () => Promise<unknown>): Promise<void> {
+    await this.indexGate.runExclusive(repoId, contendedAs, async () => {
+      await body();
+    });
+  }
 
   /**
    * Run a full index of the repo INLINE (no enqueue). The job handler for
@@ -140,7 +266,7 @@ export class RepoIntelService implements RepoIntel {
    * correct — never a destructive re-clone. Degrades (never throws) when the
    * repo isn't cloned yet or the fetch fails.
    */
-  async resyncRepo(repoId: string): Promise<IndexResult> {
+  async resyncRepo(repoId: string, opts: { full?: boolean } = {}): Promise<IndexResult> {
     const startedAt = Date.now();
     const repo = await this.repo.getRepoBasics(repoId);
     if (!repo || !repo.clonePath) {
@@ -158,11 +284,13 @@ export class RepoIntelService implements RepoIntel {
         reason: `sync_failed:${err instanceof Error ? err.message : String(err)}`,
       };
     }
+    // `full`: a coalesced full-index request rode along with this resync.
+    if (opts.full) return runFullIndex(this.container, this.repo, { repoId });
     return runIncremental(this.container, this.repo, { repoId });
   }
 
   /**
-   * Register the INDEX_JOB_KIND + REFRESH_JOB_KIND handlers on the JobRunner.
+   * Register the INDEX_JOB_KIND, REFRESH_JOB_KIND and RESYNC_JOB_KIND handlers on the JobRunner.
    * Mirrors `RepoService.registerCloneJobHandler` so the registration is an
    * explicit one-shot at app startup (`repoIntel/routes.ts` invokes this).
    *
@@ -170,14 +298,21 @@ export class RepoIntelService implements RepoIntel {
    * `Promise<void>`. Status/progress is observable via `repo_index_state`.
    */
   registerIndexJobHandlers(): void {
+    // Each body runs under the per-repo gate (spec 06 D3): never two index
+    // pipelines for one repo at once, even when a timeout freed the job slot.
+    // A contended handler keeps its own kind as the trailing pass (spec 06 AC-10).
     this.container.jobs.register(INDEX_JOB_KIND, async (payload) => {
-      await this.indexRepo((payload as IndexPayload).repoId);
+      const { repoId, workspaceId } = payload as IndexJobPayload;
+      await this.runGated(repoId, trailingFor('index', workspaceId), () => this.indexRepo(repoId));
     });
     this.container.jobs.register(REFRESH_JOB_KIND, async (payload) => {
-      await this.refreshIndex((payload as IndexPayload).repoId);
+      const { repoId, workspaceId } = payload as IndexJobPayload;
+      await this.runGated(repoId, trailingFor('refresh', workspaceId), () => this.refreshIndex(repoId));
     });
     this.container.jobs.register(RESYNC_JOB_KIND, async (payload) => {
-      await this.resyncRepo((payload as IndexPayload).repoId);
+      const { repoId, workspaceId, full } = payload as IndexJobPayload;
+      const contendedAs = { ...trailingFor('resync', workspaceId), full: full === true };
+      await this.runGated(repoId, contendedAs, () => this.resyncRepo(repoId, { full: full === true }));
     });
   }
 
@@ -199,6 +334,7 @@ export class RepoIntelService implements RepoIntel {
       lastIndexedSha: '',
       indexerVersion: INDEXER_VERSION,
       updatedAt: new Date(0),
+      lastIndexedAt: null,
       degraded: true,
       degradedReason: 'no_data',
     };

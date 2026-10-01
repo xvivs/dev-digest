@@ -55,7 +55,15 @@ export const s = {
     overflow: "hidden",
     textOverflow: "ellipsis",
   } satisfies CSSProperties,
-  metaRow: { display: "flex", alignItems: "center", gap: 8 } satisfies CSSProperties,
+  metaRow: {
+    display: "flex",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: 8,
+    minWidth: 0,
+  } satisfies CSSProperties,
+  /** Keeps the skills badge whole; at very narrow widths the row wraps it below the model. */
+  skillBadge: { flexShrink: 0, whiteSpace: "nowrap" } satisfies CSSProperties,
   modelChip: (color: string): CSSProperties => ({
     fontSize: 12,
     fontWeight: 600,
@@ -63,5 +71,7 @@ export const s = {
     background: color + "1a",
     padding: "1px 8px",
     borderRadius: 4,
+    minWidth: 0,
+    overflowWrap: "anywhere",
   }),
 } as const;

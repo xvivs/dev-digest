@@ -1,0 +1,1 @@
+export { ScrollFadeRegion } from "./ScrollFadeRegion";

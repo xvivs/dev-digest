@@ -56,7 +56,21 @@ function DropdownItem({ it, onActivate }: { it: DropdownItemDef; onActivate: () 
       >
         {I && <I size={14} style={{ color: "var(--text-muted)", flexShrink: 0 }} />}
         <span style={{ flex: 1 }}>{it.label}</span>
-        {it.hint && <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{it.hint}</span>}
+        {it.hint && (
+          <span
+            title={it.hint}
+            style={{
+              minWidth: 0,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+              fontSize: 12,
+              color: "var(--text-muted)",
+            }}
+          >
+            {it.hint}
+          </span>
+        )}
       </button>
       {it.onRemove && (
         <span style={{ display: "inline-flex", marginRight: 8 }}>

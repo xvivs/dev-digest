@@ -8,7 +8,8 @@
  * the chrome (AppShell, repo context) are stubbed.
  */
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { screen, cleanup, fireEvent, waitFor } from "@testing-library/react";
+import { screen, cleanup, waitFor, act } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import prReview from "@/../messages/en/prReview.json";
 import cost from "@/../messages/en/cost.json";
 import findings from "@/../messages/en/findings.json";
@@ -75,6 +76,17 @@ const routes: Record<string, unknown> = {
   "/pulls/pr-uuid/reviews": [REVIEW],
   "/pulls/pr-uuid/runs/active": [],
   "/pulls/pr-uuid/runs": [],
+  "/pulls/pr-uuid/comments": [],
+  "/pulls/pr-uuid/smart-diff": {
+    groups: [
+      { role: "core", files: [{ path: "src/a.ts", additions: 2, deletions: 1, finding_lines: [] }] },
+      { role: "tests", files: [] },
+      { role: "wiring", files: [] },
+      { role: "docs", files: [] },
+      { role: "boilerplate", files: [] },
+    ],
+    split_suggestion: { too_big: false, total_lines: 3, proposed_splits: [] },
+  },
   "/agents": [{ id: "a1", name: "Security", model: "gpt-4.1", enabled: true }],
 };
 
@@ -106,6 +118,7 @@ afterEach(() => {
   repoNotFound = false;
   replace.mockReset();
   post.mockClear();
+  routes["/pulls/pr-uuid"] = PR;
 });
 
 function renderView() {
@@ -128,8 +141,10 @@ describe("PrDetailView", () => {
 
   it("starting a review switches to the runs tab and refetches each run query exactly once", async () => {
     search = new URLSearchParams("tab=overview");
+    const user = userEvent.setup();
     renderView();
-    expect(await screen.findByText("Adds a token bucket.")).toBeInTheDocument();
+    // The Overview tab is up once its Intent block heading renders.
+    expect(await screen.findByText(brief.block.intent)).toBeInTheDocument();
     await waitFor(() => expect(gets("/pulls/pr-uuid/runs/active")).toBeGreaterThan(0));
     const before = {
       active: gets("/pulls/pr-uuid/runs/active"),
@@ -137,8 +152,8 @@ describe("PrDetailView", () => {
       reviews: gets("/pulls/pr-uuid/reviews"),
     };
 
-    fireEvent.click(screen.getByRole("button", { name: /Run Review/ }));
-    fireEvent.click(await screen.findByRole("menuitem", { name: /Run all enabled agents/ }));
+    await user.click(screen.getByRole("button", { name: /Run Review/ }));
+    await user.click(await screen.findByRole("menuitem", { name: /Run all enabled agents/ }));
 
     expect(replace).toHaveBeenCalledWith("/repos/repo-1/pulls/482?tab=findings");
     await waitFor(() => expect(post).toHaveBeenCalledWith("/pulls/pr-uuid/review", { all: true }));
@@ -153,5 +168,57 @@ describe("PrDetailView", () => {
     renderView();
     expect(screen.queryByText("Review runs")).not.toBeInTheDocument();
     expect(screen.getByText(common.repoNotFound.title)).toBeInTheDocument();
+  });
+
+  // Re-render cost of the bar toggle (the bar must not re-render the diff) is
+  // not asserted here: render counts are an implementation detail, and the
+  // latency is covered by browser QA (bar toggle median 51ms).
+  it("showing/hiding the mobile condensed bar leaves the diff tab's state alone", async () => {
+    const user = userEvent.setup();
+    let fire: (past: boolean) => void = () => {};
+    vi.stubGlobal(
+      "IntersectionObserver",
+      class {
+        constructor(cb: (e: Partial<IntersectionObserverEntry>[]) => void) {
+          fire = (past) =>
+            cb([{ isIntersecting: !past, boundingClientRect: { top: past ? -5 : 5 } as DOMRectReadOnly, rootBounds: { top: 0 } as DOMRectReadOnly }]);
+        }
+        observe() {}
+        disconnect() {}
+      },
+    );
+    vi.stubGlobal("matchMedia", (q: string) => ({
+      matches: q === "(max-width: 767px)",
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    }));
+    try {
+      search = new URLSearchParams("tab=diff");
+      routes["/pulls/pr-uuid"] = {
+        ...PR,
+        files: [{ path: "src/a.ts", additions: 2, deletions: 1, patch: "@@ -1,2 +1,3 @@\n const a = 1;\n-const b = 2;\n+const b = 3;\n+const c = 4;" }],
+      };
+      renderView();
+      const title = "#482 Add rate limiting to public API endpoints";
+      const barTitle = () => screen.queryByRole("button", { name: title });
+
+      // The diff is open by default; the user collapses the file (once grouping has loaded).
+      await screen.findByText("Core logic");
+      const file = screen.getByRole("button", { name: /src\/a\.ts/ });
+      expect(file).toHaveAttribute("aria-expanded", "true");
+      await user.click(file);
+      expect(file).toHaveAttribute("aria-expanded", "false");
+
+      // Hidden bar is out of the a11y tree.
+      expect(barTitle()).toBeNull();
+      act(() => fire(true));
+      expect(barTitle()).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /src\/a\.ts/ })).toHaveAttribute("aria-expanded", "false");
+      act(() => fire(false));
+      expect(barTitle()).toBeNull();
+      expect(screen.getByRole("button", { name: /src\/a\.ts/ })).toHaveAttribute("aria-expanded", "false");
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

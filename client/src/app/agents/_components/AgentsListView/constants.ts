@@ -4,7 +4,7 @@
 export const TEMPLATES = ["Security", "Performance", "Mentor", "Conformance", "Architecture"] as const;
 
 /** Card grid template (responsive auto-fill). */
-export const CARD_GRID_COLS = "repeat(auto-fill, minmax(280px, 1fr))";
+export const CARD_GRID_COLS = "repeat(auto-fill, minmax(min(280px, 100%), 1fr))";
 
 /** "Add Agent" dropdown width (px). */
 export const ADD_MENU_WIDTH = 220;

@@ -1,8 +1,11 @@
 import React from "react";
 import type { ShellContext } from "./types";
+import { DefaultLink } from "./DefaultLink";
+import { Logo } from "./Logo";
 import { SidebarContent } from "./SidebarContent";
 
 export function Sidebar({ ctx }: { ctx: ShellContext }) {
+  const Link = ctx.Link ?? DefaultLink;
   return (
     <aside
       className="dd-hide-below-md"
@@ -18,6 +21,11 @@ export function Sidebar({ ctx }: { ctx: ShellContext }) {
         overflow: "hidden",
       }}
     >
+      <Link href="/">
+        <div style={{ padding: "2px 5px 14px" }}>
+          <Logo />
+        </div>
+      </Link>
       <SidebarContent ctx={ctx} />
     </aside>
   );

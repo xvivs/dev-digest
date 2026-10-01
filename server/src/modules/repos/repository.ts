@@ -61,17 +61,20 @@ export class RepoRepository {
   }
 
   /**
-   * Look up the workspace owning a repo (by repo id, no tenancy scope —
-   * the JobRunner's `runCloneJob` is the only caller and it already trusted
-   * the payload that came out of an authenticated `add()`). Returns null
-   * if the repo was deleted before the followup ran.
+   * Workspace + clone path of a repo (by repo id, no tenancy scope — the
+   * JobRunner's `runCloneJob` is the only caller and it already trusted the
+   * payload that came out of an authenticated `add()`/`refresh()`). Read before
+   * cloning so the follow-up index knows whether this was a fresh clone.
+   * `undefined` if the repo was deleted before the job ran.
    */
-  async workspaceIdFor(repoId: string): Promise<string | null> {
+  async getCloneBasics(
+    repoId: string,
+  ): Promise<{ workspaceId: string; clonePath: string | null } | undefined> {
     const [row] = await this.db
-      .select({ workspaceId: t.repos.workspaceId })
+      .select({ workspaceId: t.repos.workspaceId, clonePath: t.repos.clonePath })
       .from(t.repos)
       .where(eq(t.repos.id, repoId));
-    return row?.workspaceId ?? null;
+    return row;
   }
 
   /** Persist the clone path and bump `last_polled_at` once a clone job completes. */

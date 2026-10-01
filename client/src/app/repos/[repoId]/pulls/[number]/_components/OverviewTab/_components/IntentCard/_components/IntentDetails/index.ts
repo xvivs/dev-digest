@@ -1,0 +1,1 @@
+export { IntentDetails } from "./IntentDetails";

@@ -2,13 +2,14 @@
 
 import React from "react";
 import { useTranslations } from "next-intl";
-import { EmptyState, ErrorState, Icon, SectionLabel, Skeleton } from "@devdigest/ui";
+import { ErrorState, Icon, Skeleton } from "@devdigest/ui";
 import { usePrReviews, usePrRuns } from "@/lib/hooks";
 import { RunCostValue } from "@/components/run-cost-value";
 import { VerdictBanner } from "@/app/repos/[repoId]/pulls/[number]/_components/VerdictBanner";
-import { formatTokenPair, selectLatestBrief } from "../../helpers";
+import { formatTokenArrow, formatTokenPair, selectLatestBrief } from "../../helpers";
 import { ICON_SIZE, SKELETON_HEIGHT } from "../../constants";
-import { s } from "../../styles";
+import { s as shared } from "../../styles";
+import { s } from "./styles";
 
 /**
  * The newest finished review as a verdict banner with its cost/tokens aside.
@@ -28,20 +29,30 @@ export function BriefSection({ prId }: { prId: string }) {
     if (reviews.isError) reviews.refetch();
   };
 
+  // Every hook is above this line: the early return below must stay last.
+  if (!isError && runs.isSuccess && runs.data.length === 0) return null;
+
   let body: React.ReactNode;
   if (isError) {
     body = <ErrorState title={t("error")} onRetry={retry} />;
   } else if (runs.isLoading || reviews.isLoading) {
     body = <Skeleton height={SKELETON_HEIGHT.brief} />;
   } else if (!brief) {
-    body = <EmptyState icon="Sparkles" title={t("noRun")} body={t("unavailableHint")} />;
+    body = (
+      <div style={s.briefEmpty}>
+        <Icon.Sparkles size={ICON_SIZE.inline} aria-hidden="true" />
+        <span style={s.briefEmptyTitle}>{t("noRun")}</span>
+        <span style={shared.muted}>{t("unavailableHint")}</span>
+      </div>
+    );
   } else {
     const { run, review, verdict, newerRun } = brief;
     const tokens = formatTokenPair(run.tokens_in, run.tokens_out);
+    const tokenArrow = formatTokenArrow(run.tokens_in, run.tokens_out);
     body = (
       <>
         {newerRun && (
-          <div style={s.notice} role="status">
+          <div style={shared.notice} role="status">
             <Icon.Info size={ICON_SIZE.section} aria-hidden="true" />
             <span>{t(`newerRun.${newerRun}`)}</span>
           </div>
@@ -54,16 +65,17 @@ export function BriefSection({ prId }: { prId: string }) {
           blockers={run.blockers ?? 0}
           agentName={review.agent_name}
           aside={
-            <>
-              <span>
+            <span style={s.cost} title={tokens ? t("tokens", tokens) : undefined}>
+              <Icon.DollarSign size={ICON_SIZE.inline} aria-hidden="true" style={s.costIcon} />
+              <span style={s.costAmount}>
                 <RunCostValue
                   usd={run.cost_usd}
                   source={run.cost_source}
                   missingReason={run.cost_missing_reason}
                 />
               </span>
-              {tokens && <span>{t("tokens", tokens)}</span>}
-            </>
+              {tokenArrow && <span aria-label={tokens ? t("tokens", tokens) : undefined}>{tokenArrow}</span>}
+            </span>
           }
         />
       </>
@@ -72,7 +84,10 @@ export function BriefSection({ prId }: { prId: string }) {
 
   return (
     <section style={s.col}>
-      <SectionLabel icon="Sparkles">{t("section")}</SectionLabel>
+      <div style={s.briefLabel}>
+        <Icon.FileText size={ICON_SIZE.inline} aria-hidden="true" />
+        <span>{t("section")}</span>
+      </div>
       {body}
     </section>
   );

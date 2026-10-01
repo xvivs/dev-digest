@@ -10,12 +10,19 @@ import { useTranslations } from "next-intl";
 import {
   AppFrame,
   CommandPalette,
+  DRAWER_FADE_MS,
+  DRAWER_REVEAL_MS,
   Drawer,
+  HomeNavItem,
   NAV_DRAWER_WIDTH,
   ShortcutsHelp,
   SidebarContent,
+  VisuallyHidden,
+  usePrefersReducedMotion,
   type Crumb,
+  type NavOrigin,
 } from "@devdigest/ui";
+import { DRAWER_TOP_INSET } from "./styles";
 import { useGlobalShortcuts, useShellCommands, useShellContext } from "./hooks";
 
 export function AppShell({ children, crumb }: { children: React.ReactNode; crumb?: Crumb[] }) {
@@ -27,34 +34,71 @@ export function AppShell({ children, crumb }: { children: React.ReactNode; crumb
   const closeHelp = React.useCallback(() => setHelpOpen(false), []);
   const t = useTranslations("shell");
   const pathname = usePathname();
-  const [navOpen, setNavOpen] = React.useState(false);
+  // "closing" keeps the drawer mounted while its exit animation plays.
+  const [navStatus, setNavStatus] = React.useState<"closed" | "open" | "closing">("closed");
+  const [navOrigin, setNavOrigin] = React.useState<NavOrigin | null>(null);
   const [prevPathname, setPrevPathname] = React.useState(pathname);
-  const openNav = React.useCallback(() => setNavOpen(true), []);
-  const closeNav = React.useCallback(() => setNavOpen(false), []);
+  const navDrawerId = React.useId();
+  const navTriggerRef = React.useRef<HTMLButtonElement>(null);
+  const reducedMotion = usePrefersReducedMotion();
+  const navOpen = navStatus === "open";
+  // Return focus to the logo on every close path. The Drawer's useDialogFocus
+  // restores the previously active element (not the trigger when the click did
+  // not focus it: Safari never focuses buttons on click) from an effect cleanup
+  // that runs after this handler, so focus is moved on the next frame, after it.
+  const closeNav = React.useCallback(() => {
+    if (!navOpen) return;
+    setNavStatus("closing");
+    requestAnimationFrame(() => navTriggerRef.current?.focus());
+  }, [navOpen]);
+  const toggleNav = React.useCallback(
+    (origin: NavOrigin) => {
+      if (navOpen) return closeNav();
+      setNavOrigin(origin);
+      setNavStatus("open");
+    },
+    [navOpen, closeNav],
+  );
   // Close the drawer on any route change (repo switch, g-chord, Back): adjust
   // state during render rather than in an effect.
   if (pathname !== prevPathname) {
     setPrevPathname(pathname);
-    setNavOpen(false);
+    setNavStatus("closed");
   }
+  // Unmount once the exit animation is over (timer = external system).
+  React.useEffect(() => {
+    if (navStatus !== "closing") return;
+    const id = setTimeout(() => setNavStatus("closed"), reducedMotion ? DRAWER_FADE_MS : DRAWER_REVEAL_MS);
+    return () => clearTimeout(id);
+  }, [navStatus, reducedMotion]);
 
   useGlobalShortcuts({ onOpenPalette: openPalette, onOpenHelp: openHelp });
   const commands = useShellCommands();
-  const ctx = useShellContext({ onOpenCommandPalette: openPalette, onOpenNav: openNav });
+  const ctx = useShellContext({
+    onOpenCommandPalette: openPalette,
+    onToggleNav: toggleNav,
+    navOpen,
+    navDrawerId,
+    navTriggerRef,
+  });
 
   return (
     <>
       <AppFrame ctx={ctx} crumb={crumb}>
         {children}
       </AppFrame>
-      {navOpen && (
+      {navStatus !== "closed" && (
         <Drawer
+          id={navDrawerId}
           side="left"
           width={NAV_DRAWER_WIDTH}
-          title={t("navDrawer.title")}
+          title={<VisuallyHidden>{t("navDrawer.title")}</VisuallyHidden>}
           closeLabel={t("ui.close")}
           onClose={closeNav}
+          motion={navOrigin ? { kind: "reveal", origin: navOrigin, exiting: navStatus === "closing" } : undefined}
+          topInset={DRAWER_TOP_INSET}
         >
+          <HomeNavItem ctx={ctx} label={t("navDrawer.home")} active={pathname === "/"} onNavigate={closeNav} />
           <SidebarContent ctx={ctx} onNavigate={closeNav} />
         </Drawer>
       )}

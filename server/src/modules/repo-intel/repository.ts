@@ -17,10 +17,40 @@ import { and, asc, desc, eq, inArray, isNotNull, sql } from 'drizzle-orm';
 import type { Db } from '../../db/client.js';
 import * as t from '../../db/schema.js';
 import { clampIndexedName } from '../../db/schema/context.js';
-import type { DegradedReason, FileRankRow, IndexState, IndexStatus } from './types.js';
+import type {
+  DegradedReason,
+  FileRankRow,
+  IndexState,
+  IndexStatus,
+  PartialReasonValue,
+} from './types.js';
 
 /** Chunk size for batched inserts — same value blast already uses. */
 const INSERT_CHUNK_SIZE = 500;
+
+const PARTIAL_REASONS: ReadonlySet<string> = new Set<PartialReasonValue>([
+  'soft_budget',
+  'graph_failed',
+  'parse_errors',
+  'no_files',
+]);
+
+/**
+ * Why a row is `partial`, from the stats keys the pipeline writes
+ * (`full.ts` / `incremental.ts`). First match wins; the run's own signals beat
+ * `partialReason`, the reason an incremental carried over from the prior row.
+ * Unknown → undefined.
+ */
+export function partialReasonOf(stats: Record<string, unknown>): PartialReasonValue | undefined {
+  if (stats.softBudgetReached === true) return 'soft_budget';
+  if (stats.graphFailed) return 'graph_failed';
+  if (Array.isArray(stats.parseDegraded) && stats.parseDegraded.length > 0) return 'parse_errors';
+  if (stats.reason === 'no_files') return 'no_files';
+  if (typeof stats.partialReason === 'string' && PARTIAL_REASONS.has(stats.partialReason)) {
+    return stats.partialReason as PartialReasonValue;
+  }
+  return undefined;
+}
 
 /** Row shape the indexer pipeline buffers up before persistence. */
 export interface IndexerSymbolRow {
@@ -52,6 +82,8 @@ export interface IndexStateUpsert {
   filesIndexed: number;
   filesSkipped: number;
   stats: Record<string, unknown>;
+  /** Set only by runs that re-read the clone at a HEAD; omitted = keep the previous value. */
+  lastIndexedAt?: Date;
 }
 
 /** Minimal repo shape the facade needs to call CodeIndex on a clone. */
@@ -226,6 +258,8 @@ export class RepoIntelRepository {
         lastIndexedSha: row.lastIndexedSha,
         indexerVersion: row.indexerVersion,
         updatedAt: row.updatedAt,
+        lastIndexedAt: row.lastIndexedAt ?? null,
+        partialReason: partialReasonOf(stats),
         degraded: isDegraded ? true : undefined,
         degradedReason: isDegraded
           ? ((stats.degradedReason as DegradedReason | undefined) ?? 'index_failed')
@@ -304,6 +338,7 @@ export class RepoIntelRepository {
         filesSkipped: state.filesSkipped,
         stats: state.stats,
         updatedAt: now,
+        ...(state.lastIndexedAt ? { lastIndexedAt: state.lastIndexedAt } : {}),
       })
       .onConflictDoUpdate({
         target: t.repoIndexState.repoId,
@@ -315,6 +350,8 @@ export class RepoIntelRepository {
           filesSkipped: state.filesSkipped,
           stats: state.stats,
           updatedAt: now,
+          // Omitted when absent so a write that did not re-read the clone keeps the old time.
+          ...(state.lastIndexedAt ? { lastIndexedAt: state.lastIndexedAt } : {}),
         },
       });
   }
@@ -337,9 +374,10 @@ export class RepoIntelRepository {
    * incremental when the diff intersection is empty: code didn't change in
    * any indexed extension, but we still want to remember the new sha. */
   async advanceSha(repoId: string, sha: string): Promise<void> {
+    const now = new Date();
     await this.db
       .update(t.repoIndexState)
-      .set({ lastIndexedSha: sha, updatedAt: new Date() })
+      .set({ lastIndexedSha: sha, updatedAt: now, lastIndexedAt: now })
       .where(eq(t.repoIndexState.repoId, repoId));
   }
 

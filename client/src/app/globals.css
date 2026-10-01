@@ -22,3 +22,48 @@
     transform: translateY(0);
   }
 }
+
+/* PR detail header tokens (route pulls/[number]). Route-specific, so they live
+   here and not in the design-system stylesheet; mobile overrides below md. */
+:root {
+  --dd-prh-pad: 18px 32px 0;
+  --dd-prh-row-gap: 18px;
+  --dd-prh-title-basis: 240px;
+  --dd-prh-h1-size: 22px;
+  --dd-prh-h1-gap: 12px;
+  --dd-prh-num-size: 18px;
+  --dd-prh-title-lines: none;
+  --dd-prh-meta-margin: 10px 0 14px;
+  --dd-prh-meta-pad: 0;
+  --dd-prh-meta-gap: 14px;
+  --dd-prh-meta-size: 13px;
+  --dd-prh-branch-size: 12px;
+  --dd-prh-branch-max: none;
+  --dd-prh-actions-gap: 10px;
+  --dd-blast-caller-dir: row;
+  --dd-blast-caller-align: baseline;
+  --dd-blast-caller-gap: 8px;
+  --dd-blast-caller-name-max: 60%;
+}
+@media (max-width: 767px) {
+  :root {
+    --dd-prh-pad: 10px 14px 0;
+    --dd-prh-row-gap: 10px;
+    --dd-prh-title-basis: 0px;
+    --dd-prh-h1-size: 16px;
+    --dd-prh-h1-gap: 8px;
+    --dd-prh-num-size: 14px;
+    --dd-prh-title-lines: 2;
+    --dd-prh-meta-margin: 0;
+    --dd-prh-meta-pad: 6px 0 10px;
+    --dd-prh-meta-gap: 4px 10px;
+    --dd-prh-meta-size: 12px;
+    --dd-prh-branch-size: 11.5px;
+    --dd-prh-branch-max: 120px;
+    --dd-prh-actions-gap: 6px;
+    --dd-blast-caller-dir: column;
+    --dd-blast-caller-align: flex-start;
+    --dd-blast-caller-gap: 2px;
+    --dd-blast-caller-name-max: 100%;
+  }
+}

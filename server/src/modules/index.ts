@@ -13,6 +13,7 @@ import evals from './evals/routes.js';
 import brief from './brief/routes.js';
 import blast from './blast/routes.js';
 import history from './history/routes.js';
+import overview from './overview/routes.js';
 
 /**
  * Module registry. Each feature module is a Fastify plugin in
@@ -42,4 +43,5 @@ export const modules: Record<string, FastifyPluginAsync> = {
   brief,
   blast,
   history,
+  overview,
 };

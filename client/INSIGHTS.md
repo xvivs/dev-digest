@@ -46,6 +46,8 @@ lives in the engineering-insights skill).
 
 - **Catch a polled query's running → terminal transition inside its `queryFn`, by comparing against `queryClient.getQueryData(key)`, not in a `useEffect` over `data.status`** — `useEvalSuite` (`client/src/lib/hooks/evals.ts:133`) invalidates stats, the skill and the list exactly once per transition, and needs no ref or effect. The catch is a suite that finishes before the first poll: nothing is cached to compare against. `useStartEvalSuite` therefore seeds the detail cache as `running` from the start response (`seedSuiteDetail`). _(2026-09-29)_
 
+- **Keep transient scroll-driven UI state in the smallest subtree: the condensed-bar flag lives in `PrDetailHeader`, not `PrDetailContent`** — lifting it up re-rendered the whole diff on every toggle (284ms bar lag on a 100-file PR, per commit `4963d9f`); `useCondensedHeader` is called at `client/src/app/repos/[repoId]/pulls/[number]/_components/PrDetailHeader/PrDetailHeader.tsx:49`. _(2026-10-01)_
+
 ## What Doesn't Work
 
 - **`IconBtn` is the wrong primitive for a row's trailing actions, and its `danger` prop has zero call sites** — `src/vendor/ui/primitives/IconBtn.tsx:36` already encodes exactly the hover colours a delete glyph wants (`danger && h ? var(--crit) : h ? var(--text-primary) : var(--text-secondary)`), which makes it look like the obvious reuse. It is not: it also forces a `size × size` box (default 30, vs ~19 for a bare 15px glyph) and its own `var(--bg-hover)` fill, both of which fight the "bare glyphs, no button chrome" rule the timeline row is built on. Meanwhile `grep -r '<IconBtn' src` shows the `danger` prop used nowhere, while four hand-rolled trash buttons sit at a static `var(--text-muted)` with no hover at all (`app/agents/_components/AgentCard/AgentCard.tsx:41`, `pulls/[number]/_components/ReviewRunAccordion/ReviewRunAccordion.tsx:117`, `vendor/ui/kit/Dropdown.tsx:35`). Read that prop as an unused sketch, not a convention — the timeline row uses a local `RunHistory/_components/RowAction/` that keeps the glyph bare and only swaps `color`. _(2026-09-20)_
@@ -55,6 +57,10 @@ lives in the engineering-insights skill).
 - **A stretched-link row (absolute `inset: 0` span inside the title `<a>`) breaks every e2e click on that link — `agent-browser find text|role … click` reports `✗ Element not found` and never navigates, while RTL tests and a manual DOM hit-test (`elementFromPoint` lands on the span, inside the link) are both fine** — reproduced with agent-browser 0.27.0 against `PRRow`; removing only the span made the same command pass. 6 of 10 flows failed on it (every flow that opens a PR by title). `PRRow` now keeps the title as a plain `next/link` (keyboard, middle-click) plus a mouse-only row `onClick` → `router.push`, skipping clicks inside `a, button` (`client/src/app/repos/[repoId]/pulls/_components/PRRow/PRRow.tsx`). Don't reintroduce the overlay without re-running `./scripts/e2e.sh`. _(2026-09-28)_
 
 - **Gating a response schema behind `process.env.NODE_ENV !== "production"` does NOT drop zod from the production bundle** — the contract modules call `z.object(...)` at module top level and the vendored folder has no `sideEffects: false`, so webpack keeps them whatever the call site does. Measured with `next build` (Next 15.5): +15 kB First Load JS on every route once `src/lib/hooks/skills.ts` imports schemas, and 227 kB vs 226 kB for `/skills` with the NODE_ENV-gated variant. Every route pays it because every page imports the `@/lib/hooks` barrel. Only a `sideEffects` declaration or keeping schema-using hooks out of the barrel would change that. _(2026-09-29)_
+
+- **Checklist-style browser QA ("structure as in design: PASS") misses small visual gaps — the VerdictBanner aside passed with no divider under "PR SCORE", a single-colour cost row and the wrong token format** — the human caught it. The gaps were fixed in `client/src/app/repos/[repoId]/pulls/[number]/_components/VerdictBanner/VerdictBanner.tsx:63` (divider) and `OverviewTab/_components/BriefSection/BriefSection.tsx` (cost row). What caught everything on the re-check: give QA a cropped design fragment (`client/specs/assets/verdict-banner-design.png`), ask for an element-by-element table, and require computed `color`/`font-weight`/`font-size` via `evaluate_script`. A spec step that says only "cost line under the score" is too vague to verify. _(2026-10-01)_
+
+- **A `ResizeObserver` subscribed to a scroll region's children at mount misses content that is swapped later (Tree ↔ Graph in Blast Radius), so derived UI such as the bottom fade goes stale until the next scroll.** Observe the scroll container plus one stable inner wrapper that wraps the swappable children (`ScrollFadeRegion/hooks/useScrollFade.ts:9,26`); the regression test uses a controlled ResizeObserver that reports only elements actually observed, which is what makes the stale child detectable. _(2026-10-01)_
 
 ## Codebase Patterns
 
@@ -104,6 +110,20 @@ lives in the engineering-insights skill).
 
 - **`Modal` (`@devdigest/ui`) gives its body no padding; each caller's body style carries `padding: 24` to line up with the 24px header and footer** — `client/src/vendor/ui/kit/Modal.tsx:81` renders `{children}` in a bare scroll container, while `VetSkillModal/styles.ts:5` sets `body: { padding: 24 }`. A body without it sits flush against the dialog border. Tests stay green; only a browser shows it (the Evals modals shipped this way until `d3f8734`). _(2026-09-29)_
 
+- **Nested sticky elements on the PR page need an offset and an opaque background, because `PrDetailHeader` is already `sticky; top: 0; z-index: 5` inside the scrolling `<main>`** — header at `src/app/repos/[repoId]/pulls/[number]/_components/PrDetailHeader/styles.ts:4-8`, scroll container `overflow: "auto"` at `src/vendor/ui/shell/AppFrame.tsx:33`. A second sticky at `top: 0` slides under the header. Smart Diff measures the header with `useStickyOffset` into the CSS var `PR_HEADER_OFFSET_VAR` (`pulls/[number]/constants.ts:3`) and reads it as `top: var(--pr-header-h, 0px)` (`SmartDiffGroup/styles.ts:8`). _(2026-10-01)_
+
+- **Inside a `Disclosure`/`Collapse`, only the `headerStyle` row can be sticky — the body wrapper is permanently `overflow: hidden`** — `src/vendor/ui/primitives/Collapse.tsx:87` (documented at `:25`), which makes any sticky element in `children` stick to that clipped wrapper instead of the page scroller. Put the sticky style on the header row, not on content. _(2026-10-01)_
+
+- **`@devdigest/ui`'s `Severity` type includes `"INFO"`, which finding data never has — type maps over findings with `FindingRecord["severity"]`** — `export type Severity = FindingSeverity | "INFO"` (`src/vendor/ui/primitives/tokens.ts:11`); a `Record<Severity, …>` over finding data forces a dead INFO key. _(2026-10-01)_
+
+- **`DisclosureChevron` is a `ChevronDown` that rotates 180deg; the diff file cards use `ChevronRight` rotating 90deg — they are not interchangeable** — `src/vendor/ui/primitives/Disclosure.tsx:117-121` vs `src/components/diff-viewer/styles.ts:176` and `FileCard/FileCard.tsx:105` (Smart Diff copies the latter at `SmartDiffGroup/SmartDiffGroup.tsx:58`). Use the same glyph as the surrounding diff UI. _(2026-10-01)_
+
+- **React Compiler is NOT enabled in the client, so memoization rules apply manually (stable props for memoized children, `useMemo` for expensive derivations), while trivial filters need no `useMemo`** — `client/next.config.mjs` has no `reactCompiler` option and `client/package.json` has no `babel-plugin-react-compiler`. _(2026-10-01)_
+
+- **Exporting a value from `src/components/diff-viewer/index.ts` makes every consumer of a pure helper load the React/next-intl graph, including in vitest** — the barrel re-exports `DiffViewer` and `UnmatchedFindings` components next to the helpers `isActiveFinding`/`findingsForFile` (`index.ts:3-6`). Import pure helpers from their own file (`diff-viewer/findings.ts`) in logic code and tests. _(2026-10-01)_
+
+- **At a real 1440px viewport, each Overview card is only ~500px wide, not ~690px (sidebar plus content max-width), so any one-row header must fit in ~460px of content** — the blast stats row with the Tree/Graph toggle wrapped until stats went to 12px with gap 12 and "cron/jobs" became "cron" (`client/src/app/repos/[repoId]/pulls/[number]/_components/OverviewTab/_components/BlastRadiusCard/styles.ts:5`). The grid is `repeat(auto-fit, minmax(min(340px, 100%), 1fr))` (`OverviewTab/styles.ts:7`). Measure `offsetTop` of the row items via `evaluate_script` rather than eyeballing. _(2026-10-01)_
+
 ## Tool & Library Notes
 
 - In this worktree, `pnpm typecheck` / `pnpm test` / any `pnpm exec …` first
@@ -136,6 +156,14 @@ lives in the engineering-insights skill).
 - **next-intl `format.relativeTime(date)` without an explicit `now` logs `ENVIRONMENT_FALLBACK` in tests and client renders** — pass `format.relativeTime(date, new Date())` (or a `now` from `useNow`). Hit in the Conventions `ScanHeader` ("last scan X ago"), `client/src/app/repos/[repoId]/conventions/_components/ScanHeader/`. _(2026-09-29)_
 
 - **`@testing-library/user-event` 14.6.7 is now a client devDependency: `userEvent.setup()` replaces `fireEvent` for hover, keyboard activation and clicks** — added in `client/package.json` (commit `20ae36e`); with fake timers use `userEvent.setup({ advanceTimers: vi.advanceTimersByTime })`, and `setup()` also installs a working `navigator.clipboard`. This supersedes the "user-event is not a dependency" workarounds in the `fireEvent.mouseEnter` and `fireEvent.keyDown` entries. _(2026-09-30)_
+
+- **Under vitest fake timers, `userEvent.setup({ advanceTimers: vi.advanceTimersByTime })` hangs unless a `jest` global is stubbed** — RTL's asyncWrapper only advances fake timers when it sees `jest`; stub it with `vi.stubGlobal("jest", { advanceTimersByTime: ... })` as in `client/src/components/app-shell/AppShell.test.tsx:89-90`. _(2026-10-01)_
+
+- **Anything in a `vendor/ui` Drawer `title` becomes part of the dialog's accessible name; mark decorative title content `aria-hidden` and assert names exactly (`{ name: "Navigation" }`, not a regex, which hid the bug)** — `client/src/vendor/ui/kit/Drawer.tsx:84` sets `aria-labelledby` to the title id; exact-name assertion at `client/src/components/app-shell/AppShell.test.tsx:43`. _(2026-10-01)_
+
+- **The global `prefers-reduced-motion: reduce` rule shrinks every animation/transition duration to 0.01ms with `!important`, inline ones included, so a JS "reduced-motion fallback animation" never visibly plays — design reduced-motion branches as instant** — `client/src/vendor/ui/styles.css:411-417`; the Drawer's reduced fade (`DRAWER_FADE_MS`, `client/src/vendor/ui/kit/Drawer.tsx:7,60`) is overridden by it. _(2026-10-01)_
+
+- **`DevDigest Design.html` renders its artboards at runtime from a base64+gzip manifest, so `grep 'data-dc-slot="pr-overview"'` on the file returns 0 hits even though the slot exists in the browser** — the researcher had to decode the manifest to read the `pr-overview` JSX (`client/specs/research-pr-overview-design.md`), and lost the "PR brief" label on the way; the user found the slot via DevTools. Treat a browser screenshot of the artboard (`client/specs/assets/pr-overview-design.png`) as ground truth and use the decoded manifest only for exact sizes and tokens. _(2026-10-01)_
 
 ## Recurring Errors & Fixes
 
@@ -191,6 +219,16 @@ lives in the engineering-insights skill).
 - **In a working tree shared with a concurrent agent, `git rm <path>` stages the deletion right away, and a later `git add <other paths> && git commit` ships it with those files, even though you never named it** — `git commit` with no pathspec commits the whole index. That is how the PlaceholderTab deletion landed in the helpers refactor `4bd3ad0`, a commit whose `SkillEditor.tsx` still imports that component. Delete with plain `rm`, stage the deletion only in the commit that removes its last import, and run `git diff --cached --stat` before every commit. _(2026-09-29)_
 
 - **A merge that pairs this branch's `Tabs` (`role="tab"`, `client/src/vendor/ui/kit/Tabs.tsx`) with tests written on `main` fails them with `Unable to find an accessible element with the role "button" and name "…"`** — main's tests still query tab switches as buttons (`SkillEditorView.test.tsx`, `EvalsTab.test.tsx`); the component is fine, only the query needs `getByRole("tab", …)`. Also re-check client mirrors of server rules after such a merge: `restoreResetsVetting` (`VersionsTab/_components/RestoreVersionModal/helpers.ts:11`) had main's `imported`-only rule while the server resets `extracted` too (`server/src/modules/skills/domain.ts:234`), and no unit test caught it — only `skills-versions.it.test.ts`. _(2026-09-30)_
+
+- **Returning focus to a trigger after a `vendor/ui` Drawer closes: a synchronous `focus()` in the close handler loses, and `queueMicrotask` can too — use `requestAnimationFrame` plus an explicit trigger ref** — `useDialogFocus` restores focus in an effect cleanup (`client/src/vendor/ui/hooks/useDialogFocus.ts:146-150`) that runs after the close handler, and Safari never focuses buttons on click, so its remembered opener is empty there. Fix in `client/src/components/app-shell/AppShell.tsx:49-52` (`closeNav`, `navTriggerRef`). _(2026-10-01)_
+
+- **A sticky header that shrinks in flow inside the scroll container triggers browser scroll anchoring, and JS scroll compensation wobbles because it lags a frame — use the condensing pattern** — commit `8259f38` replaced the collapsing header (`6df5a33`) with a static full header plus a fixed-height bar in a zero-height sticky anchor (`PrDetailHeader/_components/CondensedBar/styles.ts:10-15`), and sets `overflow-anchor: none` on `<main>` as a guard (`PrDetailHeader/hooks/useCondensedHeader.ts:30-31`, under `client/src/app/repos/[repoId]/pulls/[number]/_components/`). Flow height never changes, so nothing is left to compensate. _(2026-10-01)_
+
+- **Measurements gated on `transitionrun` race a ResizeObserver: the event fires in the frame after the style change, while the ResizeObserver callback fires in the same frame** — seen in `useStickyOffset` (`.../PrDetailView/_components/PrDetailContent/hooks/useStickyOffset.ts:54` at commit `6df5a33`, code later removed — open it with `git show 6df5a33:<path>`). Don't gate layout reads on transition events. _(2026-10-01)_
+
+- **CSS grid `repeat(auto-fill, minmax(280px, 1fr))` overflows containers narrower than 280px — write `minmax(min(280px, 100%), 1fr)`** — fixed in `CARD_GRID_COLS` at `client/src/app/agents/_components/AgentsListView/constants.ts:7`. _(2026-10-01)_
+
+- **A test that opens a `Disclosure` whose body depends on a query must `await findByText` for the body after the click — finding the toggle button does not mean data has loaded** — the header `<button>` renders at once (`client/src/vendor/ui/primitives/Disclosure.tsx:90`) while the body shows a skeleton until the query resolves; `getByText` right after `fireEvent.click` failed in `PriorPrs.test.tsx:30` until switched to `findByText`. The same unmount-when-closed contract (`Disclosure.tsx:99`) makes "absent until opened" assertable with `queryByText`. _(2026-10-01)_
 
 ## Session Notes
 
@@ -251,6 +289,12 @@ Built the Evals tab. It shows the latest started suite's verdict and results lin
 
 ### 2026-09-30 — client session
 Shipped the Overview tab (brief, intent, risks, blast radius, prior PRs), the Settings auto-brief toggle and the mobile nav drawer (ADR 0024). Desktop is the supported target; narrow-width gaps are tracked in #10.
+
+### 2026-10-01 — client session
+Brought the PR Overview tab in line with the `pr-overview` design (spec `client/specs/03-pr-overview-design-parity.md`, commits bee1069..6d2bf04). Changes: PR brief label, hidden brief at zero runs, two-card grid, Intent restyle with a Details disclosure, risk pills, one-row blast stats, Prior PRs accordion, VerdictBanner aside, and the PR description block removed. Three pr-self-review rounds closed 1 HIGH and 12 MEDIUM; one MEDIUM was refuted as a false positive. Not verified in a browser: the compact "runs but no completed review" card and the blast tree with chips (dev DB has no such data).
+
+### 2026-10-01 — client session
+Added `PrepareOverview` (one-click Prepare with last-indexed tooltip, `reindex_partial` "Update index", clone-failure note, bounded auto-continuation via `nextContinuation`) and moved Refresh PR ownership into each card. Smart-diff fix: finding paths open and scroll to the file in Files changed, off-diff paths link to GitHub, punctuation-only suggestions are hidden. Browser check pending with the user.
 
 ## Open Questions
 

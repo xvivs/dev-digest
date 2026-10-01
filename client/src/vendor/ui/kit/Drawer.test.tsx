@@ -1,6 +1,7 @@
 import React from "react";
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { render, screen, cleanup, fireEvent } from "@testing-library/react";
+import { render, screen, cleanup } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { Drawer } from "./Drawer";
 
 afterEach(cleanup);
@@ -28,17 +29,17 @@ function Host({ onClose }: { onClose?: () => void }) {
   );
 }
 
-function openIt() {
+async function openIt(user: ReturnType<typeof userEvent.setup>) {
   const opener = screen.getByRole("button", { name: "open" });
-  opener.focus();
-  fireEvent.click(opener);
+  await user.click(opener); // a real click focuses the opener, which is what Drawer restores
   return opener;
 }
 
 describe("Drawer", () => {
-  it("is a modal dialog named by its title and described by its subtitle", () => {
+  it("is a modal dialog named by its title and described by its subtitle", async () => {
+    const user = userEvent.setup();
     render(<Host />);
-    openIt();
+    await openIt(user);
     const dialog = screen.getByRole("dialog", { name: "Example" });
     expect(dialog).toHaveAttribute("aria-modal", "true");
     expect(dialog).toHaveAccessibleDescription("Details");
@@ -49,31 +50,34 @@ describe("Drawer", () => {
     expect(screen.getByRole("dialog", { name: "Untitled" })).toBeInTheDocument();
   });
 
-  it("moves focus inside on open", () => {
+  it("moves focus inside on open", async () => {
+    const user = userEvent.setup();
     render(<Host />);
-    openIt();
+    await openIt(user);
     // First focusable in DOM order is the header's close button.
     expect(screen.getByRole("button", { name: "Close" })).toHaveFocus();
   });
 
-  it("closes on Escape and returns focus to the opener", () => {
+  it("closes on Escape and returns focus to the opener", async () => {
+    const user = userEvent.setup();
     const onClose = vi.fn();
     render(<Host onClose={onClose} />);
-    const opener = openIt();
+    const opener = await openIt(user);
 
-    fireEvent.keyDown(screen.getByRole("textbox", { name: "name" }), { key: "Escape" });
+    await user.keyboard("{Escape}");
 
     expect(onClose).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(opener).toHaveFocus();
   });
 
-  it("keeps Tab inside the dialog", () => {
+  it("keeps Tab inside the dialog", async () => {
+    const user = userEvent.setup();
     render(<Host />);
-    openIt();
-    const input = screen.getByRole("textbox", { name: "name" });
-    input.focus();
-    fireEvent.keyDown(input, { key: "Tab" });
+    await openIt(user);
+    await user.click(screen.getByRole("textbox", { name: "name" }));
+    expect(screen.getByRole("textbox", { name: "name" })).toHaveFocus();
+    await user.tab();
     expect(screen.getByRole("button", { name: "Close" })).toHaveFocus();
   });
 
@@ -85,4 +89,48 @@ describe("Drawer", () => {
     );
     expect(screen.getByRole("button", { name: "Schließen" })).toBeInTheDocument();
   });
+});
+
+describe("Drawer motion", () => {
+  const origin = { x: 23, y: 26 };
+
+  it("reveal: content is visible and Escape closes", async () => {
+    const user = userEvent.setup();
+    const onClose = vi.fn();
+    render(
+      <Drawer title="Nav" motion={{ kind: "reveal", origin, exiting: false }} onClose={onClose}>
+        <p>menu</p>
+      </Drawer>,
+    );
+    expect(screen.getByRole("dialog", { name: "Nav" })).toBeInTheDocument();
+    expect(screen.getByText("menu")).toBeVisible();
+    await user.keyboard("{Escape}");
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("reveal exiting: content stays visible but Escape no longer calls onClose", async () => {
+    const user = userEvent.setup();
+    const onClose = vi.fn();
+    render(
+      <Drawer title="Nav" motion={{ kind: "reveal", origin, exiting: true }} onClose={onClose}>
+        <p>menu</p>
+      </Drawer>,
+    );
+    expect(screen.getByRole("dialog", { name: "Nav" })).toBeInTheDocument();
+    expect(screen.getByText("menu")).toBeVisible();
+    await user.keyboard("{Escape}");
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("default (no motion): Escape closes", async () => {
+    const user = userEvent.setup();
+    const onClose = vi.fn();
+    render(<Drawer title="Nav" side="left" onClose={onClose} />);
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  // Not asserted (visual, browser-verified): the reveal origin, slide/reveal/fade animations, pointer-events while
+  // exiting, and the topInset header min-height.
 });

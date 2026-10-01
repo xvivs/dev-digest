@@ -18,9 +18,10 @@ import { FindingsTab } from "@/app/repos/[repoId]/pulls/[number]/_components/Fin
 import { DiffTab } from "@/app/repos/[repoId]/pulls/[number]/_components/DiffTab";
 import { RunTraceDrawer } from "@/app/repos/[repoId]/pulls/[number]/_components/RunTraceDrawer";
 import { PrDetailSkeleton } from "../PrDetailSkeleton";
-import { RUNS_TAB, type PrTab } from "../../constants";
+import { CONDENSED_BAR_HEIGHT, MOBILE_QUERY, RUNS_TAB, type PrTab } from "@/app/repos/[repoId]/pulls/[number]/constants";
 import { parseSeverity, parseTab, prDetailHref } from "../../helpers";
 import { s } from "../../styles";
+import { useMediaQuery, useStickyOffset } from "./hooks";
 
 export interface PrDetailContentProps {
   repoId: string;
@@ -41,6 +42,11 @@ export function PrDetailContent({ repoId, number, repoFullName }: PrDetailConten
   const { data: pr, isLoading: detailLoading, isError, error, refetch } = usePullDetail(prId);
   const isLoading = pullsLoading || (prId != null && detailLoading);
   const { data: reviews } = usePrReviews(prId);
+  const mobile = useMediaQuery(MOBILE_QUERY);
+  // Desktop: measured header height. Mobile: the condensed bar's fixed height.
+  const { setSource: setHeaderRef, setTarget: setBodyRef } = useStickyOffset(
+    mobile ? CONDENSED_BAR_HEIGHT : undefined,
+  );
 
   // Live run tracking is SERVER-SOURCED (agent_runs status='running'): survives
   // navigation AND reload, and self-clears via polling when runs finish.
@@ -94,6 +100,7 @@ export function PrDetailContent({ repoId, number, repoFullName }: PrDetailConten
   return (
     <>
       <PrDetailHeader
+        ref={setHeaderRef}
         pr={pr}
         prId={prId}
         tab={tab}
@@ -101,10 +108,11 @@ export function PrDetailContent({ repoId, number, repoFullName }: PrDetailConten
         githubUrl={repoFullName ? githubPrUrl(repoFullName, pr.number) : null}
         onSetTab={setTab}
         onRunStart={openRunsTab}
+        mobile={mobile}
       />
 
-      <div style={s.body}>
-        {tab === "overview" && prId && <OverviewTab prId={prId} pr={pr} />}
+      <div ref={setBodyRef} style={s.body}>
+        {tab === "overview" && prId && <OverviewTab prId={prId} />}
 
         {tab === "findings" && (
           <FindingsTab
@@ -124,7 +132,13 @@ export function PrDetailContent({ repoId, number, repoFullName }: PrDetailConten
         )}
 
         {tab === "diff" && (
-          <DiffTab prId={prId} filesCount={pr.files_count} files={pr.files} canComment={pr.status === "open"} />
+          <DiffTab
+            prId={prId}
+            headSha={pr.head_sha}
+            files={pr.files}
+            repoFullName={repoFullName}
+            canComment={pr.status === "open"}
+          />
         )}
       </div>
 

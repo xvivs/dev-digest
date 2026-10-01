@@ -62,11 +62,14 @@ export interface PrBriefFacade {
    * Queue a derivation. Every trigger except `on_demand` passes the automatic
    * gate first. Only `on_demand` rethrows an enqueue failure; the rest resolve
    * `{ queued: false }`. `undefined` = the PR is not in this workspace.
+   * `opts.onlyIfIdle` (Prepare overview, spec 06 D8): resolve `{ queued: false }`
+   * instead of enqueueing while a derivation for the PR is queued or running.
    */
   requestDerive(
     workspaceId: string,
     prId: string,
     trigger: BriefTrigger,
+    opts?: { onlyIfIdle?: boolean },
   ): Promise<{ queued: boolean } | undefined>;
   /** Schedule the open PRs of a repo that lack a current intent/risks row. Never rejects. */
   scheduleForRepo(workspaceId: string, repoId: string, trigger: ImportTrigger): Promise<void>;

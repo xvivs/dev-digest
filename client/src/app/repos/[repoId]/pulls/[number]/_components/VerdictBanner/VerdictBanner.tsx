@@ -6,7 +6,7 @@ import React from "react";
 import { useTranslations } from "next-intl";
 import { Icon, Badge, CircularScore } from "@devdigest/ui";
 import type { Verdict } from "@devdigest/shared";
-import { VERDICT_META } from "./constants";
+import { SCORE_SIZE, SCORE_STROKE, VERDICT_ICON_SIZE, VERDICT_META } from "./constants";
 import { s } from "./styles";
 
 export function VerdictBanner({
@@ -24,7 +24,7 @@ export function VerdictBanner({
   findingsCount: number;
   blockers: number;
   agentName?: string | null;
-  /** Optional column between the summary and the score (e.g. run cost / tokens). Independent of `score`. */
+  /** Optional mono line under the score (e.g. run cost / tokens). Independent of `score`. */
   aside?: React.ReactNode;
 }) {
   const t = useTranslations("prReview");
@@ -33,7 +33,7 @@ export function VerdictBanner({
   return (
     <div style={s.wrap}>
       <div style={s.iconBox(m.bg, m.c)}>
-        <VIcon size={22} />
+        <VIcon size={VERDICT_ICON_SIZE} />
       </div>
       <div style={s.main}>
         <div style={s.titleRow}>
@@ -50,11 +50,20 @@ export function VerdictBanner({
         </div>
         {summary && <p style={s.summary}>{summary}</p>}
       </div>
-      {aside && <div style={s.asideCol}>{aside}</div>}
-      {score != null && (
-        <div style={s.scoreCol}>
-          <CircularScore score={score} size={52} stroke={5} />
-          <span style={s.scoreLabel}>{t("verdict.prScore")}</span>
+      {(score != null || aside) && (
+        <div style={s.endCol}>
+          {score != null && (
+            <div style={s.scoreCol}>
+              <CircularScore score={score} size={SCORE_SIZE} stroke={SCORE_STROKE} />
+              <span style={s.scoreLabel}>{t("verdict.prScore")}</span>
+            </div>
+          )}
+          {aside && (
+            <>
+              {score != null && <hr style={s.asideDivider} />}
+              <div style={s.asideRow}>{aside}</div>
+            </>
+          )}
         </div>
       )}
     </div>

@@ -1,5 +1,6 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { screen, fireEvent, cleanup } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import type { FindingRecord } from "@devdigest/shared";
 import prReview from "@/../messages/en/prReview.json";
 import { renderWithProviders } from "@/test/render";
@@ -111,5 +112,38 @@ describe("FindingCard markdown hardening", () => {
     expect(docsLink).toHaveAttribute("href", "https://example.test/fix");
     expect(docsLink).toHaveAttribute("target", "_blank");
     expect(docsLink).toHaveAttribute("rel", "noopener noreferrer");
+  });
+});
+
+describe("FindingCard suggested fix", () => {
+  const renderWith = (suggestion: string | null) =>
+    renderCard(<FindingCard f={{ ...FINDING, suggestion }} defaultExpanded onAction={() => {}} />);
+
+  it.each([":", "  ", "- "])("hides the block for placeholder text %j", (suggestion) => {
+    renderWith(suggestion);
+    expect(screen.queryByText(prReview.finding.suggestedFix)).not.toBeInTheDocument();
+  });
+
+  it.each(["});", "```\n});\n```", "!="])("shows the block for code-only suggestion %j", (suggestion) => {
+    renderWith(suggestion);
+    expect(screen.getByText(prReview.finding.suggestedFix)).toBeInTheDocument();
+  });
+
+  it("shows the block for real text", () => {
+    renderWith("Move the key to an environment variable.");
+    expect(screen.getByText(prReview.finding.suggestedFix)).toBeInTheDocument();
+  });
+});
+
+describe("FindingCard file link", () => {
+  it("calls onOpenFile instead of linking to GitHub", async () => {
+    const user = userEvent.setup();
+    const onOpenFile = vi.fn();
+    renderCard(
+      <FindingCard f={FINDING} repoFullName="acme/api" headSha="abc" onOpenFile={onOpenFile} onAction={() => {}} />,
+    );
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /src\/config\.ts:11/ }));
+    expect(onOpenFile).toHaveBeenCalledTimes(1);
   });
 });

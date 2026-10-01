@@ -11,6 +11,14 @@ export const ICON_SIZE = { section: 15, inline: 13 } as const;
 export const BLAST_VIEWS = ["tree", "graph"] as const;
 export type BlastView = (typeof BLAST_VIEWS)[number];
 
+/** Icon per blast stat, in display order. */
+export const BLAST_STAT_ICON = {
+  symbols: "Code",
+  callers: "CornerDownRight",
+  endpoints: "Globe",
+  crons: "Clock",
+} as const satisfies Record<string, IconName>;
+
 /** Callers drawn in the SVG graph; the rest collapse into "+N more". */
 export const GRAPH_MAX_CALLERS = 8;
 
@@ -28,7 +36,7 @@ export const RISK_ICON: Record<RiskKind, IconName> = {
   deps: "Boxes",
 };
 
-/** Severity → text / background CSS vars (the label is always rendered too, never colour alone). */
+/** Severity → text / background CSS vars (colour is on the pill icon only; the word stays as visually hidden text). */
 export const RISK_SEVERITY_COLOR: Record<RiskSeverity, { c: string; bg: string }> = {
   high: { c: "var(--crit)", bg: "var(--crit-bg)" },
   medium: { c: "var(--warn)", bg: "var(--warn-bg)" },
@@ -40,6 +48,9 @@ export const CONFIDENCE_COLOR: Record<IntentConfidence, { c: string; bg: string 
   medium: { c: "var(--warn)", bg: "var(--warn-bg)" },
   low: { c: "var(--text-muted)", bg: "var(--bg-hover)" },
 };
+
+/** Confidence levels worth flagging with a badge; `high` is the unremarkable default. */
+export const CONFIDENCE_BADGE_LEVELS: readonly IntentConfidence[] = ["low", "medium"];
 
 /** Runs newer than the shown brief that warrant a notice. */
 export const NEWER_RUN_STATUSES = ["running", "failed", "cancelled"] as const;

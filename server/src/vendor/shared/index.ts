@@ -10,6 +10,7 @@
  *  - contracts/platform   Settings, ConnTestResult, Repo, PrMeta/PrDetail, SpecFile, …
  *  - contracts/cost       CostSource, CostMissingReason (cost provenance tagging)
  *  - contracts/skill-impact  SkillVersion, SkillStats, EvalExpectation, EvalSuite (skill impact)
+ *  - contracts/overview   PrOverviewReadiness, PrepareOverviewRequest/Response (spec 06)
  *  - adapters             adapter interfaces + ModelInfo
  *
  * Feature agents (A1–A6) and F2 import everything from here. The barrel is
@@ -28,4 +29,5 @@ export * from './contracts/observability.js';
 export * from './contracts/productionize.js';
 export * from './contracts/cost.js';
 export * from './contracts/skill-impact.js';
+export * from './contracts/overview.js';
 export * from './adapters.js';

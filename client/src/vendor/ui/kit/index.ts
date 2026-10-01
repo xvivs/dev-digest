@@ -1,5 +1,5 @@
 export type { TabDef, DropdownItemDef } from "./types";
-export { Drawer } from "./Drawer";
+export { Drawer, DRAWER_REVEAL_MS, DRAWER_FADE_MS } from "./Drawer";
 export { Modal } from "./Modal";
 export { Tabs } from "./Tabs";
 export { Dropdown } from "./Dropdown";

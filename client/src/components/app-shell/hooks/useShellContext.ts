@@ -4,7 +4,7 @@ import React from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { type ShellContext } from "@devdigest/ui";
+import { type NavOrigin, type ShellContext } from "@devdigest/ui";
 import { useTheme } from "@/lib/theme";
 import { useActiveRepo } from "@/lib/repo-context";
 import { usePulls, useDeleteRepo } from "@/lib/hooks";
@@ -13,7 +13,10 @@ import { activeKeyFor, toShellRepo } from "../helpers";
 
 interface ShellContextOptions {
   onOpenCommandPalette: () => void;
-  onOpenNav: () => void;
+  onToggleNav: (origin: NavOrigin) => void;
+  navOpen: boolean;
+  navDrawerId: string;
+  navTriggerRef: React.Ref<HTMLButtonElement>;
 }
 
 /**
@@ -21,7 +24,13 @@ interface ShellContextOptions {
  * list/active repo (mapped to the shell shape), theme, PR count, and the repo
  * selection / add / removal actions.
  */
-export function useShellContext({ onOpenCommandPalette, onOpenNav }: ShellContextOptions): ShellContext {
+export function useShellContext({
+  onOpenCommandPalette,
+  onToggleNav,
+  navOpen,
+  navDrawerId,
+  navTriggerRef,
+}: ShellContextOptions): ShellContext {
   const t = useTranslations("shell");
   const pathname = usePathname() ?? "/";
   const router = useRouter();
@@ -76,8 +85,11 @@ export function useShellContext({ onOpenCommandPalette, onOpenNav }: ShellContex
       theme,
       onToggleTheme: toggle,
       onOpenCommandPalette,
-      onOpenNav,
-      labels: { openNav: t("topbar.openNav"), search: t("topbar.search") },
+      onToggleNav,
+      navOpen,
+      navDrawerId,
+      navTriggerRef,
+      labels: { openNav: t("topbar.openNav"), closeNav: t("topbar.closeNav"), search: t("topbar.search") },
       onSelectRepo,
       onAddRepo,
       onRemoveRepo,
@@ -95,7 +107,10 @@ export function useShellContext({ onOpenCommandPalette, onOpenNav }: ShellContex
       theme,
       toggle,
       onOpenCommandPalette,
-      onOpenNav,
+      onToggleNav,
+      navOpen,
+      navDrawerId,
+      navTriggerRef,
       onSelectRepo,
       onAddRepo,
       onRemoveRepo,

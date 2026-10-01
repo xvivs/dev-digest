@@ -36,6 +36,8 @@ lives in the engineering-insights skill).
 
 - **In the skill editor, a click fired right after `scrollintoview` is lost, `scroll up` does not move the editor pane, and `find role button focus --name Save` exits non-zero** — the editor scrolls in its own container, not the window. On agent-browser 0.27.0 `click "button[aria-label='Restore v1']"` printed `✓ Done` without opening the popup, and a second identical click opened it. Working pattern: `scrollintoview <css>`, then `wait 500`, then click. The tab bar has no role or label; `main div:has(> button:nth-child(5):last-child)` is the only anchor (`e2e/specs/11-skills.flow.json:34-35,45-47`). _(2026-09-29)_
 
+- **`agent-browser open {BASE}/` right after a cold daemon start can fail with "Operation timed out. The page may still be loading", failing whichever flow happens to run first (seen on 01, 09, 10).** A flow has no way to retry `open`; re-running `./scripts/e2e.sh` passed 12/12 twice. A real fix is a retry at the runner level, not extra `wait` steps in flows. Also seen: two runner processes sharing one agent-browser session produce "daemon may be busy" and spurious `wait --url` timeouts. agent-browser 0.27.0. _(2026-10-01)_
+
 ## Recurring Errors & Fixes
 
 - **A flow fails on your dev DB with healthy code because the seed never repairs an existing repo — it inserts the demo repo only when it is missing** (`server/src/db/seed.ts:84`, `if (!repo)`). A database seeded before a fixture was widened keeps the old rows forever, and re-running `pnpm db:seed` does not touch them: live #482 carried 2 findings and `1/1 passed` grounding where `seed.ts` says 4 and `4/4`, so `wait --text "4 findings"` timed out against correct code. Symptom to pattern-match: a count assertion fails locally but the same flow passes under `./scripts/e2e.sh`, whose Postgres is ephemeral and therefore always matches `seed.ts`. Trust the hermetic run; do not "fix" the flow to match a stale database. _(2026-09-20)_
@@ -63,6 +65,9 @@ Extended `11-skills.flow.json` with Versions (diff, Restore popup, Cancel), Stat
 
 ### 2026-09-29 — e2e session
 Fixed the red `e2e web` job on PR #4: `11-skills` asserted UI removed or reworded by `e766787`, `f18ccec`, `0181a28`, `a79b082` (Versions Diff, Restore dialog, Evals copy); replaced each dropped check with one for the new behaviour and re-added Diff coverage on the v1 row. Added `scrollintoview` before the #482 title click in 02/04/05/10 (CI fold edge) and rewrote guard labels after the server gained a deterministic repo order. Result: 11/11 twice via `./scripts/e2e.sh`; CI not yet confirmed.
+
+### 2026-10-01 — e2e session
+Added `12-pr-overview-prepare.flow.json` (spec 06 AC-15: Prepare overview button on Overview, never clicked because the seeded repo has no clone) and hardened its start with `wait --load networkidle` before `wait --url /pulls`, as flow 01 does. Full `./scripts/e2e.sh` ended 12/12 on every final run; intermediate runs showed cold-start `open` flakes on unrelated flows.
 
 ## Open Questions
 

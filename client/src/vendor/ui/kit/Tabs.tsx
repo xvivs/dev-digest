@@ -9,7 +9,7 @@ export function Tabs({
   pad = "0 28px",
   ariaLabel,
 }: {
-  tabs: TabDef[];
+  tabs: readonly TabDef[];
   value: string;
   onChange: (k: string) => void;
   pad?: string;

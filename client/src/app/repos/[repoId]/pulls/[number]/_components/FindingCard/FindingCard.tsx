@@ -25,6 +25,7 @@ import {
 import type { FindingRecord, FindingActionKind } from "@devdigest/shared";
 import { lineLabel } from "@/components/findings-popover";
 import { githubBlobUrl } from "@/lib/github-urls";
+import { isPlaceholderSuggestion } from "./helpers";
 import { s } from "./styles";
 
 export function FindingCard({
@@ -35,6 +36,7 @@ export function FindingCard({
   pending,
   repoFullName,
   headSha,
+  onOpenFile,
 }: {
   f: FindingRecord;
   focused?: boolean;
@@ -43,11 +45,13 @@ export function FindingCard({
   pending?: boolean;
   repoFullName?: string | null;
   headSha?: string | null;
+  /** When set, the file:line link calls this instead of opening GitHub (Files changed tab, file is in the diff). */
+  onOpenFile?: () => void;
 }) {
   const t = useTranslations("prReview");
   const sevColor = SEV[f.severity].c;
   const fileHref =
-    repoFullName && headSha
+    !onOpenFile && repoFullName && headSha
       ? githubBlobUrl(repoFullName, headSha, f.file, f.start_line, f.end_line)
       : undefined;
   const accepted = !!f.accepted_at;
@@ -77,7 +81,7 @@ export function FindingCard({
         )}
         actions={
           <div style={s.metaRow}>
-            <MonoLink href={fileHref}>
+            <MonoLink href={fileHref} onClick={onOpenFile}>
               {f.file}:{lineLabel(f)}
             </MonoLink>
             <ConfidenceNum value={f.confidence} />
@@ -88,7 +92,7 @@ export function FindingCard({
           <div style={s.prose}>
             <Markdown safe>{f.rationale}</Markdown>
           </div>
-          {f.suggestion && (
+          {f.suggestion != null && !isPlaceholderSuggestion(f.suggestion) && (
             <div style={s.suggestionWrap}>
               <div style={s.suggestionLabel}>{t("finding.suggestedFix")}</div>
               <div style={s.prose}>

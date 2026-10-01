@@ -3,7 +3,8 @@
  * their arguments — no DB / network / `this`).
  */
 import type { Finding } from '@devdigest/shared';
-import type { FindingRow, PullRow, ReviewRow } from './repository.js';
+import type { FindingRow, PrFileRow, PullRow, ReviewRow } from './repository.js';
+import type { SmartDiffFileInput, SmartDiffReviewInput } from './domain.js';
 
 // reduceReviews + sliceDiff live in @devdigest/reviewer-core (pure engine logic
 // shared with the CI runner); re-exported here for backward-compatible imports.
@@ -70,6 +71,27 @@ export function reviewToDto(
     model: review.model,
     created_at: review.createdAt.toISOString(),
     findings: findings.map(findingRowToDto),
+  };
+}
+
+/** `pr_files` row → the plain shape `buildSmartDiff` groups. */
+export function toSmartDiffFile(row: PrFileRow): SmartDiffFileInput {
+  return { path: row.path, additions: row.additions, deletions: row.deletions };
+}
+
+/** Review + its finding rows → the plain shape `buildSmartDiff` reads. */
+export function toSmartDiffReview(input: {
+  review: ReviewRow;
+  findings: FindingRow[];
+}): SmartDiffReviewInput {
+  return {
+    agent_id: input.review.agentId,
+    created_at: input.review.createdAt.toISOString(),
+    findings: input.findings.map((f) => ({
+      file: f.file,
+      start_line: f.startLine,
+      dismissed_at: f.dismissedAt?.toISOString() ?? null,
+    })),
   };
 }
 

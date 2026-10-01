@@ -55,11 +55,12 @@ describe('clone failure handling', () => {
       secrets: { get: async () => 'ghp_SECRET' },
     } as unknown as Container;
 
-    const service = new RepoService(container);
-    (service as unknown as { repo: Partial<RepoRepository> }).repo = {
+    const repoStub: Partial<RepoRepository> = {
       findByFullName: async () => undefined,
       insert: async () => ({ id: 'r1', workspaceId: 'w1', owner: 'acme', name: 'payments-api', fullName: 'acme/payments-api', defaultBranch: 'main', clonePath: null, lastPolledAt: null, createdBy: 'u1' }),
+      getCloneBasics: async () => ({ workspaceId: 'w1', clonePath: null }),
     } as never;
+    const service = new RepoService(container, repoStub as RepoRepository);
     service.registerCloneJobHandler();
 
     const res = await service.add('w1', 'u1', 'https://github.com/acme/payments-api');

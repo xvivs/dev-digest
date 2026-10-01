@@ -27,13 +27,22 @@ export interface ShellContext {
   theme?: "dark" | "light";
   onToggleTheme?: () => void;
   onOpenCommandPalette?: () => void;
-  /** Opens the navigation drawer; the Topbar shows the burger only when set. */
-  onOpenNav?: () => void;
+  /**
+   * Toggles the navigation drawer; the Topbar shows the logo trigger only when
+   * set. `origin` is the logo mark's centre (viewport px) the drawer grows from.
+   */
+  onToggleNav?: (origin: NavOrigin) => void;
+  /** Drives the trigger's `aria-expanded` and open-state mark rotation. */
+  navOpen?: boolean;
+  /** id of the drawer dialog, for the trigger's `aria-controls`. */
+  navDrawerId?: string;
+  /** Attached to the trigger button so the host can return focus to it on close. */
+  navTriggerRef?: React.Ref<HTMLButtonElement>;
   /**
    * Translated Topbar labels (the design system has no i18n of its own).
    * Missing entries fall back to English.
    */
-  labels?: { openNav?: string; search?: string };
+  labels?: { openNav?: string; closeNav?: string; search?: string };
   onSelectRepo?: (id: string) => void;
   /** Invoked when the user picks "Add repository…" in the repo switcher. */
   onAddRepo?: () => void;
@@ -53,4 +62,10 @@ export interface Crumb {
   label: string;
   mono?: boolean;
   href?: string;
+}
+
+/** Viewport point (px) the nav drawer's reveal grows from. */
+export interface NavOrigin {
+  x: number;
+  y: number;
 }

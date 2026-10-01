@@ -1,22 +1,21 @@
 import type { Container } from '../../platform/container.js';
 import { type Repo } from '@devdigest/shared';
 import { NotFoundError } from '../../platform/errors.js';
-import { RepoRepository } from './repository.js';
-import { parseRepoUrl, withGitHubToken, toRepoDto } from './helpers.js';
+import { KeyedGate } from '../../platform/keyed-gate.js';
+import type { RepoRepository } from './repository.js';
+import { parseRepoUrl, withGitHubToken, toRepoDto, cloneUrlFor, classifyCloneFailure } from './helpers.js';
 import {
   CLONE_JOB_KIND,
   CLONE_DEPTH,
   GITHUB_TOKEN_SECRET,
 } from './constants.js';
-import {
-  INDEX_JOB_KIND,
-  REFRESH_JOB_KIND,
-} from '../repo-intel/constants.js';
+import type { CloneFailure, CloneRequestResult, CloneStatus, RepoCloneFacade } from './types.js';
 
 /**
  * F1 — repos service. Business logic for the Repositories feature:
  *   - add / list / refresh / remove
  *   - the asynchronous `clone` job (real `git clone` via the GitClient adapter)
+ *   - the `RepoCloneFacade` behind `container.repoClone` (spec 06 D5)
  *
  * No HTTP and no raw SQL live here — persistence goes through RepoRepository,
  * pure transforms through helpers.ts, literals through constants.ts.
@@ -30,11 +29,29 @@ export interface CloneJobPayload {
   url: string;
 }
 
-export class RepoService {
-  private repo: RepoRepository;
+export class RepoService implements RepoCloneFacade {
+  /**
+   * Per-repo clone gate (spec 06 D5), shared by the clone handler and the
+   * facade. Per instance: the container holds exactly one `RepoService`
+   * (`container.repoService`). A clone is never coalesced into a trailing
+   * pass, hence `never`. The logger is read at call time.
+   */
+  private readonly cloneGate: KeyedGate<never>;
+  /**
+   * Last clone failure per repo (AR-1). In memory on the container's single
+   * instance: it relies on a single API instance (ADR 0020) and is gone after
+   * a restart, which only means readiness stops explaining a past failure.
+   */
+  private readonly cloneFailures: Map<string, CloneFailure>;
 
-  constructor(private container: Container) {
-    this.repo = new RepoRepository(container.db);
+  constructor(
+    private container: Container,
+    private repo: RepoRepository,
+  ) {
+    // Assigned here, not as field initialisers: with `target: ES2022` fields
+    // are defined before parameter properties, so `this.container` would be unset.
+    this.cloneGate = new KeyedGate<never>((a) => a, { warn: (obj, msg) => this.container.logger?.warn(obj, msg) });
+    this.cloneFailures = new Map();
   }
 
   /**
@@ -44,37 +61,67 @@ export class RepoService {
    */
   registerCloneJobHandler(): void {
     this.container.jobs.register(CLONE_JOB_KIND, async (payload) => {
-      await this.runCloneJob(payload as CloneJobPayload);
+      const p = payload as CloneJobPayload;
+      // A contended clone handler returns without cloning: one clone per repo at a time.
+      await this.cloneGate.runExclusive(p.repoId, undefined, () => this.runCloneJob(p));
     });
   }
 
   async runCloneJob(payload: CloneJobPayload): Promise<void> {
     const { repoId, owner, name, url } = payload;
+    const failures = this.cloneFailures;
+    failures.delete(repoId); // a new attempt starts clean; success leaves it clean
+    // Read before cloning: a fresh clone gets a full index, an existing one
+    // (fetch only, HEAD does not move) an incremental refresh (spec 06 D4).
+    const before = await this.repo.getCloneBasics(repoId);
     const token = await this.container.secrets.get(GITHUB_TOKEN_SECRET);
     const cloneUrl = token ? withGitHubToken(url, token) : url;
-    const { path } = await this.container.git.clone({ owner, name }, cloneUrl, {
-      depth: CLONE_DEPTH,
-    });
-    await this.repo.updateClonePath(repoId, path);
+    try {
+      const { path } = await this.container.git.clone({ owner, name }, cloneUrl, {
+        depth: CLONE_DEPTH,
+      });
+      await this.repo.updateClonePath(repoId, path);
+    } catch (err) {
+      // Only the class is kept: the raw message may carry the URL or the token.
+      failures.set(repoId, { reason: classifyCloneFailure(err), at: new Date() });
+      throw err;
+    }
 
-    // T2.2 — kick off the indexer in the background. ENQUEUE (not call) so the
-    // clone job closes immediately and the (heavier) index runs as its own
-    // job under JobRunner's timeout/retry. If the handler isn't registered
-    // (e.g. repo-intel disabled at module wiring), enqueue() throws — log and
-    // continue so the clone result is preserved either way.
-    const workspaceId = await this.repo.workspaceIdFor(repoId);
-    if (workspaceId) {
+    // T2.2 — kick off the indexer in the background through the index
+    // gate (`requestIndex`, never a direct enqueue), so the clone job closes
+    // immediately and the (heavier) index runs as its own job. Requested
+    // before the clone gate frees, so readiness never sees "cloned, nothing in
+    // flight" in between. If the handler isn't registered or the facade lacks
+    // the method (a test override), log nothing and continue so the clone
+    // result is preserved either way.
+    if (before) {
       try {
-        await this.container.jobs.enqueue(workspaceId, INDEX_JOB_KIND, {
+        await this.container.repoIntel.requestIndex(
+          before.workspaceId,
           repoId,
-          owner,
-          name,
-        });
+          before.clonePath === null ? 'index' : 'refresh',
+        );
       } catch {
-        // No handler registered or transient enqueue failure — clone has
-        // already succeeded, so we don't fail the job for an index-followup
-        // miss. The user can hit POST /repos/:id/reindex to retry.
+        // Index follow-up miss — the clone has already succeeded. The user can
+        // hit Resync or Prepare overview to retry.
       }
+    }
+  }
+
+  /**
+   * Reserve the clone gate and enqueue a clone job. Busy → `in_flight`, no
+   * job. An enqueue error releases the reservation and propagates.
+   */
+  private async enqueueClone(workspaceId: string, payload: CloneJobPayload): Promise<CloneRequestResult> {
+    const reservation = this.cloneGate.reserve(payload.repoId);
+    if (!reservation.reserved) return { queued: false, reason: 'in_flight' };
+    try {
+      const job = await this.container.jobs.enqueue(workspaceId, CLONE_JOB_KIND, payload);
+      job.done.then(reservation.release, reservation.release);
+      return { queued: true };
+    } catch (err) {
+      reservation.release();
+      throw err;
     }
   }
 
@@ -95,12 +142,7 @@ export class RepoService {
     if (existing) return { repo: toRepoDto(existing), created: false };
 
     const row = await this.repo.insert({ workspaceId, owner, name, fullName, createdBy: userId });
-    await this.container.jobs.enqueue(workspaceId, CLONE_JOB_KIND, {
-      repoId: row.id,
-      owner,
-      name,
-      url,
-    } satisfies CloneJobPayload);
+    await this.enqueueClone(workspaceId, { repoId: row.id, owner, name, url });
 
     return { repo: toRepoDto(row), created: true };
   }
@@ -114,27 +156,42 @@ export class RepoService {
   async refresh(workspaceId: string, id: string): Promise<{ status: 'refreshing' }> {
     const repo = await this.repo.getById(workspaceId, id);
     if (!repo) throw new NotFoundError('Repo not found');
-    await this.container.jobs.enqueue(workspaceId, CLONE_JOB_KIND, {
+    // The index is requested by the clone job's own follow-up (`runCloneJob`),
+    // once the fetch is done; a clone already in flight is not doubled and its
+    // follow-up covers this click too. No second request here (one index per
+    // click, spec 06 AC-9 / PC-9).
+    await this.enqueueClone(workspaceId, {
       repoId: repo.id,
       owner: repo.owner,
       name: repo.name,
-      url: `https://github.com/${repo.fullName}.git`,
-    } satisfies CloneJobPayload);
-    // T2.2 — also enqueue an incremental refresh. The two queue positions are
-    // independent (p-queue doesn't FIFO across kinds), but `runIncremental` is
-    // a no-op when `currentHead === lastIndexedSha`, so ordering is safe: if
-    // refresh fires before the new clone settles, it cheaply exits; if after,
-    // it picks up the new HEAD.
+      url: cloneUrlFor(repo.fullName),
+    });
+    return { status: 'refreshing' };
+  }
+
+  async getCloneStatus(workspaceId: string, repoId: string): Promise<CloneStatus | undefined> {
+    const repo = await this.repo.getById(workspaceId, repoId);
+    if (!repo) return undefined;
+    return {
+      cloned: repo.clonePath !== null,
+      inFlight: this.cloneGate.isBusy(repoId),
+      lastFailure: this.cloneFailures.get(repoId) ?? null,
+    };
+  }
+
+  async requestClone(workspaceId: string, repoId: string): Promise<CloneRequestResult | undefined> {
+    const repo = await this.repo.getById(workspaceId, repoId);
+    if (!repo) return undefined;
     try {
-      await this.container.jobs.enqueue(workspaceId, REFRESH_JOB_KIND, {
+      return await this.enqueueClone(workspaceId, {
         repoId: repo.id,
         owner: repo.owner,
         name: repo.name,
+        url: cloneUrlFor(repo.fullName),
       });
     } catch {
-      // No handler / transient enqueue failure — refresh button is best-effort.
+      return { queued: false, reason: 'no_handler' };
     }
-    return { status: 'refreshing' };
   }
 
   async remove(workspaceId: string, id: string): Promise<void> {

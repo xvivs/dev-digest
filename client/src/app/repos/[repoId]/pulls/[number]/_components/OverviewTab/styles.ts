@@ -5,26 +5,21 @@ export const s = {
   grid: {
     display: "grid",
     gridTemplateColumns: "repeat(auto-fit, minmax(min(340px, 100%), 1fr))",
-    gap: 20,
-    alignItems: "start",
-  } satisfies CSSProperties,
-  col: { display: "flex", flexDirection: "column", gap: 20, minWidth: 0 } satisfies CSSProperties,
-  descriptionBox: {
-    border: "1px solid var(--border)",
-    borderRadius: 8,
-    background: "var(--bg-elevated)",
-    padding: 18,
-    fontSize: 14,
-    color: "var(--text-secondary)",
-    whiteSpace: "pre-wrap",
-    lineHeight: 1.55,
+    gap: 16,
   } satisfies CSSProperties,
   card: {
     border: "1px solid var(--border)",
-    borderRadius: 10,
+    borderRadius: 8,
     background: "var(--bg-elevated)",
-    padding: 18,
+    padding: "var(--card-pad, 16px)",
     minWidth: 0,
+  } satisfies CSSProperties,
+  /** Root of a block inside a shared card: min-width guard only, the card owns the chrome. */
+  block: { minWidth: 0 } satisfies CSSProperties,
+  divider: {
+    border: 0,
+    borderTop: "1px solid var(--border)",
+    margin: "16px 0",
   } satisfies CSSProperties,
   muted: { fontSize: 13, color: "var(--text-muted)", lineHeight: 1.5 } satisfies CSSProperties,
   notice: {

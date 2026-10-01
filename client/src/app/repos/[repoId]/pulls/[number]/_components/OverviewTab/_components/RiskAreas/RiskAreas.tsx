@@ -2,7 +2,7 @@
 
 import React from "react";
 import { useTranslations } from "next-intl";
-import { Badge, EmptyState, ErrorState, Icon, SectionLabel, Skeleton } from "@devdigest/ui";
+import { Badge, EmptyState, ErrorState, Icon, SectionLabel, Skeleton, VisuallyHidden } from "@devdigest/ui";
 import type { Risk } from "@devdigest/shared";
 import { useDeriveBrief, usePrRisks } from "@/lib/hooks";
 import { RunCostValue } from "@/components/run-cost-value";
@@ -23,18 +23,18 @@ export function RiskAreas({ prId }: { prId: string }) {
 
   if (isLoading) {
     return (
-      <section style={shared.card}>
+      <div style={shared.block}>
         {heading}
         <Skeleton height={SKELETON_HEIGHT.list} />
-      </section>
+      </div>
     );
   }
   if (isError || !data) {
     return (
-      <section style={shared.card}>
+      <div style={shared.block}>
         {heading}
         <ErrorState title={t("error")} onRetry={() => refetch()} />
-      </section>
+      </div>
     );
   }
 
@@ -65,10 +65,10 @@ export function RiskAreas({ prId }: { prId: string }) {
       );
     }
     return (
-      <section style={shared.card}>
+      <div style={shared.block}>
         {heading}
         {emptyBody}
-      </section>
+      </div>
     );
   }
 
@@ -76,12 +76,22 @@ export function RiskAreas({ prId }: { prId: string }) {
   const open = record.risks.find((r, i) => keyOf(r, i) === openKey);
 
   return (
-    <section style={shared.card}>
+    <div style={shared.block}>
       {heading}
       {inFlight && (
         <div style={shared.muted} role="status">
           {t("deriving")}
         </div>
+      )}
+      {/* `head_moved` next to a record: this card owns its Refresh PR (spec 06 D11). */}
+      {failure?.reason === "head_moved" && !inFlight && (
+        <BriefFailureNotice
+          prId={prId}
+          reason={failure.reason}
+          deriveLabel={t("refresh")}
+          busy={busy}
+          onDerive={() => derive.mutate()}
+        />
       )}
       {record.rule_only && <div style={s.ruleOnly}>{t("risks.ruleOnly")}</div>}
 
@@ -100,11 +110,12 @@ export function RiskAreas({ prId }: { prId: string }) {
                   type="button"
                   aria-expanded={openKey === k}
                   onClick={() => setOpenKey(openKey === k ? null : k)}
-                  style={s.pill(tone.c, tone.bg, openKey === k)}
+                  style={s.pill(openKey === k)}
                 >
-                  <PillIcon size={ICON_SIZE.inline} aria-hidden="true" />
+                  <PillIcon size={ICON_SIZE.inline} aria-hidden="true" style={s.pillIcon(tone.c)} />
                   <span>{r.title}</span>
-                  <span style={s.sev}>{t(`risks.severity.${r.severity}`)}</span>
+                  {" "}
+                  <VisuallyHidden>{t(`risks.severity.${r.severity}`)}</VisuallyHidden>
                 </button>
               );
             })}
@@ -145,6 +156,6 @@ export function RiskAreas({ prId }: { prId: string }) {
           {t("risks.cost")} <RunCostValue usd={record.cost_usd} source={record.cost_source} />
         </span>
       </div>
-    </section>
+    </div>
   );
 }

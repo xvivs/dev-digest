@@ -35,6 +35,9 @@ import { EvalsRepository } from '../modules/evals/repository.js';
 import type { RepoIntel } from '../modules/repo-intel/types.js';
 import type { PrBriefFacade } from '../modules/brief/types.js';
 import { buildBriefService } from '../modules/brief/wiring.js';
+import type { RepoCloneFacade } from '../modules/repos/types.js';
+import type { RepoService } from '../modules/repos/service.js';
+import { buildRepoService } from '../modules/repos/wiring.js';
 import { RepoIntelService } from '../modules/repo-intel/service.js';
 import { type DepGraph, DepCruiseGraph } from '../adapters/depgraph/index.js';
 import { type Tokenizer, TiktokenTokenizer } from '../adapters/tokenizer/index.js';
@@ -62,6 +65,8 @@ export interface ContainerOverrides {
   tokenizer?: Tokenizer;
   /** PR brief facade — tests inject spies / stubs (import triggers, review pre-work). */
   prBrief?: PrBriefFacade;
+  /** Clone facade (spec 06 D5) — tests inject stubs. */
+  repoClone?: RepoCloneFacade;
 }
 
 /** Minimal structural logger (Fastify's `app.log` satisfies it). */
@@ -109,11 +114,12 @@ export class Container {
   private _reviewRepo?: ReviewRepository;
   private _skillsRepo?: SkillsRepository;
   private _evalsRepo?: EvalsRepository;
-  private _repoIntel?: RepoIntel;
+  private _repoIntelService?: RepoIntelService;
   private _depgraph?: DepGraph;
   private _tokenizer?: Tokenizer;
   private _priceBook?: PriceBook;
   private _prBrief?: PrBriefFacade;
+  private _repoService?: RepoService;
 
   constructor(config: AppConfig, db: Db, private overrides: ContainerOverrides = {}) {
     this.config = config;
@@ -181,6 +187,25 @@ export class Container {
     return this._prBrief;
   }
 
+  /**
+   * Clone status + gated clone requests (spec 06 D5): a test override, else the
+   * container's one `RepoService` (`repoService`), whose clone gate and clone
+   * failures the clone handler shares.
+   */
+  get repoClone(): RepoCloneFacade {
+    return this.overrides.repoClone ?? this.repoService;
+  }
+
+  /**
+   * @internal Only `modules/repos/routes.ts` reads this (handler registration
+   * + HTTP). The ONE `RepoService` per container; ignores `overrides.repoClone`
+   * so the clone handler always runs the real service. Everything else uses
+   * `repoClone`.
+   */
+  get repoService(): RepoService {
+    return (this._repoService ??= buildRepoService(this));
+  }
+
   /** Eval suites read model; the skills Stats tab reads `impact` through it. */
   get evalsRepo(): EvalsRepository {
     return (this._evalsRepo ??= new EvalsRepository(this.db));
@@ -200,12 +225,22 @@ export class Container {
   /**
    * The repo-intel facade (T1.1). All higher-level features (reviews,
    * blast/onboarding migrations, phantom-gate) code against this interface.
-   * Tests inject a mock via `ContainerOverrides.repoIntel`.
+   * Tests inject a mock via `ContainerOverrides.repoIntel`; otherwise this is
+   * the container's one `RepoIntelService` (`repoIntelService`), which also
+   * runs the index job handlers and so shares their per-repo gate.
    */
   get repoIntel(): RepoIntel {
-    if (this.overrides.repoIntel) return this.overrides.repoIntel;
-    this._repoIntel ??= new RepoIntelService(this);
-    return this._repoIntel;
+    return this.overrides.repoIntel ?? this.repoIntelService;
+  }
+
+  /**
+   * @internal Only `modules/repo-intel/routes.ts` reads this (handler
+   * registration + resync). The ONE `RepoIntelService` per container; ignores
+   * `overrides.repoIntel` so the index handlers always run the real pipelines.
+   * Everything else uses `repoIntel`.
+   */
+  get repoIntelService(): RepoIntelService {
+    return (this._repoIntelService ??= new RepoIntelService(this));
   }
 
   /** Import-graph builder (dependency-cruiser). T3 indexer pipeline only. */

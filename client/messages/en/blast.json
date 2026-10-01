@@ -3,12 +3,13 @@
     "symbols": "symbols",
     "callers": "callers",
     "endpoints": "endpoints",
-    "crons": "cron/jobs"
+    "crons": "cron"
   },
   "view": {
     "tree": "tree",
     "graph": "graph"
   },
+  "scrollRegion": "Blast radius details",
   "callerCount": "{count} callers",
   "noDownstream": "{count} changed symbol(s), no downstream callers found.",
   "graph": {

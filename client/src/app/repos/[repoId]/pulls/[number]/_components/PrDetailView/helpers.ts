@@ -1,6 +1,7 @@
 /* PR detail — pure helpers (no React). */
 import type { Severity } from "@devdigest/shared";
-import { DEFAULT_TAB, PR_TABS, SEVERITIES, type PrTab } from "./constants";
+import { DEFAULT_TAB, PR_TABS, type PrTab } from "@/app/repos/[repoId]/pulls/[number]/constants";
+import { SEVERITIES } from "./constants";
 
 /** `?severity=` → a Severity, or null for anything else (see SEVERITIES). */
 export function parseSeverity(raw: string | null): Severity | null {

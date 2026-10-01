@@ -50,6 +50,8 @@ export function useDeriveBrief(prId: string | null | undefined, options?: Mutati
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["pr-intent", prId] });
       qc.invalidateQueries({ queryKey: ["pr-risks", prId] });
+      // The Prepare button's plan changes with the brief (spec 06 D13).
+      qc.invalidateQueries({ queryKey: ["pr-overview-readiness", prId] });
     },
   });
 }
@@ -64,6 +66,8 @@ export function useRefreshPullForBrief(prId: string | null | undefined) {
     await Promise.all([
       qc.invalidateQueries({ queryKey: ["pr-intent", prId] }),
       qc.invalidateQueries({ queryKey: ["pr-risks", prId] }),
+      // Clears the `head_moved` block on the Prepare button (spec 06 D13).
+      qc.invalidateQueries({ queryKey: ["pr-overview-readiness", prId] }),
     ]);
   };
 }

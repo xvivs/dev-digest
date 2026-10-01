@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parsePatch, safeExternalHref } from "./helpers";
+import { parsePatch, partitionByKey, safeExternalHref } from "./helpers";
 
 describe("parsePatch", () => {
   it("returns no lines for an empty, null or undefined patch (binary / unfetched file)", () => {
@@ -65,5 +65,33 @@ describe("safeExternalHref", () => {
     expect(safeExternalHref("/relative")).toBeNull();
     expect(safeExternalHref("")).toBeNull();
     expect(safeExternalHref(undefined)).toBeNull();
+  });
+});
+
+describe("partitionByKey", () => {
+  const keyOf = (i: { k: string | null }) => i.k;
+  const rendered = new Set(["a", "b"]);
+
+  it("groups items by rendered key and keeps input order", () => {
+    const items = [
+      { k: "a", n: 1 },
+      { k: "b", n: 2 },
+      { k: "a", n: 3 },
+    ];
+    const { matched, unmatched } = partitionByKey(items, keyOf, rendered);
+    expect(matched.get("a")?.map((i) => i.n)).toEqual([1, 3]);
+    expect(matched.get("b")?.map((i) => i.n)).toEqual([2]);
+    expect(unmatched).toEqual([]);
+  });
+
+  it("sends a null key and a key with no rendered line to unmatched", () => {
+    const items = [
+      { k: null, n: 1 },
+      { k: "zzz", n: 2 },
+      { k: "a", n: 3 },
+    ];
+    const { matched, unmatched } = partitionByKey(items, keyOf, rendered);
+    expect(unmatched.map((i) => i.n)).toEqual([1, 2]);
+    expect([...matched.keys()]).toEqual(["a"]);
   });
 });

@@ -352,6 +352,66 @@ p {
   }
 }
 
+/* Mobile nav trigger (LogoTrigger): the logo mark spins on hover / focus-visible /
+   press and rests rotated 90deg while the drawer is open (hamburger -> X).
+   Motion is opt-in (no-preference), so reduced motion gets neither spin nor
+   transition; the open-state rest angle still applies as a static pose. */
+.dd-logo-trigger[aria-expanded="true"] {
+  --dd-logo-rest: 90deg;
+}
+.dd-logo-mark {
+  transform: rotate(var(--dd-logo-rest, 0deg));
+}
+@keyframes ddlogospin {
+  from {
+    transform: rotate(var(--dd-logo-rest, 0deg));
+  }
+  to {
+    transform: rotate(calc(var(--dd-logo-rest, 0deg) + 360deg));
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  /* Closing (90 -> 0) must not overshoot below 0: plain ease-out, shorter. Opening keeps the spring. */
+  .dd-logo-mark {
+    transition: transform 300ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  .dd-logo-trigger[aria-expanded="true"] .dd-logo-mark {
+    transition: transform 600ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .dd-logo-trigger:hover .dd-logo-mark,
+  .dd-logo-trigger:focus-visible .dd-logo-mark,
+  .dd-logo-trigger:active .dd-logo-mark {
+    animation: ddlogospin 600ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+}
+
+/* Nav drawer "grows out of the logo": clip-path circle from --origin-x/--origin-y
+   (set by Drawer from the trigger's mark centre). */
+@keyframes ddrevealin {
+  from {
+    clip-path: circle(0 at var(--origin-x, 0) var(--origin-y, 0));
+  }
+  to {
+    clip-path: circle(150vmax at var(--origin-x, 0) var(--origin-y, 0));
+  }
+}
+@keyframes ddrevealout {
+  from {
+    clip-path: circle(150vmax at var(--origin-x, 0) var(--origin-y, 0));
+  }
+  to {
+    clip-path: circle(0 at var(--origin-x, 0) var(--origin-y, 0));
+  }
+}
+@keyframes ddfadeout {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

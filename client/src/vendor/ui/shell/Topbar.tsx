@@ -2,6 +2,7 @@ import React from "react";
 import { Icon } from "../icons";
 import { IconBtn, Avatar, Kbd } from "../primitives";
 import { DefaultLink } from "./DefaultLink";
+import { LogoTrigger } from "./LogoTrigger";
 import type { ShellContext, Crumb } from "./types";
 
 /** Topbar height (px). Screens that fill the viewport under it subtract this. */
@@ -22,16 +23,11 @@ export function Topbar({ ctx, crumb = [] }: { ctx: ShellContext; crumb?: Crumb[]
         padding: "0 var(--dd-topbar-pad-x)",
       }}
     >
-      {ctx.onOpenNav && (
-        <IconBtn
-          icon="Menu"
-          label={ctx.labels?.openNav ?? "Open navigation"}
-          className="dd-show-below-md"
-          hasPopup="dialog"
-          onClick={ctx.onOpenNav}
-        />
-      )}
-      <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, flex: "1 1 auto", overflow: "hidden" }}>
+      {ctx.onToggleNav && <LogoTrigger ctx={ctx} />}
+      <div
+        className="dd-hide-below-md"
+        style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, flex: "1 1 auto", overflow: "hidden" }}
+      >
         {crumb.map((c, i) => {
           const last = i === crumb.length - 1;
           // Ancestors shrink first; the current page keeps its width up to 75% of the row.
@@ -74,6 +70,7 @@ export function Topbar({ ctx, crumb = [] }: { ctx: ShellContext; crumb?: Crumb[]
           );
         })}
       </div>
+      <div className="dd-show-below-md" style={{ flex: 1 }} />
       <button
         type="button"
         className="dd-hide-below-lg"
@@ -110,7 +107,7 @@ export function Topbar({ ctx, crumb = [] }: { ctx: ShellContext; crumb?: Crumb[]
         />
       )}
       {ctx.onRefresh && <IconBtn icon="RefreshCw" label="Refresh" onClick={ctx.onRefresh} />}
-      <IconBtn icon="Bell" label="Notifications" />
+      <IconBtn icon="Bell" label="Notifications" className="dd-hide-below-md" />
       <Avatar name="you" size={26} />
     </header>
   );

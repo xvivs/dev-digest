@@ -7,7 +7,7 @@ import React from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { Button, Dropdown, type DropdownItemDef } from "@devdigest/ui";
-import { useAgents, useRunReview } from "@/lib/hooks";
+import { useAgents, usePrActiveRuns, useRunReview } from "@/lib/hooks";
 import { AGENTS_HREF, DROPDOWN_WIDTH } from "./constants";
 import { s } from "./styles";
 
@@ -16,6 +16,7 @@ export function RunReviewDropdown({
   size = "sm",
   kind = "primary",
   warnMerged = false,
+  iconOnlyBelowMd = false,
   onRunStart,
   onRunsStarted,
   onRunSettled,
@@ -25,6 +26,8 @@ export function RunReviewDropdown({
   kind?: "primary" | "secondary";
   /** PR is already merged/closed — dim the trigger and warn, but still allow. */
   warnMerged?: boolean;
+  /** Hide the text label below md (dd-hide-below-md) and expose it as aria-label/title instead. */
+  iconOnlyBelowMd?: boolean;
   /** Fired the moment a run is kicked off (before it completes). */
   onRunStart?: () => void;
   onRunsStarted?: (runIds: string[]) => void;
@@ -35,10 +38,17 @@ export function RunReviewDropdown({
   const router = useRouter();
   const { data: agents } = useAgents();
   const run = useRunReview();
+  // Server-sourced, shared by every dropdown on the screen (header + condensed
+  // bar): one run in flight blocks a duplicate start from either.
+  const { data: activeRuns } = usePrActiveRuns(prId);
+  const busy = run.isPending || (activeRuns?.length ?? 0) > 0;
   const all = agents ?? [];
   const hasEnabled = all.some((a) => a.enabled);
 
+  const triggerLabel = busy ? t("runReview.running") : t("runReview.runReview");
+
   const kick = async (opts: { all?: boolean; agentId?: string }) => {
+    if (busy) return;
     onRunStart?.();
     try {
       const res = await run.mutateAsync({ prId, ...opts });
@@ -91,8 +101,15 @@ export function RunReviewDropdown({
           title={warnMerged ? t("runReview.mergedTooltip") : undefined}
           style={warnMerged ? s.dimmedTrigger : undefined}
         >
-          <Button kind={kind} size={size} iconRight="ChevronDown" icon="Sparkles" loading={run.isPending}>
-            {run.isPending ? t("runReview.running") : t("runReview.runReview")}
+          <Button
+            kind={kind}
+            size={size}
+            iconRight="ChevronDown"
+            icon="Sparkles"
+            loading={busy}
+            {...(iconOnlyBelowMd ? { "aria-label": triggerLabel, title: warnMerged ? undefined : triggerLabel } : null)}
+          >
+            {iconOnlyBelowMd ? <span className="dd-hide-below-md">{triggerLabel}</span> : triggerLabel}
           </Button>
         </span>
       }

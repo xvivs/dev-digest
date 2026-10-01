@@ -1,6 +1,15 @@
 /** Pure helpers for the DiffViewer. */
 import { HUNK_HEADER_RE, NO_NEWLINE_MARKER } from "./constants";
 
+/**
+ * A request to bring one file (and, when it is in the patch, one new-side line)
+ * into view. A fresh object per request: re-clicking the same path re-fires it.
+ */
+export interface RevealTarget {
+  path: string;
+  line: number | null;
+}
+
 export interface Line {
   kind: "add" | "del" | "ctx" | "hunk";
   text: string;
@@ -55,4 +64,29 @@ export function safeExternalHref(url: string | null | undefined): string | null 
   } catch {
     return null;
   }
+}
+
+/**
+ * Split `items` into those whose key is rendered (grouped by key, input order
+ * kept) and the rest (`null` key or a key with no rendered line). Nothing is
+ * dropped.
+ */
+export function partitionByKey<T>(
+  items: readonly T[],
+  keyOf: (item: T) => string | null,
+  renderedKeys: ReadonlySet<string>,
+): { matched: Map<string, T[]>; unmatched: T[] } {
+  const matched = new Map<string, T[]>();
+  const unmatched: T[] = [];
+  for (const item of items) {
+    const key = keyOf(item);
+    if (key !== null && renderedKeys.has(key)) {
+      const list = matched.get(key) ?? [];
+      list.push(item);
+      matched.set(key, list);
+    } else {
+      unmatched.push(item);
+    }
+  }
+  return { matched, unmatched };
 }

@@ -1,11 +1,18 @@
 import type {
   BlastRadius,
+  IntentConfidence,
   DownstreamImpact,
   ReviewRecord,
   RunSummary,
   Verdict,
 } from "@devdigest/shared";
-import { GRAPH, GRAPH_MAX_CALLERS, NEWER_RUN_STATUSES, type NewerRunStatus } from "./constants";
+import {
+  CONFIDENCE_BADGE_LEVELS,
+  GRAPH,
+  GRAPH_MAX_CALLERS,
+  NEWER_RUN_STATUSES,
+  type NewerRunStatus,
+} from "./constants";
 
 export interface LatestBrief {
   run: RunSummary;
@@ -45,6 +52,11 @@ export function selectLatestBrief(
   return null;
 }
 
+/** The confidence badge is shown only when confidence is below `high`. */
+export function shouldShowConfidenceBadge(confidence: IntentConfidence): boolean {
+  return CONFIDENCE_BADGE_LEVELS.includes(confidence);
+}
+
 function compact(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
@@ -61,6 +73,22 @@ export function formatTokenPair(
     input: tokensIn == null ? "—" : compact(tokensIn),
     output: tokensOut == null ? "—" : compact(tokensOut),
   };
+}
+
+function compactUpper(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+  return String(n);
+}
+
+/** Design-style token line `8.2K→1.3K` (in→out), or null when the run recorded neither. */
+export function formatTokenArrow(
+  tokensIn: number | null | undefined,
+  tokensOut: number | null | undefined,
+): string | null {
+  if (tokensIn == null && tokensOut == null) return null;
+  const part = (n: number | null | undefined) => (n == null ? "—" : compactUpper(n));
+  return `${part(tokensIn)}→${part(tokensOut)}`;
 }
 
 export interface BlastStats {

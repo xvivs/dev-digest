@@ -42,9 +42,11 @@
   },
   "topbar": {
     "openNav": "Open navigation",
-    "search": "Search"
+    "search": "Search",
+    "closeNav": "Close navigation"
   },
   "navDrawer": {
-    "title": "Navigation"
+    "title": "Navigation",
+    "home": "Home"
   }
 }

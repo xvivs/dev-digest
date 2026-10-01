@@ -21,7 +21,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { runFullIndex } from '../src/modules/repo-intel/pipeline/full.js';
 import { runIncremental } from '../src/modules/repo-intel/pipeline/incremental.js';
-import type { RepoIntelRepository } from '../src/modules/repo-intel/repository.js';
+import { partialReasonOf, type RepoIntelRepository } from '../src/modules/repo-intel/repository.js';
 import { INDEXER_VERSION } from '../src/modules/repo-intel/constants.js';
 import type { IndexState } from '../src/modules/repo-intel/types.js';
 import type { Container } from '../src/platform/container.js';
@@ -77,7 +77,10 @@ function makeRepoStub(opts: {
       filesIndexed: number;
       filesSkipped: number;
       stats: Record<string, unknown>;
+      lastIndexedAt?: Date;
     }) => {
+      // Mirrors the real upsert: an omitted lastIndexedAt keeps the previous value.
+      const lastIndexedAt = s.lastIndexedAt ?? state?.lastIndexedAt ?? null;
       state = {
         repoId: s.repoId,
         status: s.status,
@@ -89,13 +92,16 @@ function makeRepoStub(opts: {
         lastIndexedSha: s.lastIndexedSha,
         indexerVersion: s.indexerVersion,
         updatedAt: new Date(),
+        lastIndexedAt,
+        // Same mapping as the real `tryGetIndexState`.
+        partialReason: partialReasonOf(s.stats),
       };
     },
     touchIndexState: async () => {
       if (state) state = { ...state, updatedAt: new Date() };
     },
     advanceSha: async (_id: string, sha: string) => {
-      if (state) state = { ...state, lastIndexedSha: sha, updatedAt: new Date() };
+      if (state) state = { ...state, lastIndexedSha: sha, updatedAt: new Date(), lastIndexedAt: new Date() };
     },
     // T3 writes/reads — no-op/in-memory; persistence is covered by integration.
     replaceEdges: async () => {},
@@ -204,6 +210,8 @@ describe('runFullIndex', () => {
     expect(state!.indexerVersion).toBe(INDEXER_VERSION);
     expect(state!.status).toBe('full');
     expect(state!.filesIndexed).toBe(2);
+    // Spec 06 AC-14: a full run that re-read the clone stamps last_indexed_at.
+    expect(state!.lastIndexedAt).toBeInstanceOf(Date);
   });
 
   it('returns degraded when the repo has no clonePath (writes a degraded state row)', async () => {
@@ -222,6 +230,29 @@ describe('runFullIndex', () => {
     const state = stub.getState();
     expect(state).not.toBeNull();
     expect(state!.status).toBe('degraded');
+    // Spec 06 AC-14: `no_clone` never claims an index run.
+    expect(state!.lastIndexedAt).toBeNull();
+  });
+
+  it('no_clone keeps a previously recorded last_indexed_at', async () => {
+    const before = new Date('2026-01-01T00:00:00Z');
+    const stub = makeRepoStub({
+      basics: { id: 'r2', owner: 'acme', name: 'app', clonePath: null },
+      initialState: {
+        repoId: 'r2',
+        status: 'full',
+        filesIndexed: 1,
+        filesSkipped: 0,
+        durationMs: 1,
+        lastIndexedSha: 'sha-old',
+        indexerVersion: INDEXER_VERSION,
+        updatedAt: before,
+        lastIndexedAt: before,
+      },
+    });
+    const container = makeContainer({ currentHead: async () => '', diffNameOnly: async () => [] });
+    await runFullIndex(container, stub.repo, { repoId: 'r2' });
+    expect(stub.getState()!.lastIndexedAt).toEqual(before);
   });
 
   it('returns degraded when the repo is missing (no row to write)', async () => {
@@ -253,6 +284,8 @@ describe('runFullIndex', () => {
     expect(result.filesIndexed).toBe(0);
     expect(result.reason).toBe('no_files');
     expect(stub.getState()!.lastIndexedSha).toBe('sha-empty');
+    // The walk completed at a HEAD, so it counts as a run (spec 06 D6).
+    expect(stub.getState()!.lastIndexedAt).toBeInstanceOf(Date);
   });
 });
 
@@ -280,6 +313,7 @@ describe('runIncremental', () => {
       lastIndexedSha: 'sha-old',
       indexerVersion: INDEXER_VERSION,
       updatedAt: new Date(0),
+      lastIndexedAt: null,
       ...overrides,
     };
   }
@@ -338,6 +372,25 @@ describe('runIncremental', () => {
     // updatedAt bumped, but sha+files counters preserved.
     expect(stub.getState()!.lastIndexedSha).toBe('sha-same');
     expect(stub.getState()!.filesIndexed).toBe(5);
+    // Spec 06 AC-14: a touch is not an index run.
+    expect(stub.getState()!.lastIndexedAt).toBeNull();
+  });
+
+  it('sha unchanged keeps a previously recorded last_indexed_at (AC-14)', async () => {
+    const before = new Date('2026-09-30T10:00:00Z');
+    const stub = makeRepoStub({
+      basics: { id: 'r1', owner: 'acme', name: 'app', clonePath: root },
+      initialState: makeInitialState({ lastIndexedSha: 'sha-same', status: 'full', lastIndexedAt: before }),
+    });
+    const container = makeContainer({
+      currentHead: async () => 'sha-same',
+      diffNameOnly: async () => {
+        throw new Error('should not be called');
+      },
+    });
+    const result = await runIncremental(container, stub.repo, { repoId: 'r1' });
+    expect(result.reason).toBe('sha_unchanged');
+    expect(stub.getState()!.lastIndexedAt).toEqual(before);
   });
 
   it('changed files outside SUPPORTED_EXT → only advances sha', async () => {
@@ -354,6 +407,7 @@ describe('runIncremental', () => {
     expect(result.reason).toBe('no_supported_changes');
     expect(stub.symbols.length).toBe(0);
     expect(stub.getState()!.lastIndexedSha).toBe('sha-new');
+    expect(stub.getState()!.lastIndexedAt).toBeInstanceOf(Date);
   });
 
   it('reparses changed slice and bumps counters', async () => {
@@ -380,6 +434,37 @@ describe('runIncremental', () => {
     // counter is prior (5) + this slice's filesIndexed (1).
     expect(stub.getState()!.filesIndexed).toBe(6);
     expect(stub.getState()!.lastIndexedSha).toBe('sha-new');
+    // Spec 06 AC-14: a slice reparse stamps last_indexed_at.
+    expect(stub.getState()!.lastIndexedAt).toBeInstanceOf(Date);
+  });
+
+  it('F5: a clean slice over a partial index keeps the partial reason', async () => {
+    await writeFileAt(root, 'src/changed.ts', `export function fresh(x: number) { return x; }\n`);
+    const stub = makeRepoStub({
+      basics: { id: 'r1', owner: 'acme', name: 'app', clonePath: root },
+      initialState: makeInitialState({ status: 'partial', partialReason: 'soft_budget' }),
+    });
+    const container = makeContainer({
+      currentHead: async () => 'sha-new',
+      diffNameOnly: async () => ['src/changed.ts'],
+    });
+    const result = await runIncremental(container, stub.repo, { repoId: 'r1' });
+    expect(result.status).toBe('partial');
+    expect(stub.getState()!.partialReason).toBe('soft_budget');
+  });
+
+  it('F5: a slice that fails on its own reports its own reason', async () => {
+    const stub = makeRepoStub({
+      basics: { id: 'r1', owner: 'acme', name: 'app', clonePath: root },
+      initialState: makeInitialState({ status: 'partial', partialReason: 'soft_budget' }),
+    });
+    const container = makeContainer({
+      currentHead: async () => 'sha-new',
+      // The file is missing on disk → parseDegraded.
+      diffNameOnly: async () => ['src/gone.ts'],
+    });
+    await runIncremental(container, stub.repo, { repoId: 'r1' });
+    expect(stub.getState()!.partialReason).toBe('parse_errors');
   });
 
   it('large diff (> threshold) → delegates to runFullIndex', async () => {

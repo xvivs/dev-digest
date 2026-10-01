@@ -20,6 +20,14 @@ graph, a PageRank file score, and a cached repo map. Reviews only **read** it.
 - Indexing runs as a `JobRunner` job, not inline in a request. Its soft budget
   (`INDEX_SOFT_BUDGET_MS`) sits below the runner's hard 120s timeout so an
   over-running index finishes as `partial` instead of being killed.
+- Never enqueue `INDEX` / `REFRESH` / `RESYNC` jobs on `container.jobs`
+  directly; call `repoIntel.requestIndex(workspaceId, repoId, kind)`. It goes
+  through the per-repo in-process gate that dedupes requests and keeps two
+  index pipelines for one repo from overlapping (ADR 0025, spec 06).
+- Never construct `RepoIntelService` or call `buildRepoService` outside
+  `platform/container.ts`; per-repo state (the index gate) lives on the one
+  instance the container holds, and a second instance gets its own gate
+  (spec server/07).
 - Limits live in `constants.ts` (`MAX_INDEXED_FILES`, `MAX_FILE_SIZE`,
   `SUPPORTED_EXT`, `EXCLUDED_DIRS`). Change them there, not at call sites.
 

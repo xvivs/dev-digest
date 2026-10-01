@@ -1,0 +1,17 @@
+{
+  "name": "PR overview: the Prepare overview button is on the Overview tab",
+  "description": "Spec 06 AC-15. From PR #482 the default Overview tab renders the Prepare overview header action. The seeded acme/payments-api has no clone (clonePath is null in the seed), so readiness plans a clone and the button reads 'Prepare overview' once loaded. The button is NOT clicked: the seeded repo does not exist on GitHub, so a clone would only fail.\n\nRead-only seeded data (no model call).",
+  "steps": [
+    { "cmd": ["open", "{BASE}/"], "label": "load the app root" },
+    { "cmd": ["wait", "--load", "networkidle"], "label": "initial repo fetch settles (the home redirect only fires once the repo list arrives)" },
+    { "cmd": ["wait", "--url", "/pulls"], "label": "land on the PR list" },
+    { "cmd": ["wait", "--text", "acme/payments-api"], "label": "guard: the home redirect landed on the demo repo (the seed holds TWO repos and `/` redirects to the oldest)" },
+    { "cmd": ["wait", "--load", "networkidle"], "label": "PR list data settles" },
+    { "cmd": ["scrollintoview", "a[href$='/pulls/482']"], "label": "bring the #482 row into view: below the fold the title click silently no-ops" },
+    { "cmd": ["wait", "500"], "label": "let the scroll settle; a click fired mid-scroll is lost" },
+    { "cmd": ["find", "text", "Add rate limiting to public API endpoints", "click"], "label": "open PR #482 by title" },
+    { "cmd": ["wait", "--url", "/pulls/482"], "label": "navigate to the PR detail route (Overview is the default tab)" },
+    { "cmd": ["wait", "--load", "networkidle"], "label": "PR detail and readiness data settle" },
+    { "cmd": ["wait", "--text", "Prepare overview"], "label": "the Prepare overview button is rendered in the Overview header" }
+  ]
+}
