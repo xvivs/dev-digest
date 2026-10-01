@@ -26,6 +26,7 @@ export type { ReviewDto, ReviewDtoFinding } from './helpers.js';
  * Also: the finding accept/dismiss actions. The bulky run execution lives in
  * run-executor; this class keeps the public method surface.
  */
+/** Orchestrates review runs for a pull request (blast radius demo touch). */
 export class ReviewService {
   private repo: ReviewRepository;
   private agents: Container['agentsRepo'];
