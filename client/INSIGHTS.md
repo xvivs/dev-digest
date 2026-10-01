@@ -58,6 +58,8 @@ lives in the engineering-insights skill).
 
 - **Gating a response schema behind `process.env.NODE_ENV !== "production"` does NOT drop zod from the production bundle** — the contract modules call `z.object(...)` at module top level and the vendored folder has no `sideEffects: false`, so webpack keeps them whatever the call site does. Measured with `next build` (Next 15.5): +15 kB First Load JS on every route once `src/lib/hooks/skills.ts` imports schemas, and 227 kB vs 226 kB for `/skills` with the NODE_ENV-gated variant. Every route pays it because every page imports the `@/lib/hooks` barrel. Only a `sideEffects` declaration or keeping schema-using hooks out of the barrel would change that. _(2026-09-29)_
 
+- **Checklist-style browser QA ("structure as in design: PASS") misses small visual gaps — the VerdictBanner aside passed with no divider under "PR SCORE", a single-colour cost row and the wrong token format** — the human caught it. The gaps were fixed in `client/src/app/repos/[repoId]/pulls/[number]/_components/VerdictBanner/VerdictBanner.tsx:63` (divider) and `OverviewTab/_components/BriefSection/BriefSection.tsx` (cost row). What caught everything on the re-check: give QA a cropped design fragment (`client/specs/assets/verdict-banner-design.png`), ask for an element-by-element table, and require computed `color`/`font-weight`/`font-size` via `evaluate_script`. A spec step that says only "cost line under the score" is too vague to verify. _(2026-10-01)_
+
 ## Codebase Patterns
 
 - Dynamic i18n key lookup — `t(\`namespace.${variable}\`)` — is an established,
@@ -118,6 +120,8 @@ lives in the engineering-insights skill).
 
 - **Exporting a value from `src/components/diff-viewer/index.ts` makes every consumer of a pure helper load the React/next-intl graph, including in vitest** — the barrel re-exports `DiffViewer` and `UnmatchedFindings` components next to the helpers `isActiveFinding`/`findingsForFile` (`index.ts:3-6`). Import pure helpers from their own file (`diff-viewer/findings.ts`) in logic code and tests. _(2026-10-01)_
 
+- **At a real 1440px viewport, each Overview card is only ~500px wide, not ~690px (sidebar plus content max-width), so any one-row header must fit in ~460px of content** — the blast stats row with the Tree/Graph toggle wrapped until stats went to 12px with gap 12 and "cron/jobs" became "cron" (`client/src/app/repos/[repoId]/pulls/[number]/_components/OverviewTab/_components/BlastRadiusCard/styles.ts:5`). The grid is `repeat(auto-fit, minmax(min(340px, 100%), 1fr))` (`OverviewTab/styles.ts:7`). Measure `offsetTop` of the row items via `evaluate_script` rather than eyeballing. _(2026-10-01)_
+
 ## Tool & Library Notes
 
 - In this worktree, `pnpm typecheck` / `pnpm test` / any `pnpm exec …` first
@@ -156,6 +160,8 @@ lives in the engineering-insights skill).
 - **Anything in a `vendor/ui` Drawer `title` becomes part of the dialog's accessible name; mark decorative title content `aria-hidden` and assert names exactly (`{ name: "Navigation" }`, not a regex, which hid the bug)** — `client/src/vendor/ui/kit/Drawer.tsx:84` sets `aria-labelledby` to the title id; exact-name assertion at `client/src/components/app-shell/AppShell.test.tsx:43`. _(2026-10-01)_
 
 - **The global `prefers-reduced-motion: reduce` rule shrinks every animation/transition duration to 0.01ms with `!important`, inline ones included, so a JS "reduced-motion fallback animation" never visibly plays — design reduced-motion branches as instant** — `client/src/vendor/ui/styles.css:411-417`; the Drawer's reduced fade (`DRAWER_FADE_MS`, `client/src/vendor/ui/kit/Drawer.tsx:7,60`) is overridden by it. _(2026-10-01)_
+
+- **`DevDigest Design.html` renders its artboards at runtime from a base64+gzip manifest, so `grep 'data-dc-slot="pr-overview"'` on the file returns 0 hits even though the slot exists in the browser** — the researcher had to decode the manifest to read the `pr-overview` JSX (`client/specs/research-pr-overview-design.md`), and lost the "PR brief" label on the way; the user found the slot via DevTools. Treat a browser screenshot of the artboard (`client/specs/assets/pr-overview-design.png`) as ground truth and use the decoded manifest only for exact sizes and tokens. _(2026-10-01)_
 
 ## Recurring Errors & Fixes
 
@@ -281,6 +287,9 @@ Built the Evals tab. It shows the latest started suite's verdict and results lin
 
 ### 2026-09-30 — client session
 Shipped the Overview tab (brief, intent, risks, blast radius, prior PRs), the Settings auto-brief toggle and the mobile nav drawer (ADR 0024). Desktop is the supported target; narrow-width gaps are tracked in #10.
+
+### 2026-10-01 — client session
+Brought the PR Overview tab in line with the `pr-overview` design (spec `client/specs/03-pr-overview-design-parity.md`, commits bee1069..6d2bf04). Changes: PR brief label, hidden brief at zero runs, two-card grid, Intent restyle with a Details disclosure, risk pills, one-row blast stats, Prior PRs accordion, VerdictBanner aside, and the PR description block removed. Three pr-self-review rounds closed 1 HIGH and 12 MEDIUM; one MEDIUM was refuted as a false positive. Not verified in a browser: the compact "runs but no completed review" card and the blast tree with chips (dev DB has no such data).
 
 ## Open Questions
 
