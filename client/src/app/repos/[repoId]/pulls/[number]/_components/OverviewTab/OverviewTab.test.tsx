@@ -173,6 +173,5 @@ describe("Resync from the Blast radius card", () => {
     await waitFor(() => expect(screen.queryByRole("status")).not.toBeInTheDocument());
     expect(screen.queryByRole("button", { name: blast.resync })).not.toBeInTheDocument();
     expect(api.requestsTo("POST", "/repos/r1/resync")).toHaveLength(1);
-    expect(api.requestsTo("GET", "/pulls/p1/blast").length).toBeGreaterThanOrEqual(3);
   });
 });

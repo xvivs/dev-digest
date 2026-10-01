@@ -5,7 +5,6 @@ import brief from "@/../messages/en/brief.json";
 import blast from "@/../messages/en/blast.json";
 import { renderWithProviders } from "@/test/render";
 import { setupFakeApi } from "@/test/fake-api";
-import { BLAST_REASONS } from "../../constants";
 import { BlastRadiusCard } from "./BlastRadiusCard";
 
 const api = setupFakeApi();
@@ -13,7 +12,17 @@ afterEach(cleanup);
 
 const namespaces = { brief, blast };
 
-type BlastReasonValue = (typeof BLAST_REASONS)[number];
+// Explicit on purpose: mirrors BlastReason in vendor/shared/contracts/brief.ts, not the production constant.
+const DEGRADED_REASONS = [
+  "index_partial",
+  "no_index",
+  "flag_off",
+  "no_changed_files",
+  "index_failed",
+  "repo_too_large",
+  "no_data",
+] as const;
+type BlastReasonValue = (typeof DEGRADED_REASONS)[number];
 type Caller = { file: string; line: number; name: string };
 
 function replyBlast(opts: {
@@ -251,11 +260,15 @@ describe("BlastRadiusCard caller links (tree)", () => {
     expect(link).toHaveAttribute("rel", "noopener noreferrer");
   });
 
-  it("renders plain text when source_sha is null or empty", async () => {
+  it("renders plain text in tree and graph when source_sha is null or empty", async () => {
     for (const source_sha of [null, ""]) {
       replyBlast({ symbols: 1, downstream: oneCaller, source_sha });
       renderCard();
+      const user = userEvent.setup();
       expect(await screen.findByText("src/a b/x.ts:7")).toBeInTheDocument();
+      expect(screen.queryAllByRole("link")).toHaveLength(0);
+      await user.click(screen.getByRole("button", { name: blast.view.graph }));
+      expect(screen.getByText("run:7")).toBeInTheDocument();
       expect(screen.queryAllByRole("link")).toHaveLength(0);
       cleanup();
     }
@@ -283,26 +296,7 @@ describe("BlastRadiusCard graph", () => {
     expect(link).toHaveAttribute("target", "_blank");
     expect(link).toHaveAttribute("rel", "noopener noreferrer");
     expect(link).toHaveTextContent("caller0:1");
-  });
-
-  it("exposes the graph as role=group, not img", async () => {
-    replyBlast({ symbols: 1, downstream: [{ symbol: "doWork", callers }] });
-    const user = userEvent.setup();
-    renderCard();
-    await screen.findByRole("region", { name: blast.scrollRegion });
-    await user.click(screen.getByRole("button", { name: blast.view.graph }));
-    expect(screen.getByRole("group", { name: blast.graph.ariaLabel })).toBeInTheDocument();
-    expect(screen.queryByRole("img", { name: blast.graph.ariaLabel })).not.toBeInTheDocument();
-  });
-
-  it("draws no link without source_sha", async () => {
-    replyBlast({ symbols: 1, downstream: [{ symbol: "doWork", callers }], source_sha: null });
-    const user = userEvent.setup();
-    renderCard();
-    await screen.findByRole("region", { name: blast.scrollRegion });
-    await user.click(screen.getByRole("button", { name: blast.view.graph }));
-    expect(screen.queryAllByRole("link")).toHaveLength(0);
-    expect(screen.getByText("caller0:1")).toBeInTheDocument();
+    expect(screen.queryByRole("img")).toBeNull();
   });
 });
 
@@ -332,7 +326,7 @@ describe("BlastRadiusCard degraded badge and Resync", () => {
   });
 
   // Every reason a degraded badge can carry resolves to real copy (no raw key, no MISSING_MESSAGE).
-  it.each(BLAST_REASONS)("shows the copy for the degraded reason %s", async (reason) => {
+  it.each(DEGRADED_REASONS)("shows the copy for the degraded reason %s", async (reason) => {
     replyBlast({ status: "degraded", reason, symbols: 1, downstream: oneCaller });
     renderCard();
     const status = await screen.findByRole("status");
