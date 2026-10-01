@@ -1,3 +1,5 @@
+import { classifyRunError } from './run-error.js';
+
 /**
  * Tool-level failures that are not API failures. Every message and next step is
  * built here, so `poll.ts`, `resolve.ts` and the tools share one wording.
@@ -93,7 +95,7 @@ export const toolErrors = {
     new ToolError(
       'run_failed',
       `Run ${runId} ${status}. Run error (data): ${error ? quoteData(error) : 'none recorded'}`,
-      'Check the LLM key in DevDigest Settings, then rerun.',
+      classifyRunError(status, error).nextStep,
     ),
 
   runNotFound: (runId: string) =>

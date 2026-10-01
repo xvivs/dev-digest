@@ -33,8 +33,22 @@ export interface DevDigestApi {
 type FetchImpl = (input: string | URL, init?: RequestInit) => Promise<Response>;
 
 const ErrorEnvelope = z.object({
-  error: z.object({ code: z.string().optional(), message: z.string().optional() }).passthrough(),
+  error: z.object({ code: z.string().optional(), message: z.string().optional(), details: z.unknown().optional() }).passthrough(),
 });
+
+/** First validation issue as `path: message`, tolerant of zod and fastify issue shapes. */
+function firstIssue(details: unknown): string | null {
+  const first: unknown = Array.isArray(details) ? details[0] : undefined;
+  if (typeof first !== 'object' || first === null) return null;
+  const i = first as { path?: unknown; instancePath?: unknown; message?: unknown };
+  if (typeof i.message !== 'string') return null;
+  const path = Array.isArray(i.path)
+    ? i.path.join('.')
+    : typeof i.instancePath === 'string'
+      ? i.instancePath.replace(/^\//, '').replace(/\//g, '.')
+      : '';
+  return path ? `${path}: ${i.message}` : i.message;
+}
 
 const id = (value: string): string => encodeURIComponent(value);
 
@@ -174,6 +188,7 @@ export class HttpDevDigestApi implements DevDigestApi {
         code: err?.code ?? null,
         message: err?.message ?? `HTTP ${res.status}`,
         retryAfterSec: parseRetryAfter(res.headers.get('retry-after')),
+        detail: res.status === 422 ? firstIssue(err?.details) : null,
       });
     }
 

@@ -16,6 +16,8 @@ export interface ApiErrorInit {
   code?: string | null;
   retryAfterSec?: number | null;
   issuePath?: string;
+  /** First validation issue of a 422 (`path: message`), when the API sent `details`. */
+  detail?: string | null;
 }
 
 export class ApiError extends Error {
@@ -29,6 +31,7 @@ export class ApiError extends Error {
   readonly endpoint: string;
   readonly timeoutMs: number;
   readonly issuePath: string | undefined;
+  readonly detail: string | null;
 
   constructor(init: ApiErrorInit) {
     super(init.message);
@@ -41,6 +44,7 @@ export class ApiError extends Error {
     this.endpoint = init.endpoint;
     this.timeoutMs = init.timeoutMs;
     this.issuePath = init.issuePath;
+    this.detail = init.detail ?? null;
     this.transient =
       init.kind === 'unreachable' ||
       init.kind === 'timeout' ||

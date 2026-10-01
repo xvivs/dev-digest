@@ -87,7 +87,8 @@ Every failure is a tool result with `isError: true` and a `Next step:` sentence.
 | PR not found | check the number with `gh pr list --repo <repo> --state all`; DevDigest syncs only with a GitHub token, while GitHub is reachable, and only the 50 most recently updated PRs |
 | unknown or ambiguous agent | lists every valid agent name |
 | disabled agent | enable it in DevDigest → Agents; no run is started |
-| run failed or cancelled | the run's error, JSON-quoted and cut at 300 chars |
+| run failed or cancelled | the run's error, JSON-quoted and cut at 300 chars; the next step depends on the cause (cancelled, interrupted by a restart, review deadline, LLM key, billing, rate limit, max_tokens, bad model output, setup, else a generic one), classified from the status and error text in `src/run-error.ts` |
+| HTTP 422 / 424 from the API | 422 adds the first validation issue (quoted, cut at 200 chars); 424 `config_error` says to add the key in Settings; other 4xx do not point at the API log, 5xx do |
 | rate limited | retry after N seconds |
 
 ### Rate limits

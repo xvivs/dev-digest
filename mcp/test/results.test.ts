@@ -111,6 +111,37 @@ describe('toToolResult — ApiError kinds', () => {
     expect(d.nextStep).toBe('See the DevDigest API log.');
   });
 
+  it('422 validation_error appends the first issue, quoted and cut at 200 chars', () => {
+    const d = describeError(
+      new ApiError({
+        ...BASE,
+        kind: 'http',
+        status: 422,
+        code: 'validation_error',
+        message: 'Request validation failed',
+        detail: `agent_id: ${'z'.repeat(500)}`,
+      }),
+    );
+    expect(d.kind).toBe('api_error');
+    const quoted = d.message.slice(d.message.indexOf('First issue (data): ') + 'First issue (data): '.length, -1);
+    expect(JSON.parse(quoted) as string).toHaveLength(200);
+    expect(d.nextStep).not.toContain('API log');
+  });
+
+  it('424 config_error tells the user to add the key in Settings', () => {
+    const d = describeError(
+      new ApiError({ ...BASE, kind: 'http', status: 424, code: 'config_error', message: 'OPENROUTER_API_KEY is not configured' }),
+    );
+    expect(d.nextStep).toBe('A required key or token is not configured. Add it in DevDigest Settings, then retry.');
+  });
+
+  it('another 4xx does not point at the API log; 5xx still does', () => {
+    const d4 = describeError(new ApiError({ ...BASE, kind: 'http', status: 404, code: 'not_found', message: 'nope' }));
+    expect(d4.nextStep).not.toContain('API log');
+    const d5 = describeError(new ApiError({ ...BASE, kind: 'http', status: 503, message: 'down' }));
+    expect(d5.nextStep).toBe('See the DevDigest API log.');
+  });
+
   it('an unknown thrown value maps to api_error', () => {
     expect(describeError(new RangeError('weird')).kind).toBe('api_error');
     expect(describeError('a string').kind).toBe('api_error');

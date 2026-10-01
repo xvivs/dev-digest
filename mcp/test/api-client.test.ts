@@ -239,6 +239,24 @@ describe('HttpDevDigestApi — failure mapping (AC-19, AC-20, AC-14)', () => {
     expect(e.transient).toBe(true);
   });
 
+  it('keeps the first validation issue of a 422 as detail', async () => {
+    const { api } = recordingApi(() =>
+      jsonResponse(
+        {
+          error: {
+            code: 'validation_error',
+            message: 'Request validation failed',
+            details: [{ path: ['agent_id'], message: 'Required' }, { path: ['x'], message: 'other' }],
+          },
+        },
+        422,
+      ),
+    );
+    const e = await catchApiError(api.listRuns('p'));
+    expect(e.status).toBe(422);
+    expect(e.detail).toBe('agent_id: Required');
+  });
+
   it('maps a body that fails the picked schema to invalid_response with the issue path', async () => {
     const { api } = recordingApi(() => jsonResponse([{ id: 1 }]));
     const e = await catchApiError(api.listRepos());

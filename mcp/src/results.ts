@@ -32,6 +32,16 @@ function seconds(ms: number): string {
   return String(Number((ms / 1000).toFixed(3)));
 }
 
+function httpNextStep(status: number | null, code: string | null): string {
+  if (status === 424 && code === 'config_error') {
+    return 'A required key or token is not configured. Add it in DevDigest Settings, then retry.';
+  }
+  if (status !== null && status >= 400 && status < 500) {
+    return 'Fix the request using the error above, then retry.';
+  }
+  return 'See the DevDigest API log.';
+}
+
 export function describeError(err: unknown): DescribedError {
   if (err instanceof ToolError) return { kind: err.kind, message: err.message, nextStep: err.nextStep };
   if (err instanceof ApiError) {
@@ -67,8 +77,9 @@ export function describeError(err: unknown): DescribedError {
           kind: 'api_error',
           message:
             `DevDigest API error on ${err.endpoint} (HTTP ${err.status ?? '?'}, code ${err.code ?? 'none'}): ` +
-            `${quoteData(err.message)}.`,
-          nextStep: 'See the DevDigest API log.',
+            `${quoteData(err.message)}.` +
+            (err.status === 422 && err.detail ? ` First issue (data): ${quoteData(err.detail, 200)}.` : ''),
+          nextStep: httpNextStep(err.status, err.code),
         };
     }
   }
