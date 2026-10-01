@@ -71,8 +71,7 @@ export function PrDetailHeader({
     { key: "findings", label: t("detail.tabs.findings"), icon: "Activity", count: findingsCount || undefined },
     { key: "diff", label: t("detail.tabs.diff"), icon: "Code", count: pr.files_count },
   ] as const;
-  const tabsList = [...tabDefs];
-  const tabs = <HeaderTabs ariaLabel={t("detail.tabs.label")} tab={tab} onSetTab={onSetTab} tabs={tabsList} />;
+  const tabs = <HeaderTabs ariaLabel={t("detail.tabs.label")} tab={tab} onSetTab={onSetTab} tabs={tabDefs} />;
 
   return (
     <>
@@ -142,7 +141,7 @@ export function PrDetailHeader({
           onTitleClick={scrollToTop}
           actions={prId && <RunReviewDropdown prId={prId} warnMerged={settled} iconOnlyBelowMd onRunStart={onRunStart} />}
         >
-          <HeaderTabs ariaLabel={t("detail.tabs.labelCondensed")} tab={tab} onSetTab={onSetTab} tabs={tabsList} />
+          <HeaderTabs ariaLabel={t("detail.tabs.labelCondensed")} tab={tab} onSetTab={onSetTab} tabs={tabDefs} />
         </CondensedBar>
       )}
     </>

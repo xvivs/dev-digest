@@ -8,7 +8,10 @@ import { QueryClientProvider, type QueryClient } from "@tanstack/react-query";
 import type { PrOverviewReadiness } from "@devdigest/shared";
 import { createTestQueryClient } from "@/test/render";
 import { json, setupFakeApi } from "@/test/fake-api";
-import { OVERVIEW_READINESS_POLL_MS, overviewReadinessKey, usePrepareOverview, usePrOverviewReadiness } from "./overview";
+import { usePrBlast, usePrIntent, usePrRisks } from "./brief";
+import { useRepos } from "./core";
+import { OVERVIEW_READINESS_POLL_MS, overviewReadinessKey, usePrepareOverview, usePrOverviewReadiness, type OnReadiness } from "./overview";
+import { useRepoIntelStatus } from "./repo-intel";
 
 const READY: PrOverviewReadiness = {
   pr_id: "p1",
@@ -30,7 +33,46 @@ function wrapperFor(qc: QueryClient) {
 }
 
 const READINESS = "/pulls/p1/overview/readiness";
-const INVALIDATED = [["pr-intent", "p1"], ["pr-risks", "p1"], ["pr-blast", "p1"], ["repo-intel-state", "r1"], ["repos"]];
+const DEPENDENTS = [
+  ["GET", "/pulls/p1/intent"],
+  ["GET", "/pulls/p1/risks"],
+  ["GET", "/pulls/p1/blast"],
+  ["GET", "/repos/r1/index-state"],
+  ["GET", "/repos"],
+] as const;
+
+/** Readiness plus one live observer of each query a finished prepare can change. */
+function useOverviewScreen(onReadiness?: OnReadiness) {
+  const readiness = usePrOverviewReadiness("p1", { onReadiness });
+  usePrIntent("p1");
+  usePrRisks("p1");
+  usePrBlast("p1");
+  useRepoIntelStatus("r1");
+  useRepos();
+  return readiness;
+}
+
+function replyDependents(api: ReturnType<typeof setupFakeApi>) {
+  const brief = { stale: false, in_flight: false, last_failure: null };
+  api.reply("GET", "/pulls/p1/intent", { intent: null, ...brief });
+  api.reply("GET", "/pulls/p1/risks", { risks: null, ...brief });
+  api.reply("GET", "/pulls/p1/blast", {
+    status: "unavailable",
+    reason: "no_index",
+    blast: null,
+    head_sha: "abc",
+    source_sha: null,
+    index_status: "none",
+    cached: false,
+    truncated: false,
+    computed_at: null,
+  });
+  api.reply("GET", "/repos/r1/index-state", {});
+  api.reply("GET", "/repos", []);
+}
+
+const dependentRequests = (api: ReturnType<typeof setupFakeApi>) =>
+  DEPENDENTS.map(([method, path]) => api.requestsTo(method, path).length);
 
 describe("usePrOverviewReadiness", () => {
   const api = setupFakeApi();
@@ -39,43 +81,42 @@ describe("usePrOverviewReadiness", () => {
     vi.useRealTimers();
   });
 
-  it("polls every 2 s while in flight; on the idle answer invalidates the five keys once, then stops", async () => {
+  it("polls every 2 s while in flight; on the idle answer refetches the dependent queries once, then stops", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const answers = [BUSY, BUSY, READY];
     api.route("GET", READINESS, () => json(answers.shift() ?? READY));
-    const qc = createTestQueryClient();
-    const invalidate = vi.spyOn(qc, "invalidateQueries");
-    const onReadiness = vi.fn();
-    const { result } = renderHook(() => usePrOverviewReadiness("p1", { onReadiness }), { wrapper: wrapperFor(qc) });
+    replyDependents(api);
+    const seen: Array<[PrOverviewReadiness | undefined, PrOverviewReadiness]> = [];
+    const { result } = renderHook(() => useOverviewScreen((prev, next) => seen.push([prev, next])), {
+      wrapper: wrapperFor(createTestQueryClient()),
+    });
 
     await waitFor(() => expect(result.current.data?.in_flight).toBe(true));
-    expect(invalidate).not.toHaveBeenCalled();
+    await waitFor(() => expect(dependentRequests(api)).toEqual([1, 1, 1, 1, 1]));
 
     await act(() => vi.advanceTimersByTimeAsync(OVERVIEW_READINESS_POLL_MS));
     await waitFor(() => expect(api.requestsTo("GET", READINESS)).toHaveLength(2));
-    expect(invalidate).not.toHaveBeenCalled();
+    expect(dependentRequests(api)).toEqual([1, 1, 1, 1, 1]);
 
     await act(() => vi.advanceTimersByTimeAsync(OVERVIEW_READINESS_POLL_MS));
     await waitFor(() => expect(result.current.data?.in_flight).toBe(false));
-    expect(invalidate.mock.calls.map(([f]) => f?.queryKey)).toEqual(INVALIDATED);
-    expect(onReadiness).toHaveBeenCalledTimes(3);
-    expect(onReadiness).toHaveBeenLastCalledWith(BUSY, READY);
+    await waitFor(() => expect(dependentRequests(api)).toEqual([2, 2, 2, 2, 2]));
+    expect(seen).toEqual([[undefined, BUSY], [BUSY, BUSY], [BUSY, READY]]);
 
     await act(() => vi.advanceTimersByTimeAsync(OVERVIEW_READINESS_POLL_MS * 5));
     expect(api.requestsTo("GET", READINESS)).toHaveLength(3);
-    expect(invalidate).toHaveBeenCalledTimes(INVALIDATED.length);
+    expect(dependentRequests(api)).toEqual([2, 2, 2, 2, 2]);
   });
 
-  it("an idle first answer neither polls nor invalidates", async () => {
+  it("an idle first answer neither polls nor refetches the dependent queries", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     api.reply("GET", READINESS, READY);
-    const qc = createTestQueryClient();
-    const invalidate = vi.spyOn(qc, "invalidateQueries");
-    const { result } = renderHook(() => usePrOverviewReadiness("p1"), { wrapper: wrapperFor(qc) });
+    replyDependents(api);
+    const { result } = renderHook(() => useOverviewScreen(), { wrapper: wrapperFor(createTestQueryClient()) });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     await act(() => vi.advanceTimersByTimeAsync(OVERVIEW_READINESS_POLL_MS * 3));
     expect(api.requestsTo("GET", READINESS)).toHaveLength(1);
-    expect(invalidate).not.toHaveBeenCalled();
+    expect(dependentRequests(api)).toEqual([1, 1, 1, 1, 1]);
   });
 
   it("a malformed answer fails the contract instead of reaching the cache", async () => {

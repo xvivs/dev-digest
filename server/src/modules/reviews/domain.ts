@@ -4,14 +4,22 @@
  * `selectLatestPerAgent` is the policy "the latest review per agent counts".
  * The client keeps a copy in `DiffTab/helpers.ts` (`selectDiffFindings`); keep
  * the two rules identical.
+ *
+ * Role classification (`classifyFile`, `ROLE_ORDER` from reviewer-core) is
+ * runtime code the domain must not import: the service classifies the files and
+ * passes the group order in.
  */
-import { classifyFile, ROLE_ORDER } from '@devdigest/reviewer-core';
 import type { SmartDiff, SmartDiffRole } from '@devdigest/shared';
 
 export interface SmartDiffFileInput {
   path: string;
   additions: number;
   deletions: number;
+}
+
+/** A file already assigned its review role by the caller. */
+export interface ClassifiedSmartDiffFile extends SmartDiffFileInput {
+  role: SmartDiffRole;
 }
 
 export interface SmartDiffFindingInput {
@@ -40,10 +48,11 @@ export function selectLatestPerAgent<R extends { agent_id: string | null; create
   return [...latest.values()];
 }
 
-/** Group files by role (all five groups, in ROLE_ORDER) and attach active-finding lines. */
+/** Group files by role (one group per entry of `roleOrder`, in that order) and attach active-finding lines. */
 export function buildSmartDiff(
-  files: readonly SmartDiffFileInput[],
+  files: readonly ClassifiedSmartDiffFile[],
   reviews: readonly SmartDiffReviewInput[],
+  roleOrder: readonly SmartDiffRole[],
 ): SmartDiff {
   const linesByPath = new Map<string, Set<number>>();
   for (const review of selectLatestPerAgent(reviews)) {
@@ -56,12 +65,12 @@ export function buildSmartDiff(
   }
 
   const byRole = new Map<SmartDiffRole, SmartDiff['groups'][number]['files']>(
-    ROLE_ORDER.map((role) => [role, []]),
+    roleOrder.map((role) => [role, []]),
   );
   let totalLines = 0;
   for (const file of files) {
     totalLines += file.additions + file.deletions;
-    byRole.get(classifyFile(file.path))?.push({
+    byRole.get(file.role)?.push({
       path: file.path,
       additions: file.additions,
       deletions: file.deletions,
@@ -70,7 +79,7 @@ export function buildSmartDiff(
   }
 
   return {
-    groups: ROLE_ORDER.map((role) => ({ role, files: byRole.get(role) ?? [] })),
+    groups: roleOrder.map((role) => ({ role, files: byRole.get(role) ?? [] })),
     split_suggestion: { too_big: false, total_lines: totalLines, proposed_splits: [] },
   };
 }

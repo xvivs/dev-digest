@@ -1,5 +1,6 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { screen, fireEvent, cleanup } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import type { FindingRecord } from "@devdigest/shared";
 import prReview from "@/../messages/en/prReview.json";
 import { renderWithProviders } from "@/test/render";
@@ -135,13 +136,14 @@ describe("FindingCard suggested fix", () => {
 });
 
 describe("FindingCard file link", () => {
-  it("calls onOpenFile instead of linking to GitHub", () => {
+  it("calls onOpenFile instead of linking to GitHub", async () => {
+    const user = userEvent.setup();
     const onOpenFile = vi.fn();
     renderCard(
       <FindingCard f={FINDING} repoFullName="acme/api" headSha="abc" onOpenFile={onOpenFile} onAction={() => {}} />,
     );
     expect(screen.queryByRole("link")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /src\/config\.ts:11/ }));
+    await user.click(screen.getByRole("button", { name: /src\/config\.ts:11/ }));
     expect(onOpenFile).toHaveBeenCalledTimes(1);
   });
 });

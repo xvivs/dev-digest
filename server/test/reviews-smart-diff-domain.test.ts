@@ -1,10 +1,20 @@
 import { describe, it, expect } from 'vitest';
+import { classifyFile, ROLE_ORDER } from '@devdigest/reviewer-core';
 import { SmartDiffResponse } from '@devdigest/shared/contracts/review-api';
 import {
-  buildSmartDiff,
+  buildSmartDiff as buildClassified,
   selectLatestPerAgent,
+  type SmartDiffFileInput,
   type SmartDiffReviewInput,
 } from '../src/modules/reviews/domain.js';
+
+// The service classifies files before the domain groups them; mirror that here.
+const buildSmartDiff = (files: readonly SmartDiffFileInput[], reviews: readonly SmartDiffReviewInput[]) =>
+  buildClassified(
+    files.map((f) => ({ ...f, role: classifyFile(f.path) })),
+    reviews,
+    ROLE_ORDER,
+  );
 
 const finding = (file: string, start_line: number, dismissed_at: string | null = null) => ({
   file,

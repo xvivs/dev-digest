@@ -1,7 +1,8 @@
 /**
  * useStickyOffset mirrors the sticky source's height into a CSS variable on the
  * target. Layout does not exist in jsdom, so offsetHeight and ResizeObserver are
- * stubbed; the contract under test is the wiring (late source mount, resize, cleanup).
+ * stubbed; the contract under test is the wiring (late source mount, resize, cleanup),
+ * observed through the CSS variable the hook writes.
  */
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import React from "react";
@@ -11,13 +12,24 @@ import { useStickyOffset } from "./useStickyOffset";
 
 let height = 40;
 let observers: FakeRO[] = [];
+/** Like the real one: reports only while it observes something and has not been disconnected. */
 class FakeRO {
-  disconnect = vi.fn();
-  observe = vi.fn();
+  active = false;
   constructor(public cb: () => void) {
     observers.push(this);
   }
+  observe() {
+    this.active = true;
+  }
+  disconnect() {
+    this.active = false;
+  }
 }
+/** Layout changed: every live observer reports. */
+const resize = (to: number) => {
+  height = to;
+  observers.filter((o) => o.active).forEach((o) => o.cb());
+};
 
 beforeEach(() => {
   height = 40;
@@ -51,21 +63,21 @@ describe("useStickyOffset", () => {
     expect(offset()).toBe("40px");
   });
 
-  it("re-writes on resize and disconnects the observer on unmount", () => {
+  it("re-writes on resize and stops following the source after unmount", () => {
     const { unmount } = render(<Harness showSource />);
-    const ro = observers[observers.length - 1]!;
-    height = 72;
-    ro.cb();
+    const main = document.querySelector<HTMLElement>("main")!;
+    resize(72);
     expect(offset()).toBe("72px");
     unmount();
-    expect(ro.disconnect).toHaveBeenCalled();
+    resize(99);
+    expect(main.style.getPropertyValue(PR_HEADER_OFFSET_VAR)).toBe("72px");
   });
 
-  it("stops observing when the source goes away", () => {
+  it("stops following the source when it goes away", () => {
     const { rerender } = render(<Harness showSource />);
-    const ro = observers[observers.length - 1]!;
     rerender(<Harness showSource={false} />);
-    expect(ro.disconnect).toHaveBeenCalled();
+    resize(99);
+    expect(offset()).toBe("40px");
   });
 
   it("writes a constant and measures nothing when given a fixed height (mobile bar)", () => {
@@ -78,9 +90,9 @@ describe("useStickyOffset", () => {
         </div>
       );
     }
-    const before = observers.length;
     render(<Fixed />);
     expect(offset()).toBe("88px");
-    expect(observers).toHaveLength(before);
+    resize(120);
+    expect(offset()).toBe("88px");
   });
 });

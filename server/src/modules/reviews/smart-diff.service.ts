@@ -2,6 +2,7 @@
  * APPLICATION — Smart Diff for a PR: files grouped by role with finding lines.
  * Reads persisted data only (no LLM, no GitHub). No SQL, no Fastify.
  */
+import { classifyFile, ROLE_ORDER } from '@devdigest/reviewer-core';
 import type { SmartDiff } from '@devdigest/shared';
 import { buildSmartDiff } from './domain.js';
 import type { SmartDiffSource } from './ports.js';
@@ -16,6 +17,7 @@ export class SmartDiffService {
       this.source.getSmartDiffFiles(prId),
       this.source.getSmartDiffReviews(prId),
     ]);
-    return buildSmartDiff(files, reviews);
+    const classified = files.map((file) => ({ ...file, role: classifyFile(file.path) }));
+    return buildSmartDiff(classified, reviews, ROLE_ORDER);
   }
 }

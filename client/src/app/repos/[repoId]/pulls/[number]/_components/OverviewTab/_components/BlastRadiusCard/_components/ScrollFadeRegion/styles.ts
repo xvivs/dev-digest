@@ -1,5 +1,5 @@
 import type { CSSProperties } from "react";
-import { BLAST_BODY_MAX_HEIGHT } from "../../styles";
+import { BLAST_BODY_MAX_HEIGHT } from "../../constants";
 
 /** Height (px) of the bottom fade hint. */
 const FADE_HEIGHT = 32;

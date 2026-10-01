@@ -16,10 +16,21 @@
  */
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
+import { z } from 'zod';
 import { NotFoundError } from '../../platform/errors.js';
 import { getContext } from '../_shared/context.js';
 import { IdParams } from '../_shared/schemas.js';
 import type { IndexState } from './types.js';
+
+/** 202 body of POST /repos/:id/resync: coalesced into the trailing pass, degraded (no handler), or queued.
+ *  Order matters: zod serializes with the first matching member and strips the rest, so the
+ *  members with extra required keys come before the one that only needs `status`. */
+const ResyncAccepted = z.union([
+  z.object({ status: z.literal('accepted'), coalesced: z.literal(true) }),
+  z.object({ status: z.literal('accepted'), degraded: z.literal(true), reason: z.literal('no_handler') }),
+  z.object({ status: z.literal('accepted'), jobId: z.string().optional() }),
+]);
+type ResyncAccepted = z.infer<typeof ResyncAccepted>;
 
 export default async function repoIntelRoutes(appBase: FastifyInstance) {
   const app = appBase.withTypeProvider<ZodTypeProvider>();
@@ -44,8 +55,8 @@ export default async function repoIntelRoutes(appBase: FastifyInstance) {
 
   app.post(
     '/repos/:id/resync',
-    { schema: { params: IdParams } },
-    async (req, reply) => {
+    { schema: { params: IdParams, response: { 202: ResyncAccepted } } },
+    async (req, reply): Promise<ResyncAccepted> => {
       const { workspaceId } = await getContext(container, req);
       // Tenancy: the gate is tenant-agnostic, so scope the repo first (AC-20).
       const clone = await container.repoClone.getCloneStatus(workspaceId, req.params.id);

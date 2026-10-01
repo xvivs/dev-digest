@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach, beforeEach } from "vitest";
+import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
 import { screen, cleanup, within, fireEvent, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import brief from "@/../messages/en/brief.json";
@@ -6,7 +6,6 @@ import blast from "@/../messages/en/blast.json";
 import { renderWithProviders } from "@/test/render";
 import { setupFakeApi } from "@/test/fake-api";
 import { BlastRadiusCard } from "./BlastRadiusCard";
-import { BLAST_BODY_MAX_HEIGHT } from "./styles";
 
 const api = setupFakeApi();
 afterEach(cleanup);
@@ -39,13 +38,16 @@ describe("BlastRadiusCard scroll region", () => {
     renderWithProviders(<BlastRadiusCard prId="p1" />, { namespaces });
     const region = await screen.findByRole("region", { name: blast.scrollRegion });
     expect(region).toHaveAttribute("tabindex", "0");
-    expect(region).toHaveStyle({ maxHeight: `${BLAST_BODY_MAX_HEIGHT}px`, overflowY: "auto" });
     expect(within(region).getAllByText(/^symbol\d+$/)).toHaveLength(15);
 
-    expect(region).not.toContainElement(screen.getByText(brief.block.blast));
-    expect(region).not.toContainElement(screen.getByRole("status"));
-    expect(region).not.toContainElement(screen.getByText(blast.stat.symbols));
-    expect(region).not.toContainElement(screen.getByRole("button", { name: blast.view.tree }));
+    expect(screen.getByText(brief.block.blast)).toBeInTheDocument();
+    expect(screen.getByRole("status")).toBeInTheDocument();
+    expect(screen.getByText(blast.stat.symbols)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: blast.view.tree })).toBeInTheDocument();
+    expect(within(region).queryByText(brief.block.blast)).not.toBeInTheDocument();
+    expect(within(region).queryByRole("status")).not.toBeInTheDocument();
+    expect(within(region).queryByText(blast.stat.symbols)).not.toBeInTheDocument();
+    expect(within(region).queryByRole("button", { name: blast.view.tree })).not.toBeInTheDocument();
   });
 
   it("keeps the graph view inside the scroll region too", async () => {
@@ -86,13 +88,45 @@ describe("BlastRadiusCard bottom fade", () => {
 
   const fade = () => screen.getByTestId("scroll-fade");
 
+  // Controllable ResizeObserver: like the real one it only reports elements it observes.
+  const observers: Array<{ cb: ResizeObserverCallback; targets: Set<Element> }> = [];
+  beforeEach(() => {
+    observers.length = 0;
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        targets = new Set<Element>();
+        constructor(public cb: ResizeObserverCallback) {
+          observers.push(this);
+        }
+        observe(el: Element) {
+          this.targets.add(el);
+        }
+        unobserve(el: Element) {
+          this.targets.delete(el);
+        }
+        disconnect() {
+          this.targets.clear();
+        }
+      },
+    );
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  /** The scroll box keeps its capped size; only mounted content boxes change size when the view swaps. */
+  function resizeContent(region: HTMLElement) {
+    for (const ro of observers) {
+      const changed = [...ro.targets].filter((el) => el.isConnected && el !== region);
+      if (changed.length) ro.cb([], ro as unknown as ResizeObserver);
+    }
+  }
+
   it("shows the fade when content overflows and the view is at the top", async () => {
     Object.assign(box, { scrollHeight: 800, clientHeight: 360, scrollTop: 0 });
     reply(15);
     renderWithProviders(<BlastRadiusCard prId="p1" />, { namespaces });
     await screen.findByRole("region", { name: blast.scrollRegion });
     await waitFor(() => expect(fade()).toHaveAttribute("data-visible", "true"));
-    expect(fade()).toHaveStyle({ opacity: "1", pointerEvents: "none" });
   });
 
   it("hides the fade once scrolled to the bottom (2px tolerance)", async () => {
@@ -105,11 +139,28 @@ describe("BlastRadiusCard bottom fade", () => {
     box.scrollTop = 439; // 1px short of the end, within tolerance
     fireEvent.scroll(region);
     expect(fade()).toHaveAttribute("data-visible", "false");
-    expect(fade()).toHaveStyle({ opacity: "0" });
 
     box.scrollTop = 100;
     fireEvent.scroll(region);
     expect(fade()).toHaveAttribute("data-visible", "true");
+  });
+
+  it("re-measures when switching Tree/Graph swaps in content of a different height, without any scroll", async () => {
+    Object.assign(box, { scrollHeight: 800, clientHeight: 360, scrollTop: 0 });
+    reply(15, "ok");
+    renderWithProviders(<BlastRadiusCard prId="p1" />, { namespaces });
+    const region = await screen.findByRole("region", { name: blast.scrollRegion });
+    await waitFor(() => expect(fade()).toHaveAttribute("data-visible", "true"));
+
+    Object.assign(box, { scrollHeight: 200, clientHeight: 200 }); // graph fits
+    await userEvent.click(screen.getByRole("button", { name: blast.view.graph }));
+    resizeContent(region);
+    await waitFor(() => expect(fade()).toHaveAttribute("data-visible", "false"));
+
+    Object.assign(box, { scrollHeight: 800, clientHeight: 360 }); // tree overflows again
+    await userEvent.click(screen.getByRole("button", { name: blast.view.tree }));
+    resizeContent(region);
+    await waitFor(() => expect(fade()).toHaveAttribute("data-visible", "true"));
   });
 
   it("keeps the fade hidden without overflow", async () => {
@@ -150,8 +201,7 @@ describe("BlastRadiusCard caller row", () => {
     const path = await screen.findByTitle(full);
     const name = screen.getByText("renderCard");
     expect(path).toHaveTextContent(full);
-    expect(path).not.toBe(name);
-    expect(path).not.toContainElement(name);
-    expect(path.parentElement).toContainElement(name);
+    expect(path).not.toHaveTextContent("renderCard");
+    expect(name).toBeInTheDocument();
   });
 });

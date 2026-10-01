@@ -1,6 +1,6 @@
 /* Spec 06 D13a / AC-24, AC-25: one click, bounded auto-continuation.
    The fake API's readiness answer is advanced by hand and polls are driven
-   with `refetchQueries`, so no real timers are involved. */
+   with `refetchQueries`, so no timers are involved. */
 import { describe, it, expect, afterEach } from "vitest";
 import { screen, cleanup, waitFor, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -35,10 +35,8 @@ function setup(first: PrOverviewReadiness) {
   const poll = async (next: PrOverviewReadiness) => {
     current = next;
     await act(() => view.queryClient.refetchQueries({ queryKey: overviewReadinessKey("p1") }));
-    // Let a triggered mutation reach the fake API.
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 0));
-    });
+    // A mutation fired by the poll is pending already; wait until it has reached the fake API and settled.
+    await waitFor(() => expect(view.queryClient.isMutating()).toBe(0));
   };
   const posts = () => api.requestsTo("POST", PREPARE);
   const respondNext = (r: Partial<PrepareOverviewResponse>) => {

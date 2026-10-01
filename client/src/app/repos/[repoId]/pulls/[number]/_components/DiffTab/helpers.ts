@@ -2,7 +2,7 @@
    role, counters, the shared visibility toggle. No React. */
 import { SmartDiffRole } from "@devdigest/shared";
 import type { FindingRecord, PrFile, ReviewRecord, SmartDiff } from "@devdigest/shared";
-import { findingsForFile, isActiveFinding } from "@/components/diff-viewer";
+import { findingsForFile, isActiveFinding } from "@/components/diff-viewer/findings";
 import { COLLAPSED_ROLES, FALLBACK_ROLE } from "./constants";
 
 /**

@@ -4,6 +4,7 @@
  * buildSmartDiff -> contract holds.
  */
 import { describe, it, expect } from 'vitest';
+import { classifyFile, ROLE_ORDER } from '@devdigest/reviewer-core';
 import { SmartDiffResponse } from '@devdigest/shared/contracts/review-api';
 import { toSmartDiffFile, toSmartDiffReview } from '../src/modules/reviews/helpers.js';
 import { buildSmartDiff } from '../src/modules/reviews/domain.js';
@@ -40,7 +41,8 @@ describe('smart-diff row mapping', () => {
         findingRow('gone.ts', 1),
       ],
     });
-    const out = buildSmartDiff([{ path: 'src/a.ts', additions: 1, deletions: 1 }], [review]);
+    const file = { path: 'src/a.ts', additions: 1, deletions: 1 };
+    const out = buildSmartDiff([{ ...file, role: classifyFile(file.path) }], [review], ROLE_ORDER);
     expect(out.groups[0]!.files[0]!.finding_lines).toEqual([8]);
     expect(SmartDiffResponse.safeParse(out).success).toBe(true);
   });
